@@ -141,13 +141,6 @@ LaguerreGaussLaser::LaguerreGaussLaser(double angular_freq, double a0_in, double
   z_R = (w0 * w0 * omega) / (2.0 * Core::PhysUtils::AtomicUnits::c);
 }
 
-// Standard LG_{p,l} mode (see e.g. Allen, Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185
-// (1992); Siegman, "Lasers", ch. 17): a radial profile with |l| azimuthal nodes and p radial nodes,
-// an exp(i*l*phi) orbital-angular-momentum twist, a Gouy phase, and the usual spherical-wavefront
-// curvature term -- all superimposed on the same temporal envelope and carrier phase as the plane
-// wave. This is a first-pass implementation; treat the mode-profile physics as worth double-checking
-// against the reference formula before relying on it for production results.
-//
 // Returns {amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc} together, since they share almost all
 // of their computation. Unlike the plane-wave case, the field components along the propagation
 // direction need these transverse derivatives to enforce div(E) = 0, div(B) = 0.
@@ -172,44 +165,34 @@ std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> LaguerreG
   double y_loc = Core::MathUtils::dot3(x_mu, epsilon_2);
   double z_loc = Core::MathUtils::dot3(x_mu, unity_n);
   double s = x_loc * x_loc + y_loc * y_loc;  // = rho^2
+  double k_wave = omega / Core::PhysUtils::AtomicUnits::c;
 
   int n = std::abs(l);
-  double k_wave = omega / Core::PhysUtils::AtomicUnits::c;
-  double w_z = w0 * std::sqrt(1.0 + (z_loc / z_R) * (z_loc / z_R));
-  double gouy_phase = static_cast<double>(2 * p + n + 1) * std::atan(z_loc / z_R);
-  double kappa = k_wave * z_loc / (2.0 * (z_loc * z_loc + z_R * z_R));  // curvature_phase = kappa * rho^2
-
-  // Radial envelope R(s) = (w0/w) * (sqrt(2)/w)^n * L_p^n(2s/w^2) * exp(-s/w^2), a smooth (real)
-  // function of s = rho^2; the rho^n directional part is folded into the vortex factor V below.
-  double u = 2.0 * s / (w_z * w_z);
-  double laguerre_val = MathUtils::generalized_laguerre(p, n, u);
-  double C_n = std::pow(std::sqrt(2.0) / w_z, n);
-  double R_val = (w0 / w_z) * C_n * laguerre_val * std::exp(-s / (w_z * w_z));
-  // dL_p^n/du = -L_{p-1}^{n+1}(u) (standard associated-Laguerre derivative identity), zero for p == 0.
-  double dL_du = (p > 0) ? -MathUtils::generalized_laguerre(p - 1, n + 1, u) : 0.0;
-  double dR_ds =
-      (w0 / w_z) * C_n * std::exp(-s / (w_z * w_z)) * (2.0 * dL_du / (w_z * w_z) - laguerre_val / (w_z * w_z));
-
-  // Complex radial factor G(s) = R(s) * exp(-i*kappa*s), folding in the wavefront-curvature phase.
-  MathUtils::Complex curvature_factor = std::exp(MathUtils::Complex(0.0, -kappa * s));
-  MathUtils::Complex G = R_val * curvature_factor;
-  MathUtils::Complex dG_ds = (dR_ds - MathUtils::I * kappa * R_val) * curvature_factor;
+  double Npn = std::sqrt(2.0) / MathUtils::factorial(n) *
+               std::sqrt(MathUtils::factorial(p + n) / MathUtils::factorial(p));  // the normalization constant
+  double w_z = w0 * std::sqrt(1.0 + (z_loc / z_R) * (z_loc / z_R));               // the beam radius at z
+  double C_n = E0_c * Npn * (w0 / w_z) * std::pow(std::sqrt(2.0) / w_z, n);       // prefactor
+  double u = 2.0 * s / (w_z * w_z);  // argument of the hypergeometric function
+  double hypergeometric_val = MathUtils::hypergeometric_1F1_neg_int_a(-p, n + 1, u);  // the hypergeomatric function
 
   // Vortex factor V = (x_loc + i*sign(l)*y_loc)^|l|, identically equal to rho^|l| * exp(i*l*azimuth).
   double sign_l = (l >= 0) ? 1.0 : -1.0;
   MathUtils::Complex zeta_c(x_loc, sign_l * y_loc);
   MathUtils::Complex V = std::pow(zeta_c, n);
-  MathUtils::Complex dV_dzeta =
-      (n > 0) ? static_cast<double>(n) * std::pow(zeta_c, n - 1) : MathUtils::Complex(0.0, 0.0);
-  MathUtils::Complex dV_dx = dV_dzeta;
-  MathUtils::Complex dV_dy = dV_dzeta * MathUtils::Complex(0.0, sign_l);
 
-  // Overall z/t-dependent prefactor, independent of the transverse position.
-  MathUtils::Complex prefactor = E0_c * std::exp(MathUtils::Complex(envelope(phi), phi - gouy_phase));
+  // the imaginary part of the phase
+  double gouy_phase = -static_cast<double>(2 * p + n + 1) * std::atan(z_loc / z_R);
+  double kappa_phase = k_wave * s * z_loc /
+                       (2.0 * (z_loc * z_loc + z_R * z_R));  // curvature_phase = kappa * z * rho^2 / (2 ( z^2 + z_R^2))
 
-  MathUtils::Complex amplitude = prefactor * G * V;
-  MathUtils::Complex d_amplitude_dx = prefactor * (dG_ds * (2.0 * x_loc) * V + G * dV_dx);
-  MathUtils::Complex d_amplitude_dy = prefactor * (dG_ds * (2.0 * y_loc) * V + G * dV_dy);
+  double gaussian_phase = -s / (w_z * w_z);
+  double envelope_phase = envelope(phi);
+  MathUtils::Complex prefactor =
+      std::exp(MathUtils::Complex(envelope_phase + gaussian_phase, phi + gouy_phase + kappa_phase));
+
+  MathUtils::Complex amplitude = prefactor * V * C_n * hypergeometric_val;
+  MathUtils::Complex d_amplitude_dx = 0.0;
+  MathUtils::Complex d_amplitude_dy = 0.0;
 
   return {amplitude, d_amplitude_dx, d_amplitude_dy};
 }

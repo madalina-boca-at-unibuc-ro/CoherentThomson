@@ -452,6 +452,17 @@ inline constexpr RotationMatrix3x3 multiply(const RotationMatrix3x3& A, const Ro
 }
 
 // =========================================================================
+// Factorial n!, for small non-negative integer n (e.g. Laguerre-Gauss mode normalization).
+// =========================================================================
+inline constexpr double factorial(int n) {
+  double result = 1.0;
+  for (int k = 2; k <= n; ++k) {
+    result *= static_cast<double>(k);
+  }
+  return result;
+}
+
+// =========================================================================
 // Generalized (associated) Laguerre polynomial L_p^k(x), via the standard three-term recurrence:
 // L_0^k = 1, L_1^k = 1 + k - x, (n+1) L_{n+1}^k = (2n+1+k-x) L_n^k - (n+k) L_{n-1}^k.
 // Used by the Laguerre-Gauss laser mode's radial profile (p, k = |l| are small non-negative integers

@@ -122,38 +122,39 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   `get_faraday_tensor`, and only its amplitude is actually consumed so far — the mode is still not physics-reviewed
   against the reference formula (Allen, Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman,
   "Lasers", ch. 17), and its longitudinal field components aren't wired in yet.** `complex_amplitude` returns
-  `std::tuple<Complex, Complex, Complex>` — `{amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc}` — computed
-  together since they share almost all of their work. `x_loc`/`y_loc`/`z_loc` are the electron's position rotated
-  into the laser's own canonical frame (`dot3(x_mu, epsilon_1)`/`dot3(x_mu, epsilon_2)`/`dot3(x_mu, unity_n)` —
-  `epsilon_1`/`epsilon_2`/`unity_n` are themselves the columns of the laser's 4x4 `rotation_matrix`, i.e. the
-  canonical frame's axes expressed in the lab frame, the same rotation `Detector`/`Particle` also share), assuming
-  the beam waist sits at that canonical frame's origin (`z=0`); since `tau_0_traj` is hardcoded to `0.0` (see
-  below) and the electron beam's own placement is independent of this assumption, check that the beam actually
-  starts near the waist for whatever config you're using. The radial profile (associated Laguerre polynomial via
-  `MathUtils::generalized_laguerre`, using the identity `dL_p^n/du = -L_{p-1}^{n+1}(u)` for its derivative), Gouy
-  phase, and wavefront-curvature phase match the same closed form documented here previously; the azimuthal factor
-  `rho^|l| * exp(i*l*azimuth)` is instead built as the exact complex polynomial `(x_loc + i*sign(l)*y_loc)^|l|`
-  (identically equal to it, since `rho*exp(i*sign(l)*azimuth) = x_loc + i*sign(l)*y_loc`), so both the amplitude
-  and its `x`/`y` derivatives stay smooth exactly on-axis (`rho=0`) instead of going through polar-coordinate
-  expressions with a removable but awkward `1/rho` singularity there. The analytic derivatives were checked
-  against central finite differences at an off-axis point (~1e-10 relative error) and confirmed smooth near the
-  axis for `l=2` in a one-off scratch test (not committed to the repo — temporarily made `complex_amplitude`
-  `public` to call it directly, then reverted). **`get_faraday_tensor` currently only consumes `std::get<0>` (the
+  `std::tuple<Complex, Complex, Complex>` — `{amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc}` — but **the two
+  derivative entries are currently hardcoded to `0.0`, not yet implemented**, a placeholder pending the true
+  analytic `x`/`y` derivatives of the full expression (including the radial hypergeometric factor below).
+  `x_loc`/`y_loc`/`z_loc` are the electron's position rotated into the laser's own canonical frame
+  (`dot3(x_mu, epsilon_1)`/`dot3(x_mu, epsilon_2)`/`dot3(x_mu, unity_n)` — `epsilon_1`/`epsilon_2`/`unity_n` are
+  themselves the columns of the laser's 4x4 `rotation_matrix`, i.e. the canonical frame's axes expressed in the lab
+  frame, the same rotation `Detector`/`Particle` also share), assuming the beam waist sits at that canonical frame's
+  origin (`z=0`); since `tau_0_traj` is hardcoded to `0.0` (see below) and the electron beam's own placement is
+  independent of this assumption, check that the beam actually starts near the waist for whatever config you're
+  using. The Gouy phase and wavefront-curvature phase match the same closed form documented here previously; the
+  azimuthal factor `rho^|l| * exp(i*l*azimuth)` is built as the exact complex polynomial
+  `(x_loc + i*sign(l)*y_loc)^|l|` (identically equal to it, since `rho*exp(i*sign(l)*azimuth) = x_loc +
+  i*sign(l)*y_loc`), so the amplitude (and, once implemented, its `x`/`y` derivatives) stay smooth exactly on-axis
+  (`rho=0`) instead of going through polar-coordinate expressions with a removable but awkward `1/rho` singularity
+  there. **The radial profile is built via `MathUtils::hypergeometric_1F1_neg_int_a(-p, n+1, u)`** (`n = |l|`,
+  `u = 2*rho^2/w(z)^2`), using the identity `L_p^n(x) = binom(p+n,p) * 1F1(-p; n+1; x)` documented next to that
+  function in `math_utils.hpp` — **not** via `MathUtils::generalized_laguerre` (which remains implemented and
+  tested via its own three-term recurrence, but still unused elsewhere). The `b` argument here was previously
+  passed as `n` instead of `n+1` — silently evaluating a different (non-equal for any `p>0`) function of `u`, which
+  went unnoticed because `p=0` collapses `1F1` to `1` regardless of `b` — now fixed. The `Npn` normalization
+  constant bundles the `binom(p+n,p) = (p+n)!/(p!*n!)` factor needed to turn that raw `1F1` value into the true
+  `L_p^n(u)` together with a **deliberately custom (non-unit-power) prefactor**, chosen to satisfy this project's
+  own normalization condition rather than the standard unit-power LG normalization `sqrt(2*p!/(pi*(p+|l|)!))` —
+  algebraically, that standard constant times `binom(p+n,p)` reduces to `sqrt(2/pi)/n! * sqrt((p+n)!/p!)`, and
+  `Npn` as implemented is exactly that expression *without* the `1/sqrt(pi)` factor, by design, not an oversight.
+  `MathUtils::factorial(int n) -> double` (`math_utils.hpp`, plain iterative product) was added to support this
+  normalization; it's intended for the small non-negative integers (`p`, `n`, `p+n`) this use needs. **`get_faraday_tensor` currently only consumes `std::get<0>` (the
   amplitude) and is otherwise structurally identical to `PlaneWaveLaser::get_faraday_tensor`**, projecting it
   straight onto `epsilon_1`/`epsilon_2` — so the LG mode still has no genuine field components along the
   propagation direction. Wiring `d(amplitude)/dx_loc`/`d(amplitude)/dy_loc` into `E_z`/`B_z` via the
-  `div(E)=0`/`div(B)=0` condition (flagged in-code above `get_faraday_tensor`) is the next planned step, not yet
-  done. **The mode is also missing its overall normalization constant** — `R_val` in `complex_amplitude` is built
-  from `generalized_laguerre` and the Gaussian radial falloff alone, with no `sqrt(2*p!/(pi*(p+|l|)!))`-type
-  prefactor applied, so the LG amplitude is not normalized consistently across different `p`/`l`/`w0` combinations
-  (a plain `l=0, p=0` mode happens to reduce to an unnormalized Gaussian, which is why this hasn't surfaced yet).
-  Separately, `MathUtils::hypergeometric_1F1_neg_int_a`/`hypergeometric_1F1_neg_int_a_derivative`
-  (`math_utils.hpp`) already implement Kummer's confluent hypergeometric function for the exact
-  non-positive-integer-`a` case the associated Laguerre polynomials need (`L_p^k(x) = binom(p+k,p) *
-  1F1(-p; k+1; x)`), but neither is actually called anywhere yet — `generalized_laguerre`'s own three-term
-  recurrence is what's live. Re-expressing the radial profile through the hypergeometric form (or otherwise wiring
-  these helpers in) is a possible follow-up, not just the normalization fix, before relying on
-  `laser_type = laguerre_gauss` for production physics.
+  `div(E)=0`/`div(B)=0` condition (flagged in-code above `get_faraday_tensor`) is still the next planned step, and
+  is now additionally blocked on actually implementing those two derivatives (currently `0.0` placeholders, see
+  above) before relying on `laser_type = laguerre_gauss` for production physics.
 - **Polarization coefficients `zeta_1`/`zeta_2` are complex (`Core::MathUtils::Complex`), not real, and both laser
   types build their field the same way from them.** `PlaneWaveLaser::get_faraday_tensor` and
   `LaguerreGaussLaser::get_faraday_tensor` both compute `E = Real(epsilon_1*zeta_1*amplitude +
