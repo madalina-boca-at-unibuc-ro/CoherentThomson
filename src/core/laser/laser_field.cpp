@@ -66,22 +66,12 @@ double LaserField::envelope(double phi) const {
   }
 }
 
-// =========================================================================
-// PLANE WAVE LASER IMPLEMENTATION
-// =========================================================================
-
-MathUtils::Complex PlaneWaveLaser::complex_amplitude(const MathUtils::RealFourVector& x) const {
-  double phi = omega / PhysUtils::AtomicUnits::c *
-               MathUtils::contract(x, unity_n);  // Using the dot product of x_mu and n to get the phase
-  MathUtils::Complex exponent = envelope(phi) + MathUtils::I * phi;
-  MathUtils::Complex result = E0_c * std::exp(exponent);
-  return result;
-}
-
-FaradayTensor PlaneWaveLaser::get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const {
-  MathUtils::Complex amplitude = complex_amplitude(x_mu);
-  // E = Real(epsilon_1 * zeta_1 * amplitude + epsilon_2 * zeta_2 * amplitude); zeta_1/zeta_2 complex so
-  // e.g. zeta_1=(1,0), zeta_2=(0,1) gives circular polarization.
+// Shared by every derived laser type: builds E/B from the (wave-type-specific) amplitude returned by
+// complex_amplitude the same way regardless of transverse mode. E = Real(epsilon_1*zeta_1*amplitude +
+// epsilon_2*zeta_2*amplitude); zeta_1/zeta_2 complex so e.g. zeta_1=(1,0), zeta_2=(0,1) gives circular
+// polarization.
+FaradayTensor LaserField::get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const {
+  MathUtils::Complex amplitude = std::get<0>(complex_amplitude(x_mu));
   MathUtils::Complex weighted_amplitude_1 = zeta_1 * amplitude;
   MathUtils::Complex weighted_amplitude_2 = zeta_2 * amplitude;
 
@@ -121,6 +111,20 @@ FaradayTensor PlaneWaveLaser::get_faraday_tensor(const Core::MathUtils::RealFour
   F[3][3] = 0.0;
 
   return F;
+}
+
+// =========================================================================
+// PLANE WAVE LASER IMPLEMENTATION
+// =========================================================================
+
+// A plane wave has no transverse profile, so the x/y derivative entries are identically zero.
+std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> PlaneWaveLaser::complex_amplitude(
+    const MathUtils::RealFourVector& x) const {
+  double phi = omega / PhysUtils::AtomicUnits::c *
+               MathUtils::contract(x, unity_n);  // Using the dot product of x_mu and n to get the phase
+  MathUtils::Complex exponent = envelope(phi) + MathUtils::I * phi;
+  MathUtils::Complex amplitude = E0_c * std::exp(exponent);
+  return {amplitude, 0.0, 0.0};
 }
 
 // =========================================================================
@@ -200,51 +204,8 @@ std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> LaguerreG
 // The main difference with respect to the plane wave case is the presence of field components along the propagation
 // direction. They are chosen such that div(E) = 0; div(B) = 0.
 
-// The complex scalar solution is built in the complex_amplitude
-
-FaradayTensor LaguerreGaussLaser::get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const {
-  MathUtils::Complex amplitude = std::get<0>(complex_amplitude(x_mu));
-  // Same polarization construction as PlaneWaveLaser (see there); this is currently a stub identical
-  // to the plane wave, pending the true LG transverse-mode physics.
-  MathUtils::Complex weighted_amplitude_1 = zeta_1 * amplitude;
-  MathUtils::Complex weighted_amplitude_2 = zeta_2 * amplitude;
-
-  // Electric Field Vector Components
-  double Ex_c = epsilon_1[1] * real(weighted_amplitude_1) + epsilon_2[1] * real(weighted_amplitude_2);
-  double Ey_c = epsilon_1[2] * real(weighted_amplitude_1) + epsilon_2[2] * real(weighted_amplitude_2);
-  double Ez_c = epsilon_1[3] * real(weighted_amplitude_1) + epsilon_2[3] * real(weighted_amplitude_2);
-
-  // Magnetic Field Vector Components via cross product: B = (k_dir \times E) /
-  // c
-  double Bx = (unity_n[2] * Ez_c - unity_n[3] * Ey_c);
-  double By = (unity_n[3] * Ex_c - unity_n[1] * Ez_c);
-  double Bz = (unity_n[1] * Ey_c - unity_n[2] * Ex_c);
-
-  // 4. Construct the antisymmetric Faraday Tensor matrix F^{\mu\nu}
-  FaradayTensor F;
-
-  // Row 0 (t)
-  F[0][0] = 0.0;
-  F[0][1] = -Ex_c;
-  F[0][2] = -Ey_c;
-  F[0][3] = -Ez_c;
-  // Row 1 (x)
-  F[1][0] = Ex_c;
-  F[1][1] = 0.0;
-  F[1][2] = -Bz;
-  F[1][3] = By;
-  // Row 2 (y)
-  F[2][0] = Ey_c;
-  F[2][1] = Bz;
-  F[2][2] = 0.0;
-  F[2][3] = -Bx;
-  // Row 3 (z)
-  F[3][0] = Ez_c;
-  F[3][1] = -By;
-  F[3][2] = Bx;
-  F[3][3] = 0.0;
-
-  return F;
-}
+// The complex scalar solution is built here; get_faraday_tensor (inherited from LaserField) currently
+// only consumes its amplitude entry, projecting it straight onto epsilon_1/epsilon_2 -- same stub as
+// PlaneWaveLaser, pending the true LG transverse-mode physics.
 
 }  // namespace Core::Laser

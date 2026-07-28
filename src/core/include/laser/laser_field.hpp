@@ -40,6 +40,12 @@ protected:
   // returns only the exponant of the envelope, will be combined in the calcualtion of the amplitude
   double envelope(double phi) const;
 
+  // Returns {amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc} at x_mu. This is the one piece of
+  // physics that differs between wave types (plane wave vs. Laguerre-Gauss, ...); a plane wave has no
+  // transverse profile, so it returns the two derivative entries as zero.
+  virtual std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> complex_amplitude(
+      const Core::MathUtils::RealFourVector& x_mu) const = 0;
+
 public:
   // Constructor initializing the baseline laser characteristics shared by every wave type: temporal
   // envelope, propagation direction, polarization, and the resulting rotation matrices.
@@ -48,9 +54,10 @@ public:
              const Core::MathUtils::RealFourVector& n_dir_in);
   virtual ~LaserField() = default;
 
-  // Computes and returns the complete F^{\mu\nu} tensor at a given 4-vector position. This is the one
-  // piece of physics that differs between wave types (plane wave vs. Laguerre-Gauss, ...).
-  virtual FaradayTensor get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const = 0;
+  // Computes and returns the complete F^{\mu\nu} tensor at a given 4-vector position, from the
+  // amplitude returned by the (wave-type-specific) complex_amplitude; shared by every derived laser
+  // type since the polarization/E-to-B construction is identical regardless of the transverse mode.
+  FaradayTensor get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const;
 
   double get_omega() const { return omega; }
   double get_a0() const { return a0; }
@@ -73,11 +80,13 @@ public:
 // envelope. Reuses the base constructor as-is (no additional parameters).
 class PlaneWaveLaser : public LaserField {
 private:
-  MathUtils::Complex complex_amplitude(const MathUtils::RealFourVector& x) const;
+  // Returns {amplitude, 0, 0}: a plane wave has no transverse profile, so the x/y derivatives are
+  // identically zero.
+  std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> complex_amplitude(
+      const MathUtils::RealFourVector& x) const override;
 
 public:
   using LaserField::LaserField;
-  FaradayTensor get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const override;
 };
 
 // A Laguerre-Gauss (LG_{p,l}) laser mode: adds a transverse radial/azimuthal profile (with Gouy phase
@@ -94,13 +103,12 @@ private:
   // coordinates. The x/y derivatives are needed (unlike in the plane-wave case) to build the E and B
   // field components along the propagation direction from the divergence-free condition.
   std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> complex_amplitude(
-      const MathUtils::RealFourVector& x) const;
+      const MathUtils::RealFourVector& x) const override;
 
 public:
   LaguerreGaussLaser(double angular_freq, double a0, double pulse_flat_phase, double wing_sigma_phase, double delay_in,
                      double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in,
                      size_t NT_in, const Core::MathUtils::RealFourVector& n_dir_in, int p_in, int l_in, double w0_in);
-  FaradayTensor get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const override;
 
   int get_lg_p() const { return p; }
   int get_lg_l() const { return l; }

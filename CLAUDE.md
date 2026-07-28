@@ -95,7 +95,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `phys_utils/` | `Core::PhysUtils::AtomicUnits` | Physical constants in atomic units |
 | `io_utils/` | `Core::IoUtils` (`ConfigMap` alias lives in `Core`) | Config parsing, unit conversion, per-key laser/beam accessors, `CylinderBeamParams`, `make_run_output_directory` |
 | `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, optional trajectory recording), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
-| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is pure virtual) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each with its own private `complex_amplitude`, already scaled by `E0_c`; `PlaneWaveLaser`'s returns a single `Complex`, `LaguerreGaussLaser`'s returns `{amplitude, d/dx_loc, d/dy_loc}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`,
+| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on top of the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each with its own private `complex_amplitude` override, already scaled by `E0_c`, both returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser`'s has no transverse profile so its derivative entries are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`,
 `export_field_heatmap_z0` (canonical-frame z=0 transverse snapshot — see "Known gaps") |
 | `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
@@ -148,17 +148,22 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   algebraically, that standard constant times `binom(p+n,p)` reduces to `sqrt(2/pi)/n! * sqrt((p+n)!/p!)`, and
   `Npn` as implemented is exactly that expression *without* the `1/sqrt(pi)` factor, by design, not an oversight.
   `MathUtils::factorial(int n) -> double` (`math_utils.hpp`, plain iterative product) was added to support this
-  normalization; it's intended for the small non-negative integers (`p`, `n`, `p+n`) this use needs. **`get_faraday_tensor` currently only consumes `std::get<0>` (the
-  amplitude) and is otherwise structurally identical to `PlaneWaveLaser::get_faraday_tensor`**, projecting it
-  straight onto `epsilon_1`/`epsilon_2` — so the LG mode still has no genuine field components along the
+  normalization; it's intended for the small non-negative integers (`p`, `n`, `p+n`) this use needs. **`LaserField::get_faraday_tensor` (shared base-class implementation, see below) currently only consumes
+  `std::get<0>` of `complex_amplitude`'s return** (the amplitude), projecting it straight onto
+  `epsilon_1`/`epsilon_2` — so the LG mode still has no genuine field components along the
   propagation direction. Wiring `d(amplitude)/dx_loc`/`d(amplitude)/dy_loc` into `E_z`/`B_z` via the
   `div(E)=0`/`div(B)=0` condition (flagged in-code above `get_faraday_tensor`) is still the next planned step, and
   is now additionally blocked on actually implementing those two derivatives (currently `0.0` placeholders, see
   above) before relying on `laser_type = laguerre_gauss` for production physics.
+- **`LaserField::get_faraday_tensor` is a single non-virtual implementation on the base class, not a
+  per-derived-type override.** `PlaneWaveLaser` and `LaguerreGaussLaser` only implement the pure-virtual
+  `complex_amplitude` (each returning `std::tuple<Complex, Complex, Complex>`); `get_faraday_tensor` calls
+  `std::get<0>(complex_amplitude(x_mu))` and builds `E`/`B` from it identically for every wave type, so the
+  polarization/E-to-B construction lives in exactly one place instead of being duplicated per subclass.
 - **Polarization coefficients `zeta_1`/`zeta_2` are complex (`Core::MathUtils::Complex`), not real, and both laser
-  types build their field the same way from them.** `PlaneWaveLaser::get_faraday_tensor` and
-  `LaguerreGaussLaser::get_faraday_tensor` both compute `E = Real(epsilon_1*zeta_1*amplitude +
-  epsilon_2*zeta_2*amplitude)`, where `amplitude` is that laser type's own `complex_amplitude` (already scaled by
+  types build their field the same way from them.** `LaserField::get_faraday_tensor` computes
+  `E = Real(epsilon_1*zeta_1*amplitude + epsilon_2*zeta_2*amplitude)`, where `amplitude` is that laser type's own
+  `complex_amplitude` (already scaled by
   `E0_c = a0*omega*m_e/|e|` — previously missing from `PlaneWaveLaser`, now folded directly into
   `complex_amplitude`'s `exp(...)` so no caller needs to apply it separately). Linear polarization along
   `epsilon_1` is `zeta_1=(1,0)`, `zeta_2=(0,0)`; circular is `zeta_1=(1,0)`, `zeta_2=(0,1)`. The repo's default
