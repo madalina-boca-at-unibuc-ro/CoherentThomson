@@ -1,0 +1,19 @@
+# Build artifacts (out-of-source build enforced by CMake)
+build/
+src/build/
+bin/
+
+# Python virtual environment / caches
+.venv/
+py_scripts/__pycache__/
+*.pyc
+
+# Editor/tool state
+.cache/
+.vscode/
+.claude/
+CoherentThomson.code-workspace
+
+# Simulation run outputs (output_folder in config points outside the repo by
+# default, but ignore a local one too in case that ever changes)
+output/
