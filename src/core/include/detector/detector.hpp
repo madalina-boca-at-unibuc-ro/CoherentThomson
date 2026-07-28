@@ -86,11 +86,15 @@ class CircularDetector : public Detector_2D {
 private:
   double distance;
   double R_min, R_max;
-  double dR, d_phi;
+  double dR_sq, d_phi;
 
 public:
   // Planar annulus at z_local = D in the detector's own local frame: x_local = r*cos(phi), y_local = r*sin(phi),
-  // r in [R_min, R_max] (N_R points), phi in [0, 2*pi) (N_phi points), then rotated like the other detectors.
+  // phi in [0, 2*pi) (N_phi points), then rotated like the other detectors. r is spaced so consecutive radii
+  // enclose *equal area* (r_i = sqrt(R_min^2 + i*(R_max^2-R_min^2)/(N_R-1))) rather than equal radial distance --
+  // with N_phi fixed per ring, this keeps the point density (points per unit area) uniform across the whole
+  // annulus instead of diverging as 1/r near the center (linear r spacing would even collapse all N_phi points
+  // onto a single point at r=0 when R_min=0).
   CircularDetector(size_t N_R, size_t N_phi, double D, double r_min, double r_max, double dir_x, double dir_y,
                    double dir_z, const MathUtils::RealFourTensor& laser_rotation);
 

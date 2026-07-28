@@ -71,6 +71,41 @@ def get_spherical_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     y_edges = rho_edges[:, None] * np.sin(phi_edges)[None, :]
     return x_edges, y_edges
 
+def get_circular_cell_edges(config_path=DEFAULT_CONFIG_PATH):
+    """
+    Returns (x_edges, y_edges), each shape (N_R+1, N_phi+1): the lab-plane coordinates of the *cell
+    corners* of the circular detector's (N_R, N_phi) annulus grid, mirroring
+    Core::Detector::CircularDetector's own 'r*cos(phi)'/'r*sin(phi)' construction, evaluated half a
+    grid step beyond each cell center instead of at the centers themselves -- the same
+    half-step-back trick get_spherical_cell_edges uses. r is equal-area spaced (r_i^2 linear in i,
+    matching CircularDetector's dR_sq step) rather than equal-distance, so the half-step-back is
+    taken in r^2, not r.
+
+    Needed for the same reason as get_spherical_cell_edges: pcolormesh's shading='auto'/'nearest'
+    infers cell edges from centers assuming they're roughly monotonic in Cartesian x/y, which breaks
+    down for any polar (r, phi) grid mapped onto x/y -- most obviously right at the phi=0/2*pi seam.
+    """
+    N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
+    N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
+    R_min, _ = read_config_value('circular_detector_R_min', config_path)
+    R_max, _ = read_config_value('circular_detector_R_max', config_path)
+    R_min, R_max = float(R_min), float(R_max)
+
+    d_R_sq = (R_max**2 - R_min**2) / (N_R - 1) if N_R > 1 else 0.0
+    d_phi = (2.0 * np.pi) / (N_phi - 1) if N_phi > 1 else 0.0
+
+    # Cell centers sit at sqrt(R_min^2 + i*d_R_sq) (i=0..N_R-1) / j*d_phi (j=0..N_phi-1) -- see
+    # CircularDetector::get_row_coordinate/get_col_coordinate -- so the N_R+1/N_phi+1 cell edges are
+    # those same centers shifted back by half a step, taken in r^2 space to match the equal-area
+    # spacing (then clipped at 0 before the sqrt, since r^2 can't go negative).
+    r_sq_edges = R_min**2 + (np.arange(N_R + 1) - 0.5) * d_R_sq
+    r_edges = np.sqrt(np.clip(r_sq_edges, 0.0, None))
+    phi_edges = (np.arange(N_phi + 1) - 0.5) * d_phi
+
+    x_edges = r_edges[:, None] * np.cos(phi_edges)[None, :]
+    y_edges = r_edges[:, None] * np.sin(phi_edges)[None, :]
+    return x_edges, y_edges
+
 def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     """
     Returns (x, y, x_label, y_label): one screen-plane coordinate pair per
@@ -83,6 +118,10 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     - rectangular detector: reconstructed directly from the config's grid
       bounds, mirroring Core::Detector::RectangularDetector's own
       'x_min + i * dx' construction (a plain linspace).
+    - circular detector: reconstructed from the config's (R_min, R_max, N_R,
+      N_phi) annulus parameters, mirroring Core::Detector::CircularDetector's
+      own 'r*cos(phi)'/'r*sin(phi)' construction (phi spans [0, 2*pi) as a
+      plain linspace, matching the C++ side's inclusive-both-ends convention).
     """
     detector_type, _ = read_config_value('detector_type', config_path)
 
@@ -107,6 +146,25 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
         y_label = '$y$' + (f' [{y_unit}]' if y_unit else '')
         return x_grid.ravel(), y_grid.ravel(), x_label, y_label
 
+    elif detector_type == 'circular':
+        N_R, _ = read_config_value('circular_detector_N_R', config_path)
+        N_phi, _ = read_config_value('circular_detector_N_phi', config_path)
+        R_min, r_unit = read_config_value('circular_detector_R_min', config_path)
+        R_max, _ = read_config_value('circular_detector_R_max', config_path)
+
+        N_R = int(N_R)
+        N_phi = int(N_phi)
+        # Equal-area spacing (r^2 linear in i), matching CircularDetector's own construction.
+        r_vals = np.sqrt(np.linspace(float(R_min)**2, float(R_max)**2, N_R))
+        phi_vals = np.linspace(0.0, 2.0 * np.pi, N_phi)
+        # Row-major (i outer over R, j inner over phi), matching CircularDetector's own point order.
+        r_grid, phi_grid = np.meshgrid(r_vals, phi_vals, indexing='ij')
+        x_grid = r_grid * np.cos(phi_grid)
+        y_grid = r_grid * np.sin(phi_grid)
+        x_label = '$x$' + (f' [{r_unit}]' if r_unit else '')
+        y_label = '$y$' + (f' [{r_unit}]' if r_unit else '')
+        return x_grid.ravel(), y_grid.ravel(), x_label, y_label
+
     else:
         raise ValueError(f"Unknown detector_type '{detector_type}'")
 
@@ -117,13 +175,12 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     the detector screen, one figure per configured frequency.
 
     Rectangular detector: rendered as a colored scatter over its grid.
-    Spherical detector: rendered as a true heatmap (pcolormesh over the
-    detector's native (N_theta, N_phi) grid, in the stereographic-projection
-    plane) rather than a scatter -- a scatter over (x_proj, y_proj) has no
-    notion of which points are neighbors, which breaks the azimuthal
-    continuity (phi=0 and phi=2*pi are the same physical direction) that any
-    helical/vortex structure in the field needs to actually look like a
-    spiral around the vertex.
+    Spherical/circular detector: rendered as a true heatmap (pcolormesh over
+    the detector's native (N_theta, N_phi)/(N_R, N_phi) grid) rather than a
+    scatter -- a scatter over these points has no notion of which points are
+    neighbors, which breaks the azimuthal continuity (phi=0 and phi=2*pi are
+    the same physical direction) that any helical/vortex structure in the
+    field needs to actually look like a spiral around the vertex.
     """
     prefix = {'long': 'LR', 'short': 'SR'}[range_type]
     re_col = f'{prefix}_F{mu}{nu}_re'
@@ -152,16 +209,24 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     detector_type, _ = read_config_value('detector_type', config_path)
     x, y, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
 
-    # Spherical points are laid out row-major over (N_theta, N_phi) -- see
-    # Core::Detector_2D::get_grid_indices -- so the field values below reshape cleanly into
-    # that grid; x/y are replaced with the cell-corner coordinates pcolormesh needs (see
-    # get_spherical_cell_edges) instead of the per-point centers get_screen_coordinates returns.
+    # Spherical/circular points are laid out row-major over their native (N_theta, N_phi)/(N_R, N_phi)
+    # grid -- see Core::Detector_2D::get_grid_indices -- so the field values below reshape cleanly
+    # into that grid; x/y are replaced with the cell-corner coordinates pcolormesh needs (see
+    # get_spherical_cell_edges/get_circular_cell_edges) instead of the per-point centers
+    # get_screen_coordinates returns. Rectangular detectors keep the scatter rendering below: their
+    # grid is already Cartesian-monotonic, so pcolormesh's default edge-inference works fine and a
+    # scatter is simpler to keep consistent with get_screen_coordinates' plain linspace.
     grid_shape = None
     if detector_type == 'spherical':
         N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
         N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
         grid_shape = (N_theta, N_phi)
         x, y = get_spherical_cell_edges(config_path)
+    elif detector_type == 'circular':
+        N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
+        N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
+        grid_shape = (N_R, N_phi)
+        x, y = get_circular_cell_edges(config_path)
 
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder")
     os.makedirs(png_dir, exist_ok=True)

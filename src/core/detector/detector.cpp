@@ -137,11 +137,12 @@ void RectangularDetector::print_info() const {
 CircularDetector::CircularDetector(size_t N_R, size_t N_phi, double D, double r_min, double r_max, double dir_x,
                                    double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation)
     : Detector_2D(N_R, N_phi, dir_x, dir_y, dir_z, laser_rotation), distance(D), R_min(r_min), R_max(r_max) {
-  dR = (N_R > 1) ? (R_max - R_min) / static_cast<double>(N_R - 1) : 0.0;
+  // Equal-area radial spacing (r_i^2 linear in i), not equal-distance -- see the class comment in detector.hpp.
+  dR_sq = (N_R > 1) ? (R_max * R_max - R_min * R_min) / static_cast<double>(N_R - 1) : 0.0;
   d_phi = (N_phi > 1) ? 2.0 * MathUtils::pi / static_cast<double>(N_phi - 1) : 0.0;
 
   for (size_t i = 0; i < N1; ++i) {
-    double r = R_min + static_cast<double>(i) * dR;
+    double r = std::sqrt(R_min * R_min + static_cast<double>(i) * dR_sq);
 
     for (size_t j = 0; j < N2; ++j) {
       double phi = static_cast<double>(j) * d_phi;
@@ -155,7 +156,9 @@ CircularDetector::CircularDetector(size_t N_R, size_t N_phi, double D, double r_
   }
 }
 
-double CircularDetector::get_row_coordinate(size_t i) const { return R_min + static_cast<double>(i) * dR; }
+double CircularDetector::get_row_coordinate(size_t i) const {
+  return std::sqrt(R_min * R_min + static_cast<double>(i) * dR_sq);
+}
 
 double CircularDetector::get_col_coordinate(size_t j) const { return static_cast<double>(j) * d_phi; }
 
