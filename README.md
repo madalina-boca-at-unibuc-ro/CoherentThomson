@@ -2,11 +2,11 @@
 
 Simulates coherent (nonlinear) Thomson scattering of an intense laser pulse off a relativistic electron beam.
 
-Given a config-driven laser pulse (plane wave or Laguerre-Gauss mode) and a detector screen (flat or spherical),
-the solver generates an electron beam, integrates each electron's relativistic trajectory in the laser field, and
-coherently sums the radiated field (as the antisymmetric Faraday bivector, per frequency/screen point) across the
-whole beam. Output is exported as `.dat` files alongside a set of Python scripts for plotting the laser field,
-electron trajectories, detector geometry, and the resulting radiation pattern.
+Given a config-driven laser pulse (plane wave or Laguerre-Gauss mode) and a detector screen (rectangular, circular,
+or spherical), the solver generates an electron beam, integrates each electron's relativistic trajectory in the
+laser field, and coherently sums the radiated field (as the antisymmetric Faraday bivector, per frequency/screen
+point) across the whole beam. Output is exported as `.dat` files alongside a set of Python scripts for plotting the
+laser field, electron trajectories, detector geometry, and the resulting radiation pattern.
 
 ## Build
 

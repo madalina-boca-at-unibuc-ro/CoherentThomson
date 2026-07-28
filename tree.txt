@@ -1,0 +1,52 @@
+.
+├── Architecture.md
+├── bin
+│   └── coherent_thomson_solver
+├── build
+├── CMakeLists.txt
+├── config
+│   └── coherent_thomson.cfg
+├── output
+├── pyrefly.toml
+├── pyrightconfig.json
+├── py_scripts
+│   ├── compile_and_run.py
+│   ├── plot_detector_stereographic.py
+│   └── plot_laser_field.py
+├── src
+│   ├── app
+│   │   ├── CMakeLists.txt
+│   │   └── main.cpp
+│   └── core
+│       ├── CMakeLists.txt
+│       ├── detector
+│       │   └── detector.cpp
+│       ├── include
+│       │   ├── detector
+│       │   │   ├── detector_factory.hpp
+│       │   │   └── detector.hpp
+│       │   ├── io_utils
+│       │   │   ├── config_map.hpp
+│       │   │   ├── config_parser.hpp
+│       │   │   └── io_utils.hpp
+│       │   ├── laser
+│       │   │   ├── laser_factory.hpp
+│       │   │   ├── laser_field.hpp
+│       │   │   └── laser_plotter.hpp
+│       │   ├── math_utils
+│       │   │   ├── math_constants.hpp
+│       │   │   └── math_utils.hpp
+│       │   ├── particle
+│       │   │   └── electron.hpp
+│       │   └── phys_utils
+│       │       └── phys_utils.hpp
+│       ├── laser
+│       │   ├── laser_field.cpp
+│       │   └── laser_plotter.cpp
+│       └── particle
+│           └── electron.cpp
+└── tree.txt
+
+19 directories, 29 files
+
+Listed with build and output directories. (To ignore their content use:  tree -I "build/*|output/*" > tree.txt)

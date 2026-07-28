@@ -20,39 +20,51 @@ create_detector(const ConfigMap& config, const Laser::LaserField& laser) {
 
   const MathUtils::RealFourTensor laser_rotation = laser.get_rotation_matrix();
 
-  if (type == "flat") {
+  if (type == "rectangular") {
     auto [detector_distance_val, detector_distance_unit] =
-        IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_distance"));
+        IoUtils::split_value_and_unit(IoUtils::get_required(config, "rectangular_detector_distance"));
     detector_distance_val *= IoUtils::convert_unit_to_number(detector_distance_unit, config);
-    auto [x_min_val, x_min_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_x_min"));
+    auto [x_min_val, x_min_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "rectangular_detector_x_min"));
     x_min_val *= IoUtils::convert_unit_to_number(x_min_unit, config);
-    auto [x_max_val, x_max_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_x_max"));
+    auto [x_max_val, x_max_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "rectangular_detector_x_max"));
     x_max_val *= IoUtils::convert_unit_to_number(x_max_unit, config);
-    auto [y_min_val, y_min_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_y_min"));
+    auto [y_min_val, y_min_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "rectangular_detector_y_min"));
     y_min_val *= IoUtils::convert_unit_to_number(y_min_unit, config);
-    auto [y_max_val, y_max_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_y_max"));
+    auto [y_max_val, y_max_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "rectangular_detector_y_max"));
     y_max_val *= IoUtils::convert_unit_to_number(y_max_unit, config);
 
-    return std::make_unique<FlatDetector>(std::stoull(IoUtils::get_required(config, "detector_Nx")), std::stoull(IoUtils::get_required(config, "detector_Ny")),
+    return std::make_unique<RectangularDetector>(std::stoull(IoUtils::get_required(config, "rectangular_detector_Nx")), std::stoull(IoUtils::get_required(config, "rectangular_detector_Ny")),
                                           detector_distance_val, x_min_val, x_max_val, y_min_val, y_max_val,
                                           dir_x, dir_y, dir_z, laser_rotation);
   } else if (type == "spherical") {
     // read and include the units of the detector parameters
-    auto [R_val, R_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_radius"));
+    auto [R_val, R_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "spherical_detector_radius"));
     R_val *= IoUtils::convert_unit_to_number(R_unit, config);
-    auto [theta_min_val, theta_min_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_theta_min"));
+    auto [theta_min_val, theta_min_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "spherical_detector_theta_min"));
     theta_min_val *= IoUtils::convert_unit_to_number(theta_min_units, config);
-    auto [theta_max_val, theta_max_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_theta_max"));
+    auto [theta_max_val, theta_max_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "spherical_detector_theta_max"));
     theta_max_val *= IoUtils::convert_unit_to_number(theta_max_units, config);
-    auto [phi_min_val, phi_min_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_phi_min"));
+    auto [phi_min_val, phi_min_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "spherical_detector_phi_min"));
     phi_min_val *= IoUtils::convert_unit_to_number(phi_min_units, config);
-    auto [phi_max_val, phi_max_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "detector_phi_max"));
+    auto [phi_max_val, phi_max_units] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "spherical_detector_phi_max"));
     phi_max_val *= IoUtils::convert_unit_to_number(phi_max_units, config);
 
     return std::make_unique<SphericalDetector>(
-        std::stoull(IoUtils::get_required(config, "detector_N_theta")), std::stoull(IoUtils::get_required(config, "detector_N_phi")),
+        std::stoull(IoUtils::get_required(config, "spherical_detector_N_theta")), std::stoull(IoUtils::get_required(config, "spherical_detector_N_phi")),
         R_val,  // already converted to atomic units above via convert_unit_to_number(R_unit, config)
         theta_min_val, theta_max_val, phi_min_val, phi_max_val, dir_x, dir_y, dir_z, laser_rotation);
+  } else if (type == "circular") {
+    auto [detector_distance_val, detector_distance_unit] =
+        IoUtils::split_value_and_unit(IoUtils::get_required(config, "circular_detector_distance"));
+    detector_distance_val *= IoUtils::convert_unit_to_number(detector_distance_unit, config);
+    auto [R_min_val, R_min_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "circular_detector_R_min"));
+    R_min_val *= IoUtils::convert_unit_to_number(R_min_unit, config);
+    auto [R_max_val, R_max_unit] = IoUtils::split_value_and_unit(IoUtils::get_required(config, "circular_detector_R_max"));
+    R_max_val *= IoUtils::convert_unit_to_number(R_max_unit, config);
+
+    return std::make_unique<CircularDetector>(
+        std::stoull(IoUtils::get_required(config, "circular_detector_N_R")), std::stoull(IoUtils::get_required(config, "circular_detector_N_phi")),
+        detector_distance_val, R_min_val, R_max_val, dir_x, dir_y, dir_z, laser_rotation);
   } else {
     throw std::runtime_error("Unknown screen type: " + type);
   }

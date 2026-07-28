@@ -65,7 +65,7 @@ public:
   std::pair<double, double> get_stereographic_projection(size_t index) const;
 };
 
-class FlatDetector : public Detector_2D {
+class RectangularDetector : public Detector_2D {
 private:
   double distance;
   double x_min, x_max;
@@ -73,10 +73,28 @@ private:
   double dx, dy;
 
 public:
-  FlatDetector(size_t Nx, size_t Ny, double D, double x1, double x2, double y1, double y2, double dir_x, double dir_y,
-               double dir_z, const MathUtils::RealFourTensor& laser_rotation);
+  RectangularDetector(size_t Nx, size_t Ny, double D, double x1, double x2, double y1, double y2, double dir_x,
+                      double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation);
 
-  std::string get_type_name() const override { return "FlatDetector"; }
+  std::string get_type_name() const override { return "RectangularDetector"; }
+  double get_row_coordinate(size_t i) const override;
+  double get_col_coordinate(size_t j) const override;
+  void print_info() const override;
+};
+
+class CircularDetector : public Detector_2D {
+private:
+  double distance;
+  double R_min, R_max;
+  double dR, d_phi;
+
+public:
+  // Planar annulus at z_local = D in the detector's own local frame: x_local = r*cos(phi), y_local = r*sin(phi),
+  // r in [R_min, R_max] (N_R points), phi in [0, 2*pi) (N_phi points), then rotated like the other detectors.
+  CircularDetector(size_t N_R, size_t N_phi, double D, double r_min, double r_max, double dir_x, double dir_y,
+                   double dir_z, const MathUtils::RealFourTensor& laser_rotation);
+
+  std::string get_type_name() const override { return "CircularDetector"; }
   double get_row_coordinate(size_t i) const override;
   double get_col_coordinate(size_t j) const override;
   void print_info() const override;

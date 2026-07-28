@@ -91,11 +91,12 @@ void SphericalDetector::print_info() const {
 }
 
 // =========================================================================
-// FLAT DETECTOR IMPLEMENTATION
+// RECTANGULAR DETECTOR IMPLEMENTATION
 // =========================================================================
 
-FlatDetector::FlatDetector(size_t Nx, size_t Ny, double D, double x1, double x2, double y1, double y2, double dir_x,
-                           double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation)
+RectangularDetector::RectangularDetector(size_t Nx, size_t Ny, double D, double x1, double x2, double y1, double y2,
+                                         double dir_x, double dir_y, double dir_z,
+                                         const MathUtils::RealFourTensor& laser_rotation)
     : Detector_2D(Nx, Ny, dir_x, dir_y, dir_z, laser_rotation),
       distance(D),
       x_min(x1),
@@ -115,16 +116,57 @@ FlatDetector::FlatDetector(size_t Nx, size_t Ny, double D, double x1, double x2,
   }
 }
 
-double FlatDetector::get_row_coordinate(size_t i) const { return x_min + static_cast<double>(i) * dx; }
+double RectangularDetector::get_row_coordinate(size_t i) const { return x_min + static_cast<double>(i) * dx; }
 
-double FlatDetector::get_col_coordinate(size_t j) const { return y_min + static_cast<double>(j) * dy; }
+double RectangularDetector::get_col_coordinate(size_t j) const { return y_min + static_cast<double>(j) * dy; }
 
-void FlatDetector::print_info() const {
+void RectangularDetector::print_info() const {
   // 1. Call the parent function first to print the shared grid stats
   Detector_2D::print_info();
 
-  // 2. Print only what makes a flat detector unique
-  std::cout << "Screen Geometry : Rotatable Flat Plane\n"
+  // 2. Print only what makes a rectangular detector unique
+  std::cout << "Screen Geometry : Rotatable Rectangular Plane\n"
+            << "Distance (D)    : " << distance << "\n"
+            << "========================================\n";
+}
+
+// =========================================================================
+// CIRCULAR DETECTOR IMPLEMENTATION
+// =========================================================================
+
+CircularDetector::CircularDetector(size_t N_R, size_t N_phi, double D, double r_min, double r_max, double dir_x,
+                                   double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation)
+    : Detector_2D(N_R, N_phi, dir_x, dir_y, dir_z, laser_rotation), distance(D), R_min(r_min), R_max(r_max) {
+  dR = (N_R > 1) ? (R_max - R_min) / static_cast<double>(N_R - 1) : 0.0;
+  d_phi = (N_phi > 1) ? 2.0 * MathUtils::pi / static_cast<double>(N_phi - 1) : 0.0;
+
+  for (size_t i = 0; i < N1; ++i) {
+    double r = R_min + static_cast<double>(i) * dR;
+
+    for (size_t j = 0; j < N2; ++j) {
+      double phi = static_cast<double>(j) * d_phi;
+
+      // local position on a flat annulus at z_local = distance
+      double x_local = r * std::cos(phi);
+      double y_local = r * std::sin(phi);
+
+      points.push_back(to_lab_frame(x_local, y_local, distance));
+    }
+  }
+}
+
+double CircularDetector::get_row_coordinate(size_t i) const { return R_min + static_cast<double>(i) * dR; }
+
+double CircularDetector::get_col_coordinate(size_t j) const { return static_cast<double>(j) * d_phi; }
+
+void CircularDetector::print_info() const {
+  // 1. Call the parent function first to print the shared grid stats
+  Detector_2D::print_info();
+
+  // 2. Print only what makes a circular detector unique
+  std::cout << "Screen Geometry : Circular Annulus\n"
+            << "R_min           : " << R_min << "\n"
+            << "R_max           : " << R_max << "\n"
             << "Distance (D)    : " << distance << "\n"
             << "========================================\n";
 }

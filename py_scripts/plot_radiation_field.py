@@ -39,20 +39,20 @@ def get_spherical_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     step beyond each cell center instead of at the centers themselves.
 
     Needed because pcolormesh's shading='auto'/'nearest' infers cell edges from centers assuming
-    they're roughly monotonic -- true for the flat detector's rectangular grid, but false here:
+    they're roughly monotonic -- true for the rectangular detector's grid, but false here:
     x_proj/y_proj individually rise and fall as phi sweeps a full circle, so that inference is
     unreliable exactly at the phi=0/2*pi seam a helical/vortex field pattern needs to be
     continuous across. Passing explicit corners (shading='flat') sidesteps the inference entirely.
     """
-    radius, _ = read_config_value('detector_radius', config_path)  # assumed given in 'lambda',
-    radius = float(radius)                                        # matching detector_axes_unit
+    radius, _ = read_config_value('spherical_detector_radius', config_path)  # assumed given in 'lambda',
+    radius = float(radius)                                                  # matching detector_axes_unit
 
-    N_theta = int(read_config_value('detector_N_theta', config_path)[0])
-    N_phi = int(read_config_value('detector_N_phi', config_path)[0])
-    theta_min = _angle_radians(*read_config_value('detector_theta_min', config_path))
-    theta_max = _angle_radians(*read_config_value('detector_theta_max', config_path))
-    phi_min = _angle_radians(*read_config_value('detector_phi_min', config_path))
-    phi_max = _angle_radians(*read_config_value('detector_phi_max', config_path))
+    N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
+    N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
+    theta_min = _angle_radians(*read_config_value('spherical_detector_theta_min', config_path))
+    theta_max = _angle_radians(*read_config_value('spherical_detector_theta_max', config_path))
+    phi_min = _angle_radians(*read_config_value('spherical_detector_phi_min', config_path))
+    phi_max = _angle_radians(*read_config_value('spherical_detector_phi_max', config_path))
 
     cos_theta_min, cos_theta_max = np.cos(theta_min), np.cos(theta_max)
     d_cos_theta = (cos_theta_max - cos_theta_min) / (N_theta - 1) if N_theta > 1 else 0.0
@@ -80,8 +80,8 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
       to detector_stereographic.dat next to radiation_field.dat. Row order
       matches i_screen exactly, since both files are written by iterating the
       same underlying Detector_2D::points in order.
-    - flat detector: reconstructed directly from the config's rectangular grid
-      bounds, mirroring Core::Detector::FlatDetector's own
+    - rectangular detector: reconstructed directly from the config's grid
+      bounds, mirroring Core::Detector::RectangularDetector's own
       'x_min + i * dx' construction (a plain linspace).
     """
     detector_type, _ = read_config_value('detector_type', config_path)
@@ -91,17 +91,17 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
         stereo = pd.read_csv(stereo_path, sep=' ', comment='#')
         return stereo['x_proj'].to_numpy(), stereo['y_proj'].to_numpy(), '$x_{proj}$', '$y_{proj}$'
 
-    elif detector_type == 'flat':
-        Nx, _ = read_config_value('detector_Nx', config_path)
-        Ny, _ = read_config_value('detector_Ny', config_path)
-        x_min, x_unit = read_config_value('detector_x_min', config_path)
-        x_max, _ = read_config_value('detector_x_max', config_path)
-        y_min, y_unit = read_config_value('detector_y_min', config_path)
-        y_max, _ = read_config_value('detector_y_max', config_path)
+    elif detector_type == 'rectangular':
+        Nx, _ = read_config_value('rectangular_detector_Nx', config_path)
+        Ny, _ = read_config_value('rectangular_detector_Ny', config_path)
+        x_min, x_unit = read_config_value('rectangular_detector_x_min', config_path)
+        x_max, _ = read_config_value('rectangular_detector_x_max', config_path)
+        y_min, y_unit = read_config_value('rectangular_detector_y_min', config_path)
+        y_max, _ = read_config_value('rectangular_detector_y_max', config_path)
 
         x_vals = np.linspace(float(x_min), float(x_max), int(Nx))
         y_vals = np.linspace(float(y_min), float(y_max), int(Ny))
-        # Row-major (i outer, j inner), matching FlatDetector's own point order.
+        # Row-major (i outer, j inner), matching RectangularDetector's own point order.
         x_grid, y_grid = np.meshgrid(x_vals, y_vals, indexing='ij')
         x_label = '$x$' + (f' [{x_unit}]' if x_unit else '')
         y_label = '$y$' + (f' [{y_unit}]' if y_unit else '')
@@ -116,7 +116,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     F^{mu nu} of the requested (long_range/short_range) Faraday tensor over
     the detector screen, one figure per configured frequency.
 
-    Flat detector: rendered as a colored scatter over the rectangular grid.
+    Rectangular detector: rendered as a colored scatter over its grid.
     Spherical detector: rendered as a true heatmap (pcolormesh over the
     detector's native (N_theta, N_phi) grid, in the stereographic-projection
     plane) rather than a scatter -- a scatter over (x_proj, y_proj) has no
@@ -158,8 +158,8 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     # get_spherical_cell_edges) instead of the per-point centers get_screen_coordinates returns.
     grid_shape = None
     if detector_type == 'spherical':
-        N_theta = int(read_config_value('detector_N_theta', config_path)[0])
-        N_phi = int(read_config_value('detector_N_phi', config_path)[0])
+        N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
+        N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
         grid_shape = (N_theta, N_phi)
         x, y = get_spherical_cell_edges(config_path)
 

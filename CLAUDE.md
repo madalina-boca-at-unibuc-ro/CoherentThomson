@@ -97,7 +97,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, optional trajectory recording), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
 | `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is pure virtual) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each with its own private `complex_amplitude`, already scaled by `E0_c`; `PlaneWaveLaser`'s returns a single `Complex`, `LaguerreGaussLaser`'s returns `{amplitude, d/dx_loc, d/dy_loc}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`,
 `export_field_heatmap_z0` (canonical-frame z=0 transverse snapshot — see "Known gaps") |
-| `detector/` | `Core::Detector` | `Detector_2D` base + `FlatDetector`/`SphericalDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
+| `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
 | `radiation/` | `Core::Radiation` | `compute_radiation` — one electron's contribution to `Simulation::PackedRadiationField` (packed antisymmetric Faraday bivector, long/short-range amplitudes, summed over trajectory points/screen points/frequencies); `plot_radiation_field` exporter |
 
@@ -283,44 +283,49 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   rotation; falls back to the identity rotation when the mean momentum is (numerically) zero. A beam config whose
   mean momentum isn't along canonical `Oz` gets different per-electron realizations (not just different
   statistics) than a naive canonical-`Oz` cylinder would.
-- **A flat detector and a spherical detector covering "the same" angular window will *not* generally show the same
-  radiation pattern, and this is real physics, not a bug — worth knowing before treating one as a correctness
-  check for the other.** `compute_radiation` uses the *exact* electron-to-screen distance `R` (not a linearized
-  far-field approximation) in both the amplitude falloff (`amp_long_0`/`amp_short_0`, `radiation.cpp`) and the
-  phase (`phase_base = x[0] + R`). For a source point near the origin — the beam is only `beam_cylinder_radius =
-  2.5 lambda` across, negligible next to the detector — a flat screen's `R` varies across its area (`R = sqrt(D^2 +
-  x^2 + y^2)`), while a spherical screen's `R` is exactly constant (`= detector_radius`) at every point by
-  construction. So the flat screen picks up an extra quadratic ("Fresnel") phase term the spherical one never
-  sees, of size `a^2/(2D)` at the screen edge (`a` = flat screen half-width, `D = detector_distance`). The
-  governing quantity is the **Fresnel number** `N_F = a^2/(D*lambda)`: the two detectors' patterns only converge
-  once `N_F << 1` (the Fraunhofer/far-field regime); when `N_F` is order 1 or larger (the Fresnel/near-field
-  regime) they will visibly differ, and neither is "wrong" — it's the same exact-`R` physics evaluated on two
-  different screen shapes.
-  - The repo's own example numbers (`detector_x_min/x_max = -250/250 lambda`, `detector_distance = 50000 lambda`)
+- **A rectangular detector and a spherical detector covering "the same" angular window will *not* generally show
+  the same radiation pattern, and this is real physics, not a bug — worth knowing before treating one as a
+  correctness check for the other.** `compute_radiation` uses the *exact* electron-to-screen distance `R` (not a
+  linearized far-field approximation) in both the amplitude falloff (`amp_long_0`/`amp_short_0`, `radiation.cpp`)
+  and the phase (`phase_base = x[0] + R`). For a source point near the origin — the beam is only
+  `beam_cylinder_radius = 2.5 lambda` across, negligible next to the detector — a rectangular screen's `R` varies
+  across its area (`R = sqrt(D^2 + x^2 + y^2)`), while a spherical screen's `R` is exactly constant (`=
+  spherical_detector_radius`) at every point by construction. So the rectangular screen picks up an extra quadratic
+  ("Fresnel") phase term the spherical one never sees, of size `a^2/(2D)` at the screen edge (`a` = rectangular
+  screen half-width, `D = rectangular_detector_distance`). The governing quantity is the **Fresnel number** `N_F =
+  a^2/(D*lambda)`: the two detectors' patterns only converge once `N_F << 1` (the Fraunhofer/far-field regime);
+  when `N_F` is order 1 or larger (the Fresnel/near-field regime) they will visibly differ, and neither is
+  "wrong" — it's the same exact-`R` physics evaluated on two different screen shapes.
+  - The repo's own example numbers (`rectangular_detector_x_min/x_max = -250/250 lambda`,
+    `rectangular_detector_distance = 50000 lambda`)
     give `N_F = 250^2 / 50000 = 1.25` — order 1, i.e. squarely in the *near*-field regime, not the far field.
     Concretely, the corner-to-center path difference is `~1.25 lambda` — over a full wavelength — which is enough
-    to imprint visible extra spiral fringe rings on the flat screen (a helical/vortex phase combined with a
+    to imprint visible extra spiral fringe rings on the rectangular screen (a helical/vortex phase combined with a
     Fresnel chirp is a classic way to get spiral fringes) that a spherical detector, having zero path-length error
-    at any distance by construction, will not show. **At these settings, do not expect a flat-vs-spherical
+    at any distance by construction, will not show. **At these settings, do not expect a rectangular-vs-spherical
     comparison (e.g. of `E_x`) to agree** — a visible mismatch here is the expected outcome, not a bug to chase.
-  - **Common pitfall: growing `detector_distance` while keeping the *angular* window fixed does not approach the
-    far field — it moves further from it.** If the flat screen's half-width `a` is scaled up proportionally with
-    `D` to preserve a fixed angular window `theta ~= a/D` (which is what happens if you pick the spherical
-    detector's `detector_theta_max` to match the flat screen's *current* angular window/area and then grow `D`),
-    then `N_F = a^2/(D*lambda) = theta^2 * D/lambda` — this *grows* with `D`, not shrinks. Matching the two
-    detectors' *area* or *angular window* at a new distance does not by itself put you in the far field.
-  - **To actually construct a converging flat/spherical comparison**, hold the flat screen's *absolute* half-width
-    `a` fixed (e.g. keep `a = 250 lambda`) and increase `D` until `N_F = a^2/(D*lambda) << 1` — e.g. `D >= 500000
-    lambda` gets `N_F <= 0.125`, `D ~= 5000000 lambda` gets `N_F ~= 0.0125`. This necessarily *shrinks* the angular
-    window (`theta_max = a/D`) as `D` grows, so the spherical detector's `detector_theta_max` must be set to match
-    that new, smaller window at the new `D` — not the original window from the near-field config.
-  - **Confirmed experimentally** in a past session, comparing a near-field config pair (flat/spherical detector,
-    `N_F~1.25`) against a far-field pair (`N_F~0.0125`) with a one-off comparison script (none of these
+  - **Common pitfall: growing `rectangular_detector_distance` while keeping the *angular* window fixed does not
+    approach the far field — it moves further from it.** If the rectangular screen's half-width `a` is scaled up
+    proportionally with `D` to preserve a fixed angular window `theta ~= a/D` (which is what happens if you pick
+    the spherical detector's `spherical_detector_theta_max` to match the rectangular screen's *current* angular
+    window/area and then grow `D`), then `N_F = a^2/(D*lambda) = theta^2 * D/lambda` — this *grows* with `D`, not
+    shrinks. Matching the two detectors' *area* or *angular window* at a new distance does not by itself put you
+    in the far field.
+  - **To actually construct a converging rectangular/spherical comparison**, hold the rectangular screen's
+    *absolute* half-width `a` fixed (e.g. keep `a = 250 lambda`) and increase `D` until `N_F = a^2/(D*lambda) <<
+    1` — e.g. `D >= 500000 lambda` gets `N_F <= 0.125`, `D ~= 5000000 lambda` gets `N_F ~= 0.0125`. This
+    necessarily *shrinks* the angular window (`theta_max = a/D`) as `D` grows, so the spherical detector's
+    `spherical_detector_theta_max` must be set to match that new, smaller window at the new `D` — not the
+    original window from the near-field config.
+  - **Confirmed experimentally** in a past session, comparing a near-field config pair (rectangular/spherical
+    detector, `N_F~1.25`) against a far-field pair (`N_F~0.0125`) with a one-off comparison script (none of these
     exploratory `.cfg`/`.py` files are checked into the repo — recreate them from the base config by adjusting
-    `detector_distance`/`detector_x_min`/`detector_x_max`/`detector_theta_max` per the bullets above if you need to
-    redo this check): at `N_F~1.25` the flat screen's `Re(F01)` showed a visible two-armed spiral fringe pattern
-    that the spherical screen (a plain dipole-like pattern, no spiral) did not share (correlation ~0.21–0.49 across
-    harmonics); at `N_F~0.0125` the two converged to the same smooth pattern (correlation ~0.985–0.9999 for the
+    `rectangular_detector_distance`/`rectangular_detector_x_min`/`rectangular_detector_x_max`/
+    `spherical_detector_theta_max` per the bullets above if you need to redo this check): at `N_F~1.25` the
+    rectangular screen's `Re(F01)` showed a visible two-armed spiral fringe
+    pattern that the spherical screen (a plain dipole-like pattern, no spiral) did not share (correlation
+    ~0.21–0.49 across harmonics); at `N_F~0.0125` the two converged to the same smooth pattern (correlation
+    ~0.985–0.9999 for the
     1st/2nd harmonics). **Compare `Re(F01)`/`Im(F01)`, not `|F01|`**: since the beam (`2.5 lambda`) is tiny next to
     the screen, the extra Fresnel phase is (to leading order) common to every electron's contribution at a given
     screen point, so it cancels out of the magnitude of the coherent sum and only shows up in the phase — `|F01|`
