@@ -19,7 +19,11 @@ RUN_DIR_PATTERN = re.compile(r"^\d{8}_\d{6}$")
 def get_output_folder(config_path=DEFAULT_CONFIG_PATH):
     """
     Reads the 'output_folder' key out of the .cfg file (the same key
-    Core::IoUtils::make_run_output_directory reads) and returns its value.
+    Core::IoUtils::make_run_output_directory reads) and resolves it relative to
+    the home directory, mirroring Core::IoUtils::make_run_output_directory:
+    the config value is always a subfolder of '~', not an absolute path, so the
+    same .cfg still works after sync_to_remote.sh copies the repo to a
+    different machine/user.
     """
     with open(config_path) as f:
         for line in f:
@@ -28,7 +32,7 @@ def get_output_folder(config_path=DEFAULT_CONFIG_PATH):
                 continue
             parts = stripped.split()
             if parts[0] == 'output_folder' and len(parts) >= 2:
-                return parts[1]
+                return os.path.join(os.path.expanduser('~'), parts[1])
     raise ValueError(f"No 'output_folder' key found in '{config_path}'")
 
 def find_latest_run_dir(output_folder):

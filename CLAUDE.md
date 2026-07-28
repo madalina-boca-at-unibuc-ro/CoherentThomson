@@ -164,6 +164,14 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   config now sets linear polarization (`zeta_1=(1,0)`, `zeta_2=(0,0)`) — a behavior change from the old real-valued
   default (`zeta_1=zeta_2=1.0`), which under the previous cos/sin-quadrature formula actually traced out circular
   polarization, not linear. See the "Config file format" section above for how these are read from the config.
+  **`create_laser` (`laser_factory.cpp`) normalizes `zeta_1`/`zeta_2` right after reading them from the config**, so
+  `|zeta_1|^2 + |zeta_2|^2 = 1` always holds by the time either laser constructor sees them, regardless of what the
+  raw config values sum to — e.g. the documented circular convention `zeta_1=(1,0)`, `zeta_2=(0,1)` sums to `2`
+  before this step. Without it, switching `laser_zeta_2_im` between `0.0` (linear) and `1.0` (circular) in the
+  config would silently double the field's overall amplitude (and thus the radiated intensity) as a side effect of
+  the polarization choice, instead of `a0` alone controlling the field strength. Throws if
+  `laser_zeta_1`/`laser_zeta_2` are both exactly zero (undefined polarization direction) rather than dividing by
+  zero.
 - **`Radiation::compute_radiation` computes the full per-electron radiation physics, into a packed representation.**
   For every `(tau, screen_point)` pair, `compute_radiation` builds the null vector `n0` from the electron-to-screen
   separation (`x - detector.get_point(i_d)`), then for every frequency accumulates `amp_long`/`amp_short` times the
@@ -276,6 +284,19 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   the shared canonical frame, then `contract(lab_rotation, ...)` into the lab frame — so the detector rotates
   together with the laser instead of being locked to point exactly along it. `(0.0 pi, 0.0 pi)` (the default in
   `coherent_thomson.cfg`) points the detector straight along the laser.
+- **`CircularDetector`'s radial grid is spaced in equal-*area* steps, not equal-distance** (`detector.cpp`):
+  `r_i = sqrt(R_min^2 + i*(R_max^2-R_min^2)/(N_R-1))`, so each successive ring encloses the same annular area
+  despite `N_phi` being fixed per ring — plain linear `r` spacing would make point density diverge as `1/r` near
+  the center and, when `circular_detector_R_min = 0`, would collapse all `N_phi` points at `i=0` onto a single
+  point at the origin. `get_row_coordinate` returns this same `r_i`, not an index or angle, so anything reading
+  `radiation_field.dat`'s per-point coordinates for a circular detector must reconstruct `r` from `i` via the
+  `r_i^2` formula above, not assume a linear grid. `py_scripts/plot_radiation_field.py` mirrors this exactly
+  (`get_screen_coordinates`/`get_circular_cell_edges`, spacing the pcolormesh cell edges in `r^2` space before the
+  final `sqrt`) and renders circular detectors as a `pcolormesh` heatmap over the native `(N_R, N_phi)` grid, the
+  same way `SphericalDetector` is rendered — not as a scatter — because a scatter over `(x, y)` has no notion of
+  which points are angularly adjacent, breaking the `phi=0`/`phi=2*pi` seam continuity that a helical/vortex field
+  pattern needs to read as a spiral. `RectangularDetector` is the only type still rendered as a scatter, since its
+  grid is already Cartesian-monotonic and pcolormesh's default edge inference works fine on it.
 - **The beam cylinder's spatial axis is derived from the beam's own mean momentum direction, not fixed along
   canonical `Oz`.** `generate_cylinder_beam` (`electron_factory.cpp`) computes `beam_axis_rotation =
   MathUtils::rotation_matrix_from_direction(average_px, average_py, average_pz)` once per beam and applies it to

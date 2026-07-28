@@ -19,6 +19,18 @@ std::unique_ptr<LaserField> create_laser(const ConfigMap& config) {
 
     auto [zeta_1_in, zeta_2_in] = IoUtils::get_laser_zeta(config);
 
+    // Normalize so |zeta_1|^2 + |zeta_2|^2 = 1, regardless of what magnitude the raw config values
+    // happen to carry (e.g. the documented circular-polarization convention zeta_1=(1,0), zeta_2=(0,1)
+    // sums to 2, not 1) -- otherwise the overall field amplitude would silently depend on the chosen
+    // polarization convention instead of only on a0.
+    double zeta_norm_sq = std::norm(zeta_1_in) + std::norm(zeta_2_in);
+    if (zeta_norm_sq <= 0.0) {
+      throw std::runtime_error("LaserFactory Error: laser_zeta_1 and laser_zeta_2 cannot both be zero");
+    }
+    double zeta_norm = std::sqrt(zeta_norm_sq);
+    zeta_1_in /= zeta_norm;
+    zeta_2_in /= zeta_norm;
+
     size_t NT_in = IoUtils::get_laser_NT(config);
 
     // 3. Dispatch on the laser's wave type

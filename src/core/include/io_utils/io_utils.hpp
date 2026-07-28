@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
@@ -230,9 +231,22 @@ inline size_t get_number_of_frequencies(const ConfigMap& config) {
 // Raw num_threads config value: 0 means "use the maximum available", resolved by the caller
 // (Simulation::run_simulation) against std::thread::hardware_concurrency().
 inline size_t get_num_threads(const ConfigMap& config) { return std::stoul(get_required(config, "num_threads")); }
-// Creates (and returns the path to) a timestamped subfolder of the config's
-// output_folder, e.g. "<output_folder>/20260709_143012", so each run's
-// exports land in their own directory rather than overwriting the last run's.
+
+// Returns the current user's home directory (via $HOME), so the config's output_folder can stay a
+// short, machine-independent subfolder name instead of a machine-specific absolute path -- e.g. so the
+// same .cfg still works after sync_to_remote.sh copies the repo to a different machine/user.
+inline std::string get_home_directory() {
+  const char* home = std::getenv("HOME");
+  if (home == nullptr) {
+    throw std::runtime_error("Cannot resolve output_folder: $HOME is not set");
+  }
+  return home;
+}
+
+// Creates (and returns the path to) a timestamped subfolder of "~/<output_folder>", e.g.
+// "~/<output_folder>/20260709_143012", so each run's exports land in their own directory rather than
+// overwriting the last run's. The config's output_folder value is always taken relative to the home
+// directory (see get_home_directory above), not as an absolute path.
 inline std::string make_run_output_directory(const ConfigMap& config) {
   const std::string& base_folder = get_required(config, "output_folder");
 
@@ -243,7 +257,7 @@ inline std::string make_run_output_directory(const ConfigMap& config) {
   std::ostringstream timestamp;
   timestamp << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
 
-  std::filesystem::path run_dir = std::filesystem::path(base_folder) / timestamp.str();
+  std::filesystem::path run_dir = std::filesystem::path(get_home_directory()) / base_folder / timestamp.str();
   std::filesystem::create_directories(run_dir);
 
   return run_dir.string();
