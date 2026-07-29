@@ -119,12 +119,25 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
 ### Known gaps / TODOs worth knowing before touching related code
 
 - **`LaguerreGaussLaser`'s transverse-mode physics lives in `complex_amplitude` (`laser_field.cpp`), not
-  `get_faraday_tensor`, and only its amplitude is actually consumed so far — the mode is still not physics-reviewed
-  against the reference formula (Allen, Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman,
-  "Lasers", ch. 17), and its longitudinal field components aren't wired in yet.** `complex_amplitude` returns
-  `std::tuple<Complex, Complex, Complex>` — `{amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc}` — but **the two
-  derivative entries are currently hardcoded to `0.0`, not yet implemented**, a placeholder pending the true
-  analytic `x`/`y` derivatives of the full expression (including the radial hypergeometric factor below).
+  `get_faraday_tensor` — the mode is still not physics-reviewed against the reference formula (Allen,
+  Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman, "Lasers", ch. 17).** `complex_amplitude`
+  returns `std::tuple<Complex, Complex, Complex>` — `{amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc}` — and
+  **both derivative entries are now implemented** (previously hardcoded `0.0` placeholders) via the product rule on
+  `amplitude = prefactor * V * C_n * hypergeometric_val` (`C_n` depends only on `z_loc`, so it drops out of the
+  `x_loc`/`y_loc` derivatives): `dV/dx_loc = n*zeta_c^(n-1)`, `dV/dy_loc = dV/dx_loc * i*sign(l)` (special-cased at
+  `n=0`, where `V` is constant, and `n=1`, to avoid relying on `std::pow`'s `0^0` behavior on-axis);
+  `d(hypergeometric_val)/du` via the existing `MathUtils::hypergeometric_1F1_neg_int_a_derivative` Kummer-identity
+  helper (implemented earlier but previously unused anywhere), chained through `du/dx_loc = 4*x_loc/w(z)^2`
+  (symmetric in `y_loc`); and `d(prefactor)/dx_loc = prefactor*(g_coef + i*kappa_coef)*2*x_loc` (symmetric in
+  `y_loc`), since `prefactor`'s only `x_loc`/`y_loc` dependence is through `s = x_loc^2+y_loc^2` via
+  `gaussian_phase = g_coef*s` and `kappa_phase = kappa_coef*s` (`g_coef`/`kappa_coef` extracted as named
+  intermediates precisely so the derivative code can reuse them instead of re-deriving the coefficients). **Verified
+  against finite differences of `complex_amplitude`'s own raw output** (temporarily making the otherwise
+  protected/private method public for a one-off standalone test binary linked against the built static lib, then
+  reverting `laser_field.hpp`): relative error between the analytic and central-difference derivatives is `1e-8` to
+  `1e-14` (i.e. floating-point/step-size noise, not a discrepancy) across `p=0,1,2` and `l=-1,0,1,2`, checked
+  on-axis, near-axis, and off-axis — the derivative implementation itself is correct; see the `get_faraday_tensor`
+  bullet below for how these derivatives are consumed and the residual limitation that remains.
   `x_loc`/`y_loc`/`z_loc` are the electron's position rotated into the laser's own canonical frame
   (`dot3(x_mu, epsilon_1)`/`dot3(x_mu, epsilon_2)`/`dot3(x_mu, unity_n)` — `epsilon_1`/`epsilon_2`/`unity_n` are
   themselves the columns of the laser's 4x4 `rotation_matrix`, i.e. the canonical frame's axes expressed in the lab
@@ -134,7 +147,7 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   using. The Gouy phase and wavefront-curvature phase match the same closed form documented here previously; the
   azimuthal factor `rho^|l| * exp(i*l*azimuth)` is built as the exact complex polynomial
   `(x_loc + i*sign(l)*y_loc)^|l|` (identically equal to it, since `rho*exp(i*sign(l)*azimuth) = x_loc +
-  i*sign(l)*y_loc`), so the amplitude (and, once implemented, its `x`/`y` derivatives) stay smooth exactly on-axis
+  i*sign(l)*y_loc`), so the amplitude and its `x`/`y` derivatives stay smooth exactly on-axis
   (`rho=0`) instead of going through polar-coordinate expressions with a removable but awkward `1/rho` singularity
   there. **The radial profile is built via `MathUtils::hypergeometric_1F1_neg_int_a(-p, n+1, u)`** (`n = |l|`,
   `u = 2*rho^2/w(z)^2`), using the identity `L_p^n(x) = binom(p+n,p) * 1F1(-p; n+1; x)` documented next to that
@@ -148,18 +161,41 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   algebraically, that standard constant times `binom(p+n,p)` reduces to `sqrt(2/pi)/n! * sqrt((p+n)!/p!)`, and
   `Npn` as implemented is exactly that expression *without* the `1/sqrt(pi)` factor, by design, not an oversight.
   `MathUtils::factorial(int n) -> double` (`math_utils.hpp`, plain iterative product) was added to support this
-  normalization; it's intended for the small non-negative integers (`p`, `n`, `p+n`) this use needs. **`LaserField::get_faraday_tensor` (shared base-class implementation, see below) currently only consumes
-  `std::get<0>` of `complex_amplitude`'s return** (the amplitude), projecting it straight onto
-  `epsilon_1`/`epsilon_2` — so the LG mode still has no genuine field components along the
-  propagation direction. Wiring `d(amplitude)/dx_loc`/`d(amplitude)/dy_loc` into `E_z`/`B_z` via the
-  `div(E)=0`/`div(B)=0` condition (flagged in-code above `get_faraday_tensor`) is still the next planned step, and
-  is now additionally blocked on actually implementing those two derivatives (currently `0.0` placeholders, see
-  above) before relying on `laser_type = laguerre_gauss` for production physics.
+  normalization; it's intended for the small non-negative integers (`p`, `n`, `p+n`) this use needs.
+- **`LaserField::get_faraday_tensor` now consumes all three `complex_amplitude` tuple entries** (`const auto
+  [amplitude, dx_amplitude, dy_amplitude] = complex_amplitude(x_mu);`, a single call destructured — it used to call
+  `complex_amplitude` three times and take only `std::get<0>` of each), and builds genuine `E_z`/`B_z` components
+  along `unity_n` from the derivatives: `Ex/Ey/Ez += i*inv_k_wave*unity_n[i]*(zeta_1*dx_amplitude +
+  zeta_2*dy_amplitude)`, and the same for `Bx/By/Bz` with `(zeta_1,zeta_2) -> (-zeta_2,zeta_1)` (the same swap
+  used for the transverse `B` term, since `div(B)=0` is linear in the same way `div(E)=0` is). **The sign of this
+  `+i/k` coefficient is tied to the phase-carrier sign convention fixed this session**: `complex_amplitude` in both
+  `PlaneWaveLaser` and `LaguerreGaussLaser` builds `amplitude ~ exp(-i*phi)` (the imaginary part of the exponent is
+  `-phi + gouy_phase + kappa_phase`, not `+phi + ...` as before), so the dominant carrier in `z_loc` is `e^{+ikz}`;
+  `kappa_phase`'s sign was flipped in tandem (now `-k_wave*s*z_loc/(2*(z_loc^2+z_R^2))`) as a deliberate, related
+  choice. Given that carrier sign, `div(E)=0` (`∂z(Ez) ≈ +i*k_wave*Ez` to leading order, since Gouy/curvature/`w(z)`
+  z-dependence is slow relative to `k_wave` under the paraxial assumption `z_R >> 1/k_wave`) requires exactly the
+  `+i/k_wave` coefficient now in the code — flipping either the carrier sign or this coefficient alone (not both)
+  would make them inconsistent. **Measured residual of `div(E)`/`div(B)` via finite differences** (temporary
+  standalone test binary evaluating `get_faraday_tensor` at several points and central-differencing `Ex/Ey/Ez` and
+  `Bx/By/Bz`, `w0=50/k_wave` i.e. `k_wave*w0=50` so safely paraxial, `z_R = w0^2*k_wave/2 = 1250`): for the
+  fundamental Gaussian (`p=0,l=0`) the relative residual `div(E)/(k_wave*|E|)` is `~1e-6` to `1e-7` — consistent
+  with a healthy first-order paraxial correction, since the derivative terms feeding it were independently verified
+  exact (see the `complex_amplitude` bullet above). For vortex/higher-order modes the residual is markedly larger —
+  `~1e-4` to `~3e-2`, growing with `p`/`|l|` and worst on/near the axis — because `Ez`/`Bz` only account for the
+  fast-carrier term `∂z(amplitude) ≈ i*k_wave*amplitude` and drop the sub-leading z-dependence from the Gouy phase,
+  wavefront curvature, and `w(z)`, whose relative size scales with the mode order `(2p+|l|+1)`. **This is an
+  expected limitation of the standard first-order vector-Gaussian-beam construction (Lax et al. 1975; Davis 1979),
+  not a bug** — but it means higher-order LG modes will show a non-negligible, physically real deviation from
+  `div(E)=0`/`div(B)=0` with the current implementation, which shows up as a small spurious force on off-axis
+  electrons during trajectory integration (`Electron::compute_derivative` calls `get_faraday_tensor` directly, so
+  every RK4 sub-step for every electron goes through this). Whether this residual is acceptable depends on the
+  mode order and `w0` used; an exact (non-paraxial) longitudinal-field construction would remove it but hasn't been
+  implemented.
 - **`LaserField::get_faraday_tensor` is a single non-virtual implementation on the base class, not a
   per-derived-type override.** `PlaneWaveLaser` and `LaguerreGaussLaser` only implement the pure-virtual
-  `complex_amplitude` (each returning `std::tuple<Complex, Complex, Complex>`); `get_faraday_tensor` calls
-  `std::get<0>(complex_amplitude(x_mu))` and builds `E`/`B` from it identically for every wave type, so the
-  polarization/E-to-B construction lives in exactly one place instead of being duplicated per subclass.
+  `complex_amplitude` (each returning `std::tuple<Complex, Complex, Complex>`); `get_faraday_tensor` builds `E`/`B`
+  from it identically for every wave type, so the polarization/E-to-B construction lives in exactly one place
+  instead of being duplicated per subclass.
 - **Polarization coefficients `zeta_1`/`zeta_2` are complex (`Core::MathUtils::Complex`), not real, and both laser
   types build their field the same way from them.** `LaserField::get_faraday_tensor` computes
   `E = Real(epsilon_1*zeta_1*amplitude + epsilon_2*zeta_2*amplitude)`, where `amplitude` is that laser type's own

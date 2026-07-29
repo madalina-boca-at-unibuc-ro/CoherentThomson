@@ -71,20 +71,26 @@ double LaserField::envelope(double phi) const {
 // epsilon_2*zeta_2*amplitude); zeta_1/zeta_2 complex so e.g. zeta_1=(1,0), zeta_2=(0,1) gives circular
 // polarization.
 FaradayTensor LaserField::get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const {
-  MathUtils::Complex amplitude = std::get<0>(complex_amplitude(x_mu));
-  MathUtils::Complex weighted_amplitude_1 = zeta_1 * amplitude;
-  MathUtils::Complex weighted_amplitude_2 = zeta_2 * amplitude;
+  const auto [amplitude, dx_amplitude, dy_amplitude] = complex_amplitude(x_mu);
+
+  double inv_k_wave = PhysUtils::AtomicUnits::c / omega;
 
   // Electric Field Vector Components
-  double Ex_c = epsilon_1[1] * real(weighted_amplitude_1) + epsilon_2[1] * real(weighted_amplitude_2);
-  double Ey_c = epsilon_1[2] * real(weighted_amplitude_1) + epsilon_2[2] * real(weighted_amplitude_2);
-  double Ez_c = epsilon_1[3] * real(weighted_amplitude_1) + epsilon_2[3] * real(weighted_amplitude_2);
+  double Ex_c = real(amplitude * (epsilon_1[1] * zeta_1 + epsilon_2[1] * zeta_2) +
+                     MathUtils::I * inv_k_wave * unity_n[1] * (zeta_1 * dx_amplitude + zeta_2 * dy_amplitude));
+  double Ey_c = real(amplitude * (epsilon_1[2] * zeta_1 + epsilon_2[2] * zeta_2) +
+                     MathUtils::I * inv_k_wave * unity_n[2] * (zeta_1 * dx_amplitude + zeta_2 * dy_amplitude));
+  double Ez_c = real(amplitude * (epsilon_1[3] * zeta_1 + epsilon_2[3] * zeta_2) +
+                     MathUtils::I * inv_k_wave * unity_n[3] * (zeta_1 * dx_amplitude + zeta_2 * dy_amplitude));
 
   // Magnetic Field Vector Components via cross product: B = (k_dir \times E) /
   // c
-  double Bx = (unity_n[2] * Ez_c - unity_n[3] * Ey_c);
-  double By = (unity_n[3] * Ex_c - unity_n[1] * Ez_c);
-  double Bz = (unity_n[1] * Ey_c - unity_n[2] * Ex_c);
+  double Bx = real(amplitude * (-epsilon_1[1] * zeta_2 + epsilon_2[1] * zeta_1) +
+                   MathUtils::I * inv_k_wave * unity_n[1] * (-zeta_2 * dx_amplitude + zeta_1 * dy_amplitude));
+  double By = real(amplitude * (-epsilon_1[2] * zeta_2 + epsilon_2[2] * zeta_1) +
+                   MathUtils::I * inv_k_wave * unity_n[2] * (-zeta_2 * dx_amplitude + zeta_1 * dy_amplitude));
+  double Bz = real(amplitude * (-epsilon_1[3] * zeta_2 + epsilon_2[3] * zeta_1) +
+                   MathUtils::I * inv_k_wave * unity_n[3] * (-zeta_2 * dx_amplitude + zeta_1 * dy_amplitude));
 
   // 4. Construct the antisymmetric Faraday Tensor matrix F^{\mu\nu}
   FaradayTensor F;
@@ -122,7 +128,7 @@ std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> PlaneWave
     const MathUtils::RealFourVector& x) const {
   double phi = omega / PhysUtils::AtomicUnits::c *
                MathUtils::contract(x, unity_n);  // Using the dot product of x_mu and n to get the phase
-  MathUtils::Complex exponent = envelope(phi) + MathUtils::I * phi;
+  MathUtils::Complex exponent(envelope(phi), -phi);
   MathUtils::Complex amplitude = E0_c * std::exp(exponent);
   return {amplitude, 0.0, 0.0};
 }
@@ -183,29 +189,47 @@ std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> LaguerreG
   double sign_l = (l >= 0) ? 1.0 : -1.0;
   MathUtils::Complex zeta_c(x_loc, sign_l * y_loc);
   MathUtils::Complex V = std::pow(zeta_c, n);
+  // dV/dx_loc = n*zeta_c^(n-1), dV/dy_loc = n*zeta_c^(n-1)*i*sign_l -- special-cased at n=0 (V
+  // constant) and n=1 (zeta_c^0, avoids relying on std::pow's 0^0 behavior at rho=0).
+  MathUtils::Complex dV_dx = 0.0, dV_dy = 0.0;
+  if (n > 0) {
+    MathUtils::Complex zeta_c_pow_nm1 = (n == 1) ? MathUtils::Complex(1.0, 0.0) : std::pow(zeta_c, n - 1);
+    dV_dx = static_cast<double>(n) * zeta_c_pow_nm1;
+    dV_dy = dV_dx * MathUtils::Complex(0.0, sign_l);
+  }
 
   // the imaginary part of the phase
   double gouy_phase = -static_cast<double>(2 * p + n + 1) * std::atan(z_loc / z_R);
-  double kappa_phase = k_wave * s * z_loc /
-                       (2.0 * (z_loc * z_loc + z_R * z_R));  // curvature_phase = kappa * z * rho^2 / (2 ( z^2 + z_R^2))
+  double kappa_coef =
+      -k_wave * z_loc / (2.0 * (z_loc * z_loc + z_R * z_R));  // coefficient of s=rho^2 in kappa_phase below
+  double kappa_phase = kappa_coef * s;
 
-  double gaussian_phase = -s / (w_z * w_z);
+  double g_coef = -1.0 / (w_z * w_z);  // coefficient of s=rho^2 in gaussian_phase below
+  double gaussian_phase = g_coef * s;
   double envelope_phase = envelope(phi);
   MathUtils::Complex prefactor =
-      std::exp(MathUtils::Complex(envelope_phase + gaussian_phase, phi + gouy_phase + kappa_phase));
+      std::exp(MathUtils::Complex(envelope_phase + gaussian_phase, -phi + gouy_phase + kappa_phase));
+  // d(prefactor)/ds = prefactor*(g_coef + i*kappa_coef), since prefactor's only s-dependence is the
+  // exp(s*(g_coef + i*kappa_coef)) factor bundled into gaussian_phase/kappa_phase above.
+  MathUtils::Complex dprefactor_ds = prefactor * MathUtils::Complex(g_coef, kappa_coef);
+  MathUtils::Complex dprefactor_dx = dprefactor_ds * (2.0 * x_loc);
+  MathUtils::Complex dprefactor_dy = dprefactor_ds * (2.0 * y_loc);
+
+  // d(hypergeometric_val)/du via the Kummer derivative identity, chained through u = 2*s/w_z^2.
+  double dhyp_du = MathUtils::hypergeometric_1F1_neg_int_a_derivative(-p, n + 1, u);
+  double du_dx = 4.0 * x_loc / (w_z * w_z);
+  double du_dy = 4.0 * y_loc / (w_z * w_z);
+  double dhyp_dx = dhyp_du * du_dx;
+  double dhyp_dy = dhyp_du * du_dy;
 
   MathUtils::Complex amplitude = prefactor * V * C_n * hypergeometric_val;
-  MathUtils::Complex d_amplitude_dx = 0.0;
-  MathUtils::Complex d_amplitude_dy = 0.0;
+  // Product rule on amplitude = prefactor * V * C_n * hypergeometric_val (C_n depends only on z_loc).
+  MathUtils::Complex d_amplitude_dx =
+      C_n * (dprefactor_dx * V * hypergeometric_val + prefactor * dV_dx * hypergeometric_val + prefactor * V * dhyp_dx);
+  MathUtils::Complex d_amplitude_dy =
+      C_n * (dprefactor_dy * V * hypergeometric_val + prefactor * dV_dy * hypergeometric_val + prefactor * V * dhyp_dy);
 
   return {amplitude, d_amplitude_dx, d_amplitude_dy};
 }
-
-// The main difference with respect to the plane wave case is the presence of field components along the propagation
-// direction. They are chosen such that div(E) = 0; div(B) = 0.
-
-// The complex scalar solution is built here; get_faraday_tensor (inherited from LaserField) currently
-// only consumes its amplitude entry, projecting it straight onto epsilon_1/epsilon_2 -- same stub as
-// PlaneWaveLaser, pending the true LG transverse-mode physics.
 
 }  // namespace Core::Laser
