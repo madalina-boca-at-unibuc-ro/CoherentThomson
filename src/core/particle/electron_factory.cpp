@@ -13,9 +13,13 @@ Electron generate_electron(const CylinderBeamParams& params, const Core::MathUti
   double phi = dis_uniform(gen) * 2.0 * MathUtils::pi;
   double z = dis_z(gen);
 
-  // Convert cylindrical coordinates to Cartesian coordinates (cylinder height axis along canonical Oz)
-  double x = r * std::cos(phi);
-  double y = r * std::sin(phi);
+  // Convert cylindrical coordinates to Cartesian coordinates (cylinder height axis along canonical Oz), then
+  // apply the beam's global translation before either rotation below, so the offset itself is expressed in the
+  // same canonical frame as beam_cylinder_radius/height and gets carried along with the beam through both
+  // rotations (rather than being a fixed lab-frame shift applied afterwards).
+  double x = r * std::cos(phi) + params.center_x;
+  double y = r * std::sin(phi) + params.center_y;
+  z += params.center_z;
 
   // Reorient the cylinder so its height axis matches the beam's own mean momentum direction, before the whole
   // beam is rotated together with the laser below.

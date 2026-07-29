@@ -9,10 +9,9 @@ Simulates coherent (nonlinear) Thomson scattering of an intense laser pulse off 
 End-to-end today (`src/app/main.cpp`): build a config-driven laser pulse and detector screen, generate an electron
 beam, integrate one hardcoded electron's trajectory for plotting, then run the coherent radiation spectrum
 calculation (`Simulation::run_simulation`) over the whole beam and export `.dat` files for plotting. The
-per-electron physics `run_simulation` delegates to, `Radiation::compute_radiation`, now accumulates the full
+per-electron physics `run_simulation` delegates to, `Radiation::compute_radiation`, accumulates the full
 antisymmetric Faraday bivector tensor (long-range and short-range amplitude terms, normalized) per
-frequency/screen point — see "Known gaps" below for what's still missing (the frequency-range and pulse-start
-caveats).
+frequency/screen point — see "Known gaps" below for what's still missing.
 
 ## Commands
 
@@ -77,9 +76,7 @@ Sync the repo to a remote build/run server (excludes `build/`, `src/build/`, `bi
     laser)` and `run_simulation(config, laser, detector, electron_beam, frequencies_list, num_threads)`.
   - `radiation/` holds `compute_radiation(electron, laser, frequencies_list, detector, field)`, called once per
     electron from inside `run_simulation`'s per-thread loop, plus a `radiation_plotter.hpp`/`.cpp` exporter
-    (`plot_radiation_field`) following the same plottable-output pattern as the other modules. `compute_radiation`
-    computes the full antisymmetric Faraday bivector; `run_simulation` mirrors and normalizes it — see "Known
-    gaps" below for the remaining frequency-range and pulse-start caveats.
+    (`plot_radiation_field`) following the same plottable-output pattern as the other modules.
 - Adding a new physics component: follow the class + `.cpp` + `create_<thing>(const ConfigMap&)` factory pattern
   above, add the new `.cpp` to `add_library(...)` in `src/core/CMakeLists.txt`, and wire the factory call into
   `main.cpp`.
@@ -95,8 +92,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `phys_utils/` | `Core::PhysUtils::AtomicUnits` | Physical constants in atomic units |
 | `io_utils/` | `Core::IoUtils` (`ConfigMap` alias lives in `Core`) | Config parsing, unit conversion, per-key laser/beam accessors, `CylinderBeamParams`, `make_run_output_directory` |
 | `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, optional trajectory recording), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
-| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on top of the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each with its own private `complex_amplitude` override, already scaled by `E0_c`, both returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser`'s has no transverse profile so its derivative entries are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`,
-`export_field_heatmap_z0` (canonical-frame z=0 transverse snapshot — see "Known gaps") |
+| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each implementing `complex_amplitude`, already scaled by `E0_c`, returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser` has no transverse profile so its derivatives are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`, `export_field_heatmap_z0` (canonical-frame z=0 transverse snapshot — see "Known gaps") |
 | `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
 | `radiation/` | `Core::Radiation` | `compute_radiation` — one electron's contribution to `Simulation::PackedRadiationField` (packed antisymmetric Faraday bivector, long/short-range amplitudes, summed over trajectory points/screen points/frequencies); `plot_radiation_field` exporter |
@@ -118,282 +114,127 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
 
 ### Known gaps / TODOs worth knowing before touching related code
 
-- **`LaguerreGaussLaser`'s transverse-mode physics lives in `complex_amplitude` (`laser_field.cpp`), not
-  `get_faraday_tensor` — the mode is still not physics-reviewed against the reference formula (Allen,
-  Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman, "Lasers", ch. 17).** `complex_amplitude`
-  returns `std::tuple<Complex, Complex, Complex>` — `{amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc}` — and
-  **both derivative entries are now implemented** (previously hardcoded `0.0` placeholders) via the product rule on
-  `amplitude = prefactor * V * C_n * hypergeometric_val` (`C_n` depends only on `z_loc`, so it drops out of the
-  `x_loc`/`y_loc` derivatives): `dV/dx_loc = n*zeta_c^(n-1)`, `dV/dy_loc = dV/dx_loc * i*sign(l)` (special-cased at
-  `n=0`, where `V` is constant, and `n=1`, to avoid relying on `std::pow`'s `0^0` behavior on-axis);
-  `d(hypergeometric_val)/du` via the existing `MathUtils::hypergeometric_1F1_neg_int_a_derivative` Kummer-identity
-  helper (implemented earlier but previously unused anywhere), chained through `du/dx_loc = 4*x_loc/w(z)^2`
-  (symmetric in `y_loc`); and `d(prefactor)/dx_loc = prefactor*(g_coef + i*kappa_coef)*2*x_loc` (symmetric in
-  `y_loc`), since `prefactor`'s only `x_loc`/`y_loc` dependence is through `s = x_loc^2+y_loc^2` via
-  `gaussian_phase = g_coef*s` and `kappa_phase = kappa_coef*s` (`g_coef`/`kappa_coef` extracted as named
-  intermediates precisely so the derivative code can reuse them instead of re-deriving the coefficients). **Verified
-  against finite differences of `complex_amplitude`'s own raw output** (temporarily making the otherwise
-  protected/private method public for a one-off standalone test binary linked against the built static lib, then
-  reverting `laser_field.hpp`): relative error between the analytic and central-difference derivatives is `1e-8` to
-  `1e-14` (i.e. floating-point/step-size noise, not a discrepancy) across `p=0,1,2` and `l=-1,0,1,2`, checked
-  on-axis, near-axis, and off-axis — the derivative implementation itself is correct; see the `get_faraday_tensor`
-  bullet below for how these derivatives are consumed and the residual limitation that remains.
-  `x_loc`/`y_loc`/`z_loc` are the electron's position rotated into the laser's own canonical frame
-  (`dot3(x_mu, epsilon_1)`/`dot3(x_mu, epsilon_2)`/`dot3(x_mu, unity_n)` — `epsilon_1`/`epsilon_2`/`unity_n` are
-  themselves the columns of the laser's 4x4 `rotation_matrix`, i.e. the canonical frame's axes expressed in the lab
-  frame, the same rotation `Detector`/`Particle` also share), assuming the beam waist sits at that canonical frame's
-  origin (`z=0`); since `tau_0_traj` is hardcoded to `0.0` (see below) and the electron beam's own placement is
-  independent of this assumption, check that the beam actually starts near the waist for whatever config you're
-  using. The Gouy phase and wavefront-curvature phase match the same closed form documented here previously; the
-  azimuthal factor `rho^|l| * exp(i*l*azimuth)` is built as the exact complex polynomial
-  `(x_loc + i*sign(l)*y_loc)^|l|` (identically equal to it, since `rho*exp(i*sign(l)*azimuth) = x_loc +
-  i*sign(l)*y_loc`), so the amplitude and its `x`/`y` derivatives stay smooth exactly on-axis
-  (`rho=0`) instead of going through polar-coordinate expressions with a removable but awkward `1/rho` singularity
-  there. **The radial profile is built via `MathUtils::hypergeometric_1F1_neg_int_a(-p, n+1, u)`** (`n = |l|`,
-  `u = 2*rho^2/w(z)^2`), using the identity `L_p^n(x) = binom(p+n,p) * 1F1(-p; n+1; x)` documented next to that
-  function in `math_utils.hpp` — **not** via `MathUtils::generalized_laguerre` (which remains implemented and
-  tested via its own three-term recurrence, but still unused elsewhere). The `b` argument here was previously
-  passed as `n` instead of `n+1` — silently evaluating a different (non-equal for any `p>0`) function of `u`, which
-  went unnoticed because `p=0` collapses `1F1` to `1` regardless of `b` — now fixed. The `Npn` normalization
-  constant bundles the `binom(p+n,p) = (p+n)!/(p!*n!)` factor needed to turn that raw `1F1` value into the true
-  `L_p^n(u)` together with a **deliberately custom (non-unit-power) prefactor**, chosen to satisfy this project's
-  own normalization condition rather than the standard unit-power LG normalization `sqrt(2*p!/(pi*(p+|l|)!))` —
-  algebraically, that standard constant times `binom(p+n,p)` reduces to `sqrt(2/pi)/n! * sqrt((p+n)!/p!)`, and
-  `Npn` as implemented is exactly that expression *without* the `1/sqrt(pi)` factor, by design, not an oversight.
-  `MathUtils::factorial(int n) -> double` (`math_utils.hpp`, plain iterative product) was added to support this
-  normalization; it's intended for the small non-negative integers (`p`, `n`, `p+n`) this use needs.
-- **`LaserField::get_faraday_tensor` now consumes all three `complex_amplitude` tuple entries** (`const auto
-  [amplitude, dx_amplitude, dy_amplitude] = complex_amplitude(x_mu);`, a single call destructured — it used to call
-  `complex_amplitude` three times and take only `std::get<0>` of each), and builds genuine `E_z`/`B_z` components
-  along `unity_n` from the derivatives: `Ex/Ey/Ez += i*inv_k_wave*unity_n[i]*(zeta_1*dx_amplitude +
-  zeta_2*dy_amplitude)`, and the same for `Bx/By/Bz` with `(zeta_1,zeta_2) -> (-zeta_2,zeta_1)` (the same swap
-  used for the transverse `B` term, since `div(B)=0` is linear in the same way `div(E)=0` is). **The sign of this
-  `+i/k` coefficient is tied to the phase-carrier sign convention fixed this session**: `complex_amplitude` in both
-  `PlaneWaveLaser` and `LaguerreGaussLaser` builds `amplitude ~ exp(-i*phi)` (the imaginary part of the exponent is
-  `-phi + gouy_phase + kappa_phase`, not `+phi + ...` as before), so the dominant carrier in `z_loc` is `e^{+ikz}`;
-  `kappa_phase`'s sign was flipped in tandem (now `-k_wave*s*z_loc/(2*(z_loc^2+z_R^2))`) as a deliberate, related
-  choice. Given that carrier sign, `div(E)=0` (`∂z(Ez) ≈ +i*k_wave*Ez` to leading order, since Gouy/curvature/`w(z)`
-  z-dependence is slow relative to `k_wave` under the paraxial assumption `z_R >> 1/k_wave`) requires exactly the
-  `+i/k_wave` coefficient now in the code — flipping either the carrier sign or this coefficient alone (not both)
-  would make them inconsistent. **Measured residual of `div(E)`/`div(B)` via finite differences** (temporary
-  standalone test binary evaluating `get_faraday_tensor` at several points and central-differencing `Ex/Ey/Ez` and
-  `Bx/By/Bz`, `w0=50/k_wave` i.e. `k_wave*w0=50` so safely paraxial, `z_R = w0^2*k_wave/2 = 1250`): for the
-  fundamental Gaussian (`p=0,l=0`) the relative residual `div(E)/(k_wave*|E|)` is `~1e-6` to `1e-7` — consistent
-  with a healthy first-order paraxial correction, since the derivative terms feeding it were independently verified
-  exact (see the `complex_amplitude` bullet above). For vortex/higher-order modes the residual is markedly larger —
-  `~1e-4` to `~3e-2`, growing with `p`/`|l|` and worst on/near the axis — because `Ez`/`Bz` only account for the
-  fast-carrier term `∂z(amplitude) ≈ i*k_wave*amplitude` and drop the sub-leading z-dependence from the Gouy phase,
-  wavefront curvature, and `w(z)`, whose relative size scales with the mode order `(2p+|l|+1)`. **This is an
-  expected limitation of the standard first-order vector-Gaussian-beam construction (Lax et al. 1975; Davis 1979),
-  not a bug** — but it means higher-order LG modes will show a non-negligible, physically real deviation from
-  `div(E)=0`/`div(B)=0` with the current implementation, which shows up as a small spurious force on off-axis
-  electrons during trajectory integration (`Electron::compute_derivative` calls `get_faraday_tensor` directly, so
-  every RK4 sub-step for every electron goes through this). Whether this residual is acceptable depends on the
-  mode order and `w0` used; an exact (non-paraxial) longitudinal-field construction would remove it but hasn't been
-  implemented.
-- **`LaserField::get_faraday_tensor` is a single non-virtual implementation on the base class, not a
-  per-derived-type override.** `PlaneWaveLaser` and `LaguerreGaussLaser` only implement the pure-virtual
-  `complex_amplitude` (each returning `std::tuple<Complex, Complex, Complex>`); `get_faraday_tensor` builds `E`/`B`
-  from it identically for every wave type, so the polarization/E-to-B construction lives in exactly one place
-  instead of being duplicated per subclass.
-- **Polarization coefficients `zeta_1`/`zeta_2` are complex (`Core::MathUtils::Complex`), not real, and both laser
-  types build their field the same way from them.** `LaserField::get_faraday_tensor` computes
-  `E = Real(epsilon_1*zeta_1*amplitude + epsilon_2*zeta_2*amplitude)`, where `amplitude` is that laser type's own
-  `complex_amplitude` (already scaled by
-  `E0_c = a0*omega*m_e/|e|` — previously missing from `PlaneWaveLaser`, now folded directly into
-  `complex_amplitude`'s `exp(...)` so no caller needs to apply it separately). Linear polarization along
-  `epsilon_1` is `zeta_1=(1,0)`, `zeta_2=(0,0)`; circular is `zeta_1=(1,0)`, `zeta_2=(0,1)`. The repo's default
-  config now sets linear polarization (`zeta_1=(1,0)`, `zeta_2=(0,0)`) — a behavior change from the old real-valued
-  default (`zeta_1=zeta_2=1.0`), which under the previous cos/sin-quadrature formula actually traced out circular
-  polarization, not linear. See the "Config file format" section above for how these are read from the config.
-  **`create_laser` (`laser_factory.cpp`) normalizes `zeta_1`/`zeta_2` right after reading them from the config**, so
-  `|zeta_1|^2 + |zeta_2|^2 = 1` always holds by the time either laser constructor sees them, regardless of what the
-  raw config values sum to — e.g. the documented circular convention `zeta_1=(1,0)`, `zeta_2=(0,1)` sums to `2`
-  before this step. Without it, switching `laser_zeta_2_im` between `0.0` (linear) and `1.0` (circular) in the
-  config would silently double the field's overall amplitude (and thus the radiated intensity) as a side effect of
-  the polarization choice, instead of `a0` alone controlling the field strength. Throws if
-  `laser_zeta_1`/`laser_zeta_2` are both exactly zero (undefined polarization direction) rather than dividing by
-  zero.
-- **`Radiation::compute_radiation` computes the full per-electron radiation physics, into a packed representation.**
-  For every `(tau, screen_point)` pair, `compute_radiation` builds the null vector `n0` from the electron-to-screen
-  separation (`x - detector.get_point(i_d)`), then for every frequency accumulates `amp_long`/`amp_short` times the
-  six independent upper-triangle bivector terms `n^alpha u^beta - n^beta u^alpha` into a `MathUtils::ComplexBivector`
-  (a 6-element `std::array<Complex, 6>`, one entry per independent Faraday-tensor component) which is added into
-  `field.field[i_freq][i_d].long_range` / `.short_range`, where `field` is a `Simulation::PackedRadiationField` —
-  this is real amplitude physics, not a bare phase factor, just stored in packed (not full 4x4 tensor) form because
-  the diagonal/lower-triangle are never touched until reduction is complete. Because `n0`/`u` are built from the
-  electron's actual lab-frame trajectory and screen position, the resulting Faraday tensor comes out in the lab
-  frame (rotated to match the laser's configured `laser_nx/ny/nz` direction), not the canonical frame the rest of
-  `init_simulation_parameters` works in (see the `k1`/`p`/`n2` bullet below). `run_simulation` (`simulation.cpp`)
-  gives each thread its own private `PackedRadiationField` accumulator, sums the per-thread packed fields once all
-  threads join, then per `(i_omega, i_screen)` on the final reduced field (not per trajectory point) unpacks each
-  summed `PackedFaraday` into a full `Simulation::Faraday` (4x4 `ComplexFourTensor`, zero diagonal, antisymmetric
-  lower triangle) via `MathUtils::unpack_bivector`, then — **only when the config key
-  `print_field_in_canonical_frame` is `true` (the default)** — rotates it from the lab frame back into the laser's
-  own canonical frame (laser along `Oz`) via `MathUtils::rotate_tensor(MathUtils::inverse_rotation_tensor(laser.get_rotation_matrix()),
-  ...)` (so plots are read in the same canonical orientation regardless of `laser_nx/ny/nz` —
-  `inverse_rotation_tensor` inverts a rotation `FourTensor` via its `ud()` mixed form, valid because a spatial
-  rotation is orthogonal; `rotate_tensor` then applies the full `T'^{alpha beta} = R^alpha_mu R^beta_nu T^{mu nu}`
-  transformation law, verified by round-tripping forward+inverse on a random antisymmetric tensor and by checking
-  it reproduces `epsilon_1 = contract(rotation_matrix, pol_dir1)`'s convention on a canonical-frame E-field, and
-  by confirming empirically that two otherwise-identical runs differing only in `laser_nx/ny/nz` agree on
-  `radiation_field.dat` to floating-point precision when this flag is `true` and clearly diverge when it's
-  `false`). Setting `print_field_in_canonical_frame` to `false` instead leaves the field exactly as computed, in
-  the lab frame (rotated to match `laser_nx/ny/nz`, not the canonical frame `k1`/`p`/`n2` use) — useful for
-  inspecting the raw lab-frame field rather than the canonical-frame one. Either way, the final step multiplies
-  every `long_range`/`short_range` tensor by `general_factor` (the `1/(2*pi*c)` physical prefactor) via
-  `FourTensor::operator*=`. `MathUtils::mirror_antisymmetric_in_place` (`math_utils.hpp`) still
-  exists but is **currently dead code** — it predates `unpack_bivector` and nothing calls it anymore; don't assume
-  it's on the live path. `run_simulation` itself is fully wired into `main.cpp` and does partition the beam across
-  threads correctly; `num_threads` is read from the config's `num_threads` key (`IoUtils::get_num_threads`) and
-  defaults to `0` (= max hardware threads) in `config/coherent_thomson.cfg`.
-- **`compute_radiation`'s loop order and phase-factor evaluation are deliberately tuned for performance, not just
-  correctness — this is the dominant cost of a run and worth understanding before touching it.** The loop nests
-  screen point (`i_d`) outermost and trajectory point (`i_tau`) innermost, the reverse of the naive "for each tau,
-  splat onto every screen point" order: every trajectory point still contributes to every `(screen point,
-  frequency)` pair either way (so the total arithmetic is unchanged), but with `i_tau` innermost each screen
-  point's full tau-sum accumulates into small local `ComplexFourTensor`s (`local_long`/`local_short`) that stay
-  cache/register-resident, and the `field` array (tens of MB for a fine detector — `N_omega * N_screen` Faraday
-  structs) is only written once per `(i_d, i_freq)` pair after the tau loop finishes, instead of once per `(i_tau,
-  i_d, i_freq)` triple. Separately, since `frequencies_list[i]` is built (see the `omega_min`/`omega_max` bullet
-  below) as exact integer harmonics of a single fundamental, the phase factor `exp(i*phase*frequencies_list[i])`
-  is obtained from one `std::polar` (cos/sin) evaluation for the fundamental plus cheap complex multiplications
-  for the higher harmonics, rather than a separate transcendental call per frequency. This is guarded by a
-  `frequencies_are_harmonics` check done once per electron (cost O(N_freq), negligible) rather than assumed
-  outright, so a future fix to the `omega_min`/`omega_max` gap that makes frequencies non-harmonic safely falls
-  back to the direct per-frequency `std::polar` evaluation instead of silently computing the wrong phase — if you
-  touch either that gap or this recurrence, keep the two in sync. On a config with a fine detector grid and many
-  trajectory points, these two changes together gave a measured ~2.6x wall-clock speedup on one test machine
-  (verified bit-identical-to-rounding against the pre-optimization loop order by diffing `radiation_field.dat`);
-  the relative win from the loop-order change specifically scales with how much the `field` array exceeds the
-  CPU's cache size, so it matters more on larger detector grids or smaller-cache machines than it did on the
-  machine it was measured on.
+- **`LaguerreGaussLaser`'s transverse-mode physics still isn't physics-reviewed against the reference formula**
+  (Allen, Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman, "Lasers", ch. 17).
+  `complex_amplitude` (`laser_field.cpp`) returns `{amplitude, d/dx_loc, d/dy_loc}` via the product rule on
+  `amplitude = prefactor * V * C_n * hypergeometric_val`; derivatives were verified against finite differences
+  (~`1e-8` to `1e-14` relative error) across several `p`/`l` combinations. The radial profile uses
+  `MathUtils::hypergeometric_1F1_neg_int_a(-p, n+1, u)` (`n = |l|`) via the identity `L_p^n(x) = binom(p+n,p) *
+  1F1(-p; n+1; x)` — **not** `MathUtils::generalized_laguerre`, which remains implemented and tested via its own
+  recurrence but is unused elsewhere. `Npn`'s normalization is a **deliberately custom (non-unit-power) constant**
+  matching this project's own convention, not the standard `sqrt(2*p!/(pi*(p+|l|)!))` LG normalization. The
+  azimuthal factor is built as the exact polynomial `(x_loc + i*sign(l)*y_loc)^|l|` (equal to `rho^|l| *
+  exp(i*l*azimuth)`) so amplitude and derivatives stay smooth exactly on-axis instead of hitting a removable but
+  awkward `1/rho` singularity. `x_loc`/`y_loc`/`z_loc` are the electron's position rotated into the laser's
+  canonical frame, assuming the beam waist sits at that frame's `z=0` origin (tied to the `tau_0_traj=0.0`
+  hardcode below) — check that the beam actually starts near the waist for whatever config you're using.
+- **`get_faraday_tensor` builds genuine `Ez`/`Bz` from the `dx`/`dy` amplitude derivatives** (the `div(E)=0`/
+  `div(B)=0` condition), consistent with `complex_amplitude`'s `exp(-i*phi)` carrier-sign convention (flipping one
+  without the other breaks the `+i/k_wave` coefficient's sign). This is only a first-order paraxial construction
+  (Lax et al. 1975; Davis 1979): the `div(E)` residual is `~1e-6` relative for the fundamental Gaussian but grows
+  to `~1e-4`–`3e-2` for higher-order `p`/`|l|` modes (worst on/near axis) — an expected limitation, not a bug, but
+  it does impart a small spurious force on off-axis electrons during RK4 trajectory integration for higher-order
+  modes.
+- **Polarization coefficients `zeta_1`/`zeta_2` are complex, not real.** `get_faraday_tensor` computes `E =
+  Real(epsilon_1*zeta_1*amplitude + epsilon_2*zeta_2*amplitude)`. Linear polarization along `epsilon_1` is
+  `zeta_1=(1,0)`, `zeta_2=(0,0)`; circular is `zeta_1=(1,0)`, `zeta_2=(0,1)`. **`create_laser`
+  (`laser_factory.cpp`) normalizes `zeta_1`/`zeta_2` right after reading them from the config**, so `|zeta_1|^2 +
+  |zeta_2|^2 = 1` always holds regardless of the raw values' sum (e.g. the circular convention above sums to `2`
+  unnormalized) — without this, switching polarization would silently change the field's amplitude/intensity as a
+  side effect of the polarization choice, instead of `a0` alone controlling field strength. Throws if `zeta_1`/
+  `zeta_2` are both exactly zero.
+- **`Radiation::compute_radiation` accumulates the full per-electron radiation physics into a packed
+  representation.** For every `(tau, screen_point)` pair it builds the null vector `n0` from the electron-to-screen
+  separation, then per frequency accumulates `amp_long`/`amp_short` times the six independent bivector terms
+  `n^alpha u^beta - n^beta u^alpha` into a `Simulation::PackedRadiationField` (`ComplexBivector`, 6-element packed
+  form) — real amplitude physics, just stored packed until reduction. Built in the **lab frame** (matching
+  `laser_nx/ny/nz`), not the canonical frame `init_simulation_parameters` uses (see the `k1`/`p`/`n2` bullet
+  below). `run_simulation` gives each thread its own accumulator, sums them once all threads join, then unpacks
+  each summed `PackedFaraday` into a full 4x4 `Faraday` tensor via `MathUtils::unpack_bivector`. When the config
+  key `print_field_in_canonical_frame` is `true` (default), the tensor is then rotated back into the laser's
+  canonical frame via `rotate_tensor(inverse_rotation_tensor(laser.get_rotation_matrix()), ...)`, so plots don't
+  depend on `laser_nx/ny/nz`; `false` leaves it in the lab frame instead. Either way the final tensors are scaled
+  by `general_factor` (`= 1/(2*pi*c)`). `MathUtils::mirror_antisymmetric_in_place` is dead code (predates
+  `unpack_bivector`, nothing calls it). `num_threads` (config key, default `0` = all hardware threads) controls
+  `run_simulation`'s beam partitioning.
+- **`compute_radiation`'s loop order and phase-factor evaluation are deliberately tuned for performance** — this
+  is the dominant cost of a run. The loop nests screen point (`i_d`) outer, trajectory point (`i_tau`) inner,
+  reversed from the naive order, so each screen point's tau-sum accumulates in cache/register-resident local
+  tensors and the (potentially tens-of-MB) `field` array is written once per `(i_d, i_freq)` instead of once per
+  `(i_tau, i_d, i_freq)` triple. Since `frequencies_list` is built as integer harmonics of one fundamental, the
+  phase factor `exp(i*phase*freq)` is computed via one `std::polar` call plus cheap complex multiplications for
+  higher harmonics (guarded by a per-electron `frequencies_are_harmonics` check, falling back to per-frequency
+  `std::polar` otherwise) — keep this in sync with the `omega_min`/`omega_max` gap below if you touch either.
+  Measured ~2.6x wall-clock speedup from these two changes together on a fine-detector-grid config.
 - **`tau_0_traj` is hardcoded to `0.0`** in `Simulation::init_simulation_parameters` rather than derived from the
-  pulse's actual physical start — every electron currently starts its proper-time grid at `tau=0` regardless of the
-  pulse's leading Gaussian wing / `laser_delay` shift. Flagged in-code with `// hardcoded, to be modified`.
-- **`laser_delay` currently has no effect**: `LaserField`'s constructor (`laser_field.cpp`) unconditionally
-  overwrites `delay` with `wing_sigma_cutoff * wing_sigma`, discarding the parsed `laser_delay` value passed in
-  from `laser_factory.cpp`. Flagged in-code as a TODO to fold into the `tau_0_traj` fix above rather than keep two
-  independent pulse-start-time mechanisms. **Because of this, `Laser::export_field_heatmap_z0`'s snapshot time
-  (`t = laser_wing_sigma_cutoff * laser_wing_sigma / omega`, computed in `main.cpp`, gated by `plot_field_heatmap`
-  in the config) is deliberately built from `laser_wing_sigma_cutoff`/`laser_wing_sigma` directly, not from
-  `laser_delay`** — this matches `envelope(phi)`'s actual switch point from the leading Gaussian wing to the flat
-  plateau (`phi = delay`, the *internal*, overwritten value) exactly, regardless of what `laser_delay` is set to
-  (verified by setting `laser_delay` to a deliberately mismatched value and confirming the exported snapshot phase
-  stayed locked to `wing_sigma_cutoff * wing_sigma`). If the `laser_delay` bug above is ever fixed so `delay`
-  genuinely follows the parsed `laser_delay`, this snapshot-time formula in `main.cpp` should be revisited too.
-  **The heat map's x/y window is also laser-type-dependent, decided in `main.cpp` before calling
-  `export_field_heatmap_z0`**: for `laser_type = plane_wave` (which has no transverse profile at all, so any
-  window just shows a uniform color) it stays fixed at the `field_heatmap_x/y_min/max` config values; for
-  `laser_type = laguerre_gauss` those config values are ignored and the window is instead sized to the mode's own
-  waist, `+-2 * laser_lg_w0` (via `IoUtils::get_laser_lg_params`), since `w0` — not any fixed length — is what
-  actually sets the mode's transverse scale. Verified by exporting one heat map per `laser_type` with a
-  non-default `laser_lg_w0` and confirming the LG run's exported `x` column spans exactly `+-2 * w0` while the
-  plane-wave run's still spans the configured `field_heatmap_x_min/x_max`.
-- All electrons in the generated beam now get `compute_trajectory` run on them (inside `run_simulation` via
+  pulse's actual physical start — every electron starts its proper-time grid at `tau=0` regardless of the pulse's
+  leading Gaussian wing / `laser_delay` shift. Flagged in-code with `// hardcoded, to be modified`.
+- **`laser_delay` currently has no effect**: `LaserField`'s constructor unconditionally overwrites `delay` with
+  `wing_sigma_cutoff * wing_sigma`, discarding the parsed `laser_delay`. Because of this,
+  `export_field_heatmap_z0`'s snapshot time (`t = wing_sigma_cutoff * wing_sigma / omega`, computed in
+  `main.cpp`) is deliberately keyed off `wing_sigma_cutoff`/`wing_sigma` rather than `laser_delay` — revisit both
+  together if the delay bug is fixed. The heatmap's x/y window is also laser-type-dependent: `plane_wave` (no
+  transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss` ignores those and uses
+  `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
+- All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
   `compute_radiation`); `main.cpp` additionally runs it once more directly on `electron_beam[2]` (falling back to
-  `electron_beam[0]` if the beam has 2 or fewer electrons) purely to export its trajectory to `electron.dat` for
-  plotting.
+  `electron_beam[0]` if the beam has 2 or fewer electrons) purely to export its trajectory to `electron.dat`.
 - The whole beam is generated and held in memory upfront rather than per-thread/on-the-fly inside
-  `run_simulation`; this is a deliberate temporary simplification until the radiation calculation is validated,
+  `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
   with on-the-fly generation planned as a later memory optimization.
 - **`omega_min`/`omega_max` from the config are currently ignored.** `init_simulation_parameters` builds
   `frequencies_list` as the first `N_omega` harmonics of the nonlinear Thomson formula
-  (`PhysUtils::non_linear_Thomson_formula`), evaluated at the same set of values for the entire screen, regardless
-  of the configured frequency range — flagged both in-code and in `config/coherent_thomson.cfg`'s comment on
-  `omega_max`.
-- **`k1`, `p`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame (laser
-  along `Oz`), not the rotated lab frame.** `non_linear_Thomson_formula` only ever combines its arguments through
-  Minkowski contractions, which are invariant under a *common* rotation of all arguments — so evaluating everything
-  pre-rotation gives the same result without needing to rotate anything. (This is a different situation from the
-  radiated field itself, which *is* built in the lab frame by `compute_radiation` and has to be rotated back
-  explicitly at the end of `run_simulation` — see the `compute_radiation`/`PackedRadiationField` bullet above.)
-  `k1` is fixed along canonical `Oz`
-  (`create_unit_light_like_vector<double>(0.0, 0.0)`) scaled by `laser.get_omega() / c`; `n2` is the detector's own
-  canonical-frame direction via `IoUtils::get_detector_direction_angles(config)` (shared with
-  `detector_factory.cpp`), not the electron's direction of motion. Building `k1` from `laser.get_unity_n()` or `n2`
-  from `average_px/py/pz` directly would mix frames and give wrong frequencies whenever the laser's configured
-  direction isn't along `Oz`. Because `n2` is independent of `p1`, a massive particle always has `p0 > |p·n̂|`, so
-  `non_linear_Thomson_formula`'s division is well-defined for every momentum/direction — no "electron at rest"
-  special case needed.
+  (`PhysUtils::non_linear_Thomson_formula`), regardless of the configured frequency range — flagged both in-code
+  and in `config/coherent_thomson.cfg`'s comment on `omega_max`.
+- **`k1`, `p`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame** (laser
+  along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
+  Minkowski contractions, invariant under a *common* rotation, so evaluating pre-rotation gives the same result
+  without rotating anything. (Different from the radiated field itself, which *is* built in the lab frame by
+  `compute_radiation` and rotated back explicitly — see above.) `k1` is fixed along canonical `Oz` scaled by
+  `laser.get_omega() / c`; `n2` is the detector's own canonical-frame direction via
+  `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — building `k1` from
+  `laser.get_unity_n()` or `n2` from `average_px/py/pz` directly would mix frames and give wrong frequencies
+  whenever the laser's configured direction isn't along `Oz`.
 - **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
-  laser's, but shares the laser's rotation.** `create_detector` (`detector_factory.cpp`) takes the `LaserField`,
-  reads the detector's local direction (same canonical frame as the beam), and passes both the laser's 4x4
-  `get_rotation_matrix()` and the detector's own `dir_x/dir_y/dir_z` into `Detector_2D`'s constructor
-  (`detector.cpp`), which builds its own 3x3 `local_rotation = rotation_matrix_from_direction(dir_x, dir_y, dir_z)`
-  orthogonal to that local direction and stores the laser's 4x4 matrix as `lab_rotation`. `to_lab_frame` then
-  composes the two per-point rather than precombining them into one matrix: `rotate3d(local_rotation, ...)` into
-  the shared canonical frame, then `contract(lab_rotation, ...)` into the lab frame — so the detector rotates
-  together with the laser instead of being locked to point exactly along it. `(0.0 pi, 0.0 pi)` (the default in
-  `coherent_thomson.cfg`) points the detector straight along the laser.
-- **`CircularDetector`'s radial grid is spaced in equal-*area* steps, not equal-distance** (`detector.cpp`):
-  `r_i = sqrt(R_min^2 + i*(R_max^2-R_min^2)/(N_R-1))`, so each successive ring encloses the same annular area
-  despite `N_phi` being fixed per ring — plain linear `r` spacing would make point density diverge as `1/r` near
-  the center and, when `circular_detector_R_min = 0`, would collapse all `N_phi` points at `i=0` onto a single
-  point at the origin. `get_row_coordinate` returns this same `r_i`, not an index or angle, so anything reading
-  `radiation_field.dat`'s per-point coordinates for a circular detector must reconstruct `r` from `i` via the
-  `r_i^2` formula above, not assume a linear grid. `py_scripts/plot_radiation_field.py` mirrors this exactly
-  (`get_screen_coordinates`/`get_circular_cell_edges`, spacing the pcolormesh cell edges in `r^2` space before the
-  final `sqrt`) and renders circular detectors as a `pcolormesh` heatmap over the native `(N_R, N_phi)` grid, the
-  same way `SphericalDetector` is rendered — not as a scatter — because a scatter over `(x, y)` has no notion of
-  which points are angularly adjacent, breaking the `phi=0`/`phi=2*pi` seam continuity that a helical/vortex field
-  pattern needs to read as a spiral. `RectangularDetector` is the only type still rendered as a scatter, since its
-  grid is already Cartesian-monotonic and pcolormesh's default edge inference works fine on it.
+  laser's, but shares the laser's rotation.** `create_detector` passes both the laser's 4x4 `rotation_matrix` and
+  the detector's own local direction into `Detector_2D`, which builds a 3x3 `local_rotation` orthogonal to that
+  direction and composes the two per-point in `to_lab_frame` (local → shared canonical frame → lab frame) — so
+  the detector rotates together with the laser instead of being locked to point exactly along it. `(0.0 pi, 0.0
+  pi)` (the config default) points the detector straight along the laser.
+- **`CircularDetector`'s radial grid is spaced in equal-*area* steps, not equal-distance**: `r_i = sqrt(R_min^2 +
+  i*(R_max^2-R_min^2)/(N_R-1))`, so each ring encloses the same annular area despite fixed `N_phi` per ring —
+  linear `r` spacing would make point density diverge as `1/r` near the center and collapse all `N_phi` points at
+  `i=0` onto the origin when `R_min=0`. Anything reading `radiation_field.dat`'s circular-detector coordinates must
+  reconstruct `r` from `i` via this formula, not assume linear spacing. `plot_radiation_field.py` mirrors it
+  exactly and renders `CircularDetector`/`SphericalDetector` as a `pcolormesh` over the native grid (not a
+  scatter), so the `phi=0`/`phi=2*pi` seam stays continuous for helical/vortex patterns; `RectangularDetector` is
+  the only type still rendered as a scatter, since its grid is already Cartesian-monotonic.
 - **The beam cylinder's spatial axis is derived from the beam's own mean momentum direction, not fixed along
-  canonical `Oz`.** `generate_cylinder_beam` (`electron_factory.cpp`) computes `beam_axis_rotation =
-  MathUtils::rotation_matrix_from_direction(average_px, average_py, average_pz)` once per beam and applies it to
-  each electron's local cylinder point (height axis originally along canonical `Oz`) before the shared laser
-  rotation; falls back to the identity rotation when the mean momentum is (numerically) zero. A beam config whose
-  mean momentum isn't along canonical `Oz` gets different per-electron realizations (not just different
-  statistics) than a naive canonical-`Oz` cylinder would.
+  canonical `Oz`.** `generate_cylinder_beam` computes a rotation from `average_px/py/pz` once per beam and applies
+  it to each electron's local cylinder point before the shared laser rotation (falls back to identity if the mean
+  momentum is numerically zero) — a beam whose mean momentum isn't along canonical `Oz` gets different
+  per-electron realizations, not just different statistics, than a naive canonical-`Oz` cylinder would.
+  `beam_center_x/y/z` (config keys, `lambda` units) offset each electron's raw cylindrical-Cartesian point
+  (`generate_electron`, `electron_factory.cpp`) **before** both this mean-momentum rotation and the laser rotation
+  — so the configured center is itself expressed in, and rotates along with, the same canonical frame as
+  `beam_cylinder_radius`/`height`, not a fixed lab-frame shift applied after the beam is built.
 - **A rectangular detector and a spherical detector covering "the same" angular window will *not* generally show
-  the same radiation pattern, and this is real physics, not a bug — worth knowing before treating one as a
-  correctness check for the other.** `compute_radiation` uses the *exact* electron-to-screen distance `R` (not a
-  linearized far-field approximation) in both the amplitude falloff (`amp_long_0`/`amp_short_0`, `radiation.cpp`)
-  and the phase (`phase_base = x[0] + R`). For a source point near the origin — the beam is only
-  `beam_cylinder_radius = 2.5 lambda` across, negligible next to the detector — a rectangular screen's `R` varies
-  across its area (`R = sqrt(D^2 + x^2 + y^2)`), while a spherical screen's `R` is exactly constant (`=
-  spherical_detector_radius`) at every point by construction. So the rectangular screen picks up an extra quadratic
-  ("Fresnel") phase term the spherical one never sees, of size `a^2/(2D)` at the screen edge (`a` = rectangular
-  screen half-width, `D = rectangular_detector_distance`). The governing quantity is the **Fresnel number** `N_F =
-  a^2/(D*lambda)`: the two detectors' patterns only converge once `N_F << 1` (the Fraunhofer/far-field regime);
-  when `N_F` is order 1 or larger (the Fresnel/near-field regime) they will visibly differ, and neither is
-  "wrong" — it's the same exact-`R` physics evaluated on two different screen shapes.
-  - The repo's own example numbers (`rectangular_detector_x_min/x_max = -250/250 lambda`,
-    `rectangular_detector_distance = 50000 lambda`)
-    give `N_F = 250^2 / 50000 = 1.25` — order 1, i.e. squarely in the *near*-field regime, not the far field.
-    Concretely, the corner-to-center path difference is `~1.25 lambda` — over a full wavelength — which is enough
-    to imprint visible extra spiral fringe rings on the rectangular screen (a helical/vortex phase combined with a
-    Fresnel chirp is a classic way to get spiral fringes) that a spherical detector, having zero path-length error
-    at any distance by construction, will not show. **At these settings, do not expect a rectangular-vs-spherical
-    comparison (e.g. of `E_x`) to agree** — a visible mismatch here is the expected outcome, not a bug to chase.
-  - **Common pitfall: growing `rectangular_detector_distance` while keeping the *angular* window fixed does not
-    approach the far field — it moves further from it.** If the rectangular screen's half-width `a` is scaled up
-    proportionally with `D` to preserve a fixed angular window `theta ~= a/D` (which is what happens if you pick
-    the spherical detector's `spherical_detector_theta_max` to match the rectangular screen's *current* angular
-    window/area and then grow `D`), then `N_F = a^2/(D*lambda) = theta^2 * D/lambda` — this *grows* with `D`, not
-    shrinks. Matching the two detectors' *area* or *angular window* at a new distance does not by itself put you
-    in the far field.
-  - **To actually construct a converging rectangular/spherical comparison**, hold the rectangular screen's
-    *absolute* half-width `a` fixed (e.g. keep `a = 250 lambda`) and increase `D` until `N_F = a^2/(D*lambda) <<
-    1` — e.g. `D >= 500000 lambda` gets `N_F <= 0.125`, `D ~= 5000000 lambda` gets `N_F ~= 0.0125`. This
-    necessarily *shrinks* the angular window (`theta_max = a/D`) as `D` grows, so the spherical detector's
-    `spherical_detector_theta_max` must be set to match that new, smaller window at the new `D` — not the
-    original window from the near-field config.
-  - **Confirmed experimentally** in a past session, comparing a near-field config pair (rectangular/spherical
-    detector, `N_F~1.25`) against a far-field pair (`N_F~0.0125`) with a one-off comparison script (none of these
-    exploratory `.cfg`/`.py` files are checked into the repo — recreate them from the base config by adjusting
-    `rectangular_detector_distance`/`rectangular_detector_x_min`/`rectangular_detector_x_max`/
-    `spherical_detector_theta_max` per the bullets above if you need to redo this check): at `N_F~1.25` the
-    rectangular screen's `Re(F01)` showed a visible two-armed spiral fringe
-    pattern that the spherical screen (a plain dipole-like pattern, no spiral) did not share (correlation
-    ~0.21–0.49 across harmonics); at `N_F~0.0125` the two converged to the same smooth pattern (correlation
-    ~0.985–0.9999 for the
-    1st/2nd harmonics). **Compare `Re(F01)`/`Im(F01)`, not `|F01|`**: since the beam (`2.5 lambda`) is tiny next to
-    the screen, the extra Fresnel phase is (to leading order) common to every electron's contribution at a given
-    screen point, so it cancels out of the magnitude of the coherent sum and only shows up in the phase — `|F01|`
-    correlates >0.9998 in *both* regimes and is not a useful diagnostic here. The fundamental (`i_omega=0`) doesn't
-    show this convergence in either regime because, this close to the beam axis, its angular variation is ~6
-    orders of magnitude below its constant offset — below the double-precision noise floor, not a real discrepancy
-    — so it isn't a meaningful test at this `theta_max`; the 1st/2nd harmonics are the ones that actually confirm
-    the crossover.
+  the same radiation pattern — this is real physics, not a bug.** `compute_radiation` uses the *exact*
+  electron-to-screen distance `R` (no far-field linearization) in both amplitude falloff and phase. A rectangular
+  screen's `R` varies across its area (`R = sqrt(D^2+x^2+y^2)`); a spherical screen's `R` is constant by
+  construction — so the rectangular screen picks up an extra quadratic ("Fresnel") phase the spherical one never
+  sees. The governing quantity is the **Fresnel number** `N_F = a^2/(D*lambda)` (`a` = rectangular half-width, `D`
+  = distance): the two only converge once `N_F << 1` (far field); at `N_F` of order 1 or larger they visibly
+  differ. The repo's example config (`x_min/x_max = -250/250 lambda`, `distance = 50000 lambda`) gives `N_F =
+  1.25` — near field, not far field — so don't expect a rectangular-vs-spherical comparison to agree there without
+  changing the config. **Common pitfall**: growing `rectangular_detector_distance` while holding the *angular*
+  window fixed makes `N_F` grow, not shrink (`N_F = theta^2 * D/lambda`) — to actually approach the far field,
+  hold the rectangular screen's *absolute* half-width fixed and increase `D` until `N_F << 1` (e.g. `D >=
+  500000 lambda` for `N_F <= 0.125`), then match the spherical detector's `spherical_detector_theta_max` to the
+  new, smaller angular window at that `D`. When comparing, use `Re(F01)`/`Im(F01)`, not `|F01|` — since the beam
+  is tiny relative to the screen, the extra Fresnel phase is common to every electron's contribution and cancels
+  out of the coherent sum's magnitude, only showing up in phase (`|F01|` correlates >0.9998 in both regimes and
+  isn't a useful diagnostic here). The fundamental (`i_omega=0`) also isn't a useful test this close to the beam
+  axis — its angular variation is ~6 orders of magnitude below its constant offset, below the double-precision
+  noise floor.
+</content>
