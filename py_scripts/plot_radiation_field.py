@@ -168,6 +168,27 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     else:
         raise ValueError(f"Unknown detector_type '{detector_type}'")
 
+def get_detector_geometry_label(detector_type, config_path):
+    """
+    Returns a short 'distance=<value> <unit>' (rectangular/circular) or 'radius=<value> <unit>'
+    (spherical) string describing how far the detector screen sits from the beam, read straight
+    from the per-run config snapshot -- unit is whatever's in the config (conventionally 'lambda'
+    for all three keys, per config/coherent_thomson.cfg).
+    """
+    if detector_type == 'rectangular':
+        value, unit = read_config_value('rectangular_detector_distance', config_path)
+        label = 'distance'
+    elif detector_type == 'circular':
+        value, unit = read_config_value('circular_detector_distance', config_path)
+        label = 'distance'
+    elif detector_type == 'spherical':
+        value, unit = read_config_value('spherical_detector_radius', config_path)
+        label = 'radius'
+    else:
+        raise ValueError(f"Unknown detector_type '{detector_type}'")
+
+    return f"{label}={value}" + (f" {unit}" if unit else "")
+
 def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
@@ -208,6 +229,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
 
     detector_type, _ = read_config_value('detector_type', config_path)
     x, y, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
+    detector_geometry_label = get_detector_geometry_label(detector_type, config_path)
 
     # Spherical/circular points are laid out row-major over their native (N_theta, N_phi)/(N_R, N_phi)
     # grid -- see Core::Detector_2D::get_grid_indices -- so the field values below reshape cleanly
@@ -263,7 +285,8 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
             ax.set_title(title)
             fig.colorbar(sc, ax=ax)
 
-        fig.suptitle(f"Radiated field, $\\omega$ index {i_omega} ($\\omega$={omega_value:.4g})",
+        fig.suptitle(f"Radiated field, $\\omega$ index {i_omega} ($\\omega$={omega_value:.4g}), "
+                     f"{detector_type} detector, {detector_geometry_label}",
                      fontsize=13, fontweight='bold')
         plt.tight_layout()
 
