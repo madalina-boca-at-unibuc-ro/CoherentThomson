@@ -177,8 +177,13 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss` ignores those and uses
   `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
 - All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
-  `compute_radiation`); `main.cpp` additionally runs it once more directly on `electron_beam[2]` (falling back to
-  `electron_beam[0]` if the beam has 2 or fewer electrons) purely to export its trajectory to `electron.dat`.
+  `compute_radiation`); `main.cpp` additionally runs it once more directly on the first `min(10,
+  electron_beam.size())` electrons (indices `0..N-1`) purely to export their trajectories to `electron.dat`.
+  `Particle::plot_particle_trajectory` now takes `(electron_beam, electron_indices, filepath)` and writes every
+  selected electron's rows into one file tagged with a leading `electron_id` column (blank-line-separated blocks;
+  `pandas.read_csv` skips blank lines automatically). `plot_electron_trajectory.py` groups by `electron_id` and
+  encodes electron identity by color (fixed `tab10` order, never cycled past its 10 slots — matching the `main.cpp`
+  cap) and the x/y/z (or p1/p2/p3) component by linestyle, since color is already spent on electron identity.
 - The whole beam is generated and held in memory upfront rather than per-thread/on-the-fly inside
   `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
   with on-the-fly generation planned as a later memory optimization.

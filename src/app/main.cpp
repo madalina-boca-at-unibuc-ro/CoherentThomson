@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "../core/include/detector/detector_factory.hpp"
 #include "../core/include/detector/detector_plotter.hpp"
@@ -97,10 +99,14 @@ int main(int argc, char* argv[]) {
                                            beam_axes_scale, beam_axes_unit);
     }
 
-    size_t trajectory_electron_idx = electron_beam.size() > 2 ? 2 : 0;
-    electron_beam[trajectory_electron_idx].compute_trajectory(*laser);
+    size_t num_trajectory_electrons = std::min<size_t>(10, electron_beam.size());
+    std::vector<size_t> trajectory_electron_indices(num_trajectory_electrons);
+    for (size_t i = 0; i < num_trajectory_electrons; ++i) {
+      trajectory_electron_indices[i] = i;
+      electron_beam[i].compute_trajectory(*laser);
+    }
 
-    Particle::plot_particle_trajectory(electron_beam[trajectory_electron_idx], run_output_dir + "/electron.dat");
+    Particle::plot_particle_trajectory(electron_beam, trajectory_electron_indices, run_output_dir + "/electron.dat");
 
     auto detector = Detector::create_detector(simulation_config, *laser);
     std::string detector_axes_unit = "lambda";
