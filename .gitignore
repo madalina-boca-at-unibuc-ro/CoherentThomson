@@ -5,7 +5,7 @@ bin/
 
 # Python virtual environment / caches
 .venv/
-py_scripts/__pycache__/
+__pycache__/
 *.pyc
 
 # Editor/tool state

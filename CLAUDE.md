@@ -46,7 +46,8 @@ Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -marc
 `RelWithDebInfo`/`MinSizeRel`.
 
 Run `clang-format -i` on touched files before committing (`.clang-format` at repo root: Google style, 120 cols,
-2-space indent).
+2-space indent). `py_scripts/` is type-checked against a `.venv` interpreter via `pyrefly.toml`/`pyrightconfig.json`
+(no enforced lint command yet, just editor/CLI type-checker config).
 
 There is no test suite yet.
 
@@ -222,7 +223,13 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   `beam_center_x/y/z` (config keys, `lambda` units) offset each electron's raw cylindrical-Cartesian point
   (`generate_electron`, `electron_factory.cpp`) **before** both this mean-momentum rotation and the laser rotation
   — so the configured center is itself expressed in, and rotates along with, the same canonical frame as
-  `beam_cylinder_radius`/`height`, not a fixed lab-frame shift applied after the beam is built.
+  `beam_cylinder_radius`/`height`, not a fixed lab-frame shift applied after the beam is built. Translating
+  before `beam_axis_rotation` rather than after is intentional, not an oversight: since that rotation is built to
+  map local `+Oz` exactly onto the mean momentum direction, `beam_center_z` alone already lands as a pure
+  translation along the beam's direction of motion (useful for staging the beam upstream so it reaches the laser
+  focus region in sync with the pulse) — but this whole arrangement (including its interaction with the
+  hardcoded `tau_0_traj=0.0` and the `laser_delay` bug below) is planned for revisiting, so don't assume the
+  current scheme is final.
 - **A rectangular detector and a spherical detector covering "the same" angular window will *not* generally show
   the same radiation pattern — this is real physics, not a bug.** `compute_radiation` uses the *exact*
   electron-to-screen distance `R` (no far-field linearization) in both amplitude falloff and phase. A rectangular
