@@ -139,6 +139,16 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   awkward `1/rho` singularity. `x_loc`/`y_loc`/`z_loc` are the electron's position rotated into the laser's
   canonical frame, assuming the beam waist sits at that frame's `z=0` origin (tied to the `tau_0_traj=0.0`
   hardcode below) — check that the beam actually starts near the waist for whatever config you're using.
+- **Sign convention: the carrier phase `phi` and the vortex/topological-charge phase `l*varphi` enter the total
+  exponent with opposite signs** — check this against any other model (e.g. LPWA) before comparing `LaguerreGaussLaser`
+  output field-by-field. `phi = omega/c * contract(x_mu, unity_n)` (`laser_field.cpp`, both `PlaneWaveLaser` and
+  `LaguerreGaussLaser`) is exactly `ct - k.r` (metric is mostly-minus `g=(1,-1,-1,-1)` and `unity_n=(1, n_hat)`, so
+  `contract(x, unity_n) = t - r.n_hat`), and is folded into the exponential with a **minus** sign — `Complex(...,
+  -phi + gouy_phase + kappa_phase)` — giving a carrier factor `exp(-i*phi)`. The vortex factor `V = (x_loc +
+  i*sign(l)*y_loc)^|l|` is identically `rho^|l| * exp(i*l*varphi)` — a **plus** sign, no extra minus. So the full
+  phase multiplying the LG amplitude is `exp(i*(-phi + l*varphi + gouy_phase + kappa_phase))`: `phi` carries
+  coefficient `-1`, `l*varphi` carries coefficient `+1`. This is the same `exp(-i*phi)` carrier convention the
+  `get_faraday_tensor` bullet below depends on — flipping either sign independently breaks that coupling.
 - **`get_faraday_tensor` builds genuine `Ez`/`Bz` from the `dx`/`dy` amplitude derivatives** (the `div(E)=0`/
   `div(B)=0` condition), consistent with `complex_amplitude`'s `exp(-i*phi)` carrier-sign convention (flipping one
   without the other breaks the `+i/k_wave` coefficient's sign). This is only a first-order paraxial construction
