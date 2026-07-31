@@ -16,6 +16,12 @@ struct simulation_parameters {
   double d_tau_traj;
   size_t simulation_length;  // the total number of points in the numerical integration of the electron trajectory
   std::vector<double> frequencies;  // the vector of calculated frequencies.
+
+  // The fundamental's frequency (PhysUtils::non_linear_Thomson_formula(k1, p, n2, 1), i.e. omega/c units,
+  // same convention as `frequencies`), computed once regardless of dense_frequency_spectrum -- used by
+  // Radiation::plot_radiation_field to normalize the exported "omega" column into units of the fundamental
+  // (so a value of 3.0 means "third harmonic"), rather than raw atomic-unit omega.
+  double fundamental_frequency;
 };
 
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser);

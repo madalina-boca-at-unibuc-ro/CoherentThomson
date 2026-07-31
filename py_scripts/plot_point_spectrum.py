@@ -66,11 +66,11 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
     ax_phase.set_ylim(-np.pi, np.pi)
 
     for ax in axes.flat:
-        ax.set_xlabel("$\\omega$")
+        ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
         if n_screen > 1:
             ax.legend(fontsize=8)
 
-    fig.suptitle(f"Radiation spectrum vs. $\\omega$ ({n_screen} screen point"
+    fig.suptitle(f"Radiation spectrum vs. $\\omega/\\omega_1$ ({n_screen} screen point"
                  f"{'s' if n_screen != 1 else ''})", fontsize=13, fontweight='bold')
     plt.tight_layout()
 

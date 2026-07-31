@@ -71,6 +71,11 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 
+  // The fundamental's frequency, computed the same way regardless of dense_spectrum -- used only to
+  // let Radiation::plot_radiation_field normalize its exported "omega" column into units of the
+  // fundamental (see simulation_parameters::fundamental_frequency).
+  double fundamental_frequency = PhysUtils::non_linear_Thomson_formula(k1, p, n2, 1);
+
   // Default: the first N_harmonics harmonics of the fundamental, for imaging over the whole
   // detector screen. When dense_frequency_spectrum is true, frequencies_list is instead a fine
   // linear scan from omega_min to omega_max (N_omega points) -- meant for a detector collapsed to
@@ -90,7 +95,7 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
     }
   }
 
-  return simulation_parameters{tau_0_traj, d_tau_traj, simulation_length, frequencies_list};
+  return simulation_parameters{tau_0_traj, d_tau_traj, simulation_length, frequencies_list, fundamental_frequency};
 };
 
 RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& laser,

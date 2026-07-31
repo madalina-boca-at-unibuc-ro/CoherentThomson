@@ -6,7 +6,6 @@
 #include <stdexcept>
 
 #include "../include/math_utils/math_utils.hpp"
-#include "../include/phys_utils/phys_utils.hpp"
 
 namespace Core::Radiation {
 
@@ -26,7 +25,7 @@ void write_tensor(std::ofstream& file, const MathUtils::ComplexFourTensor& tenso
 }  // namespace
 
 void plot_radiation_field(const Simulation::RadiationField& field, const std::vector<double>& frequencies_list,
-                          const std::string& filepath) {
+                          double fundamental_frequency, const std::string& filepath) {
   std::ofstream file(filepath);
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file for field export: " + filepath);
@@ -35,6 +34,8 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
   file << std::scientific << std::setprecision(6);
   file << "# coherent radiation field: one row per (frequency, screen point)\n";
   file << "# LR/SR = long_range/short_range Faraday tensor F^{mu nu}, printed as 're im' pairs\n";
+  file << "# omega is in units of the fundamental (non_linear_Thomson_formula(k1, p, n2, 1)); 1.0 = fundamental, "
+          "3.0 = third harmonic\n";
   file << "i_omega omega i_screen";
   for (size_t mu = 0; mu < 4; ++mu) {
     for (size_t nu = 0; nu < 4; ++nu) {
@@ -53,8 +54,8 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
     size_t N_screen = field.field[i_omega].size();
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {
       const Simulation::Faraday& point = field.field[i_omega][i_screen];
-      file << i_omega << " " << frequencies_list[i_omega] * PhysUtils::AtomicUnits::c << " "
-           << i_screen;  // the frequency is stored as k = omega/c
+      file << i_omega << " " << frequencies_list[i_omega] / fundamental_frequency << " "
+           << i_screen;  // omega in units of the fundamental (both frequencies_list and fundamental_frequency are k = omega/c, so the ratio is dimensionless)
       write_tensor(file, point.long_range);
       write_tensor(file, point.short_range);
       file << "\n";

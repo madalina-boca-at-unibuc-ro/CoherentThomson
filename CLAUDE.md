@@ -221,6 +221,18 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
   `py_scripts/plot_point_spectrum.py` (`<long|short> <mu> <nu>`) — a line plot of `radiation_field.dat`'s
   `F^{mu nu}` vs. `omega`, the 1D counterpart of `plot_radiation_field.py`'s per-frequency 2D field-map PNGs (the
   wrong plot shape once frequency, not screen position, is the interesting axis).
+- **`radiation_field.dat`'s exported `omega` column is in units of the fundamental, not raw atomic-unit omega.**
+  `Radiation::plot_radiation_field` divides every `frequencies_list` entry by
+  `simulation_parameters::fundamental_frequency` (`= PhysUtils::non_linear_Thomson_formula(k1, p, n2, 1)`,
+  computed once in `init_simulation_parameters` regardless of `dense_frequency_spectrum`) before writing it, so a
+  value of `1.0` always means "the fundamental" and `3.0` always means "third harmonic" — including for the
+  default harmonics mode, where this is exact by construction (`frequencies_list[i] / fundamental_frequency ==
+  i + 1`). This normalizes against the *actual*, possibly Doppler-shifted fundamental for the configured
+  observation direction/electron momentum, not the bare `laser_frequency` — the two coincide only when the beam's
+  average momentum is zero (`non_linear_Thomson_formula`'s `contract(p, n1)/contract(p, n2)` ratio is then `1`
+  regardless of direction), so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam or an
+  off-axis detector direction. Both `plot_radiation_field.py` and `plot_point_spectrum.py` label this axis
+  `$\omega/\omega_1$` accordingly.
 - **`k1`, `p`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame** (laser
   along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
   Minkowski contractions, invariant under a *common* rotation, so evaluating pre-rotation gives the same result

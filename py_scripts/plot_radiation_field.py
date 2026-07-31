@@ -285,7 +285,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
             ax.set_title(title)
             fig.colorbar(sc, ax=ax)
 
-        fig.suptitle(f"Radiated field, $\\omega$ index {i_omega} ($\\omega$={omega_value:.4g}), "
+        fig.suptitle(f"Radiated field, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
                      f"{detector_type} detector, {detector_geometry_label}",
                      fontsize=13, fontweight='bold')
         plt.tight_layout()

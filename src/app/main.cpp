@@ -134,7 +134,8 @@ int main(int argc, char* argv[]) {
     std::cout << "Number of screen pts: " << detector->get_total_points() << "\n";
     std::cout << "Number of threads:    " << num_threads << "\n";
 
-    Radiation::plot_radiation_field(radiation_field, sim_par.frequencies, run_output_dir + "/radiation_field.dat");
+    Radiation::plot_radiation_field(radiation_field, sim_par.frequencies, sim_par.fundamental_frequency,
+                                    run_output_dir + "/radiation_field.dat");
 
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << "\n";
