@@ -43,7 +43,14 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   double p0 = std::sqrt(px * px + py * py + pz * pz + mc * mc);
   d_tau_traj /= (p0 - pz) / mc;
 
-  size_t N_frequencies = IoUtils::get_number_of_frequencies(config);
+  // N_frequencies is read from a different config key depending on the mode: N_harmonics (default,
+  // dense_frequency_spectrum=false) vs. N_omega (dense_frequency_spectrum=true) -- see
+  // IoUtils::get_number_of_harmonics/get_number_of_frequencies. Kept as two separate keys so
+  // switching modes doesn't silently reinterpret whatever count was already configured for the
+  // other mode.
+  bool dense_spectrum = IoUtils::get_required(config, "dense_frequency_spectrum") == "true";
+  size_t N_frequencies =
+      dense_spectrum ? IoUtils::get_number_of_frequencies(config) : IoUtils::get_number_of_harmonics(config);
   std::vector<double> frequencies_list(N_frequencies);
 
   MathUtils::RealFourVector p(p0, px, py, pz);
@@ -56,16 +63,31 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   // phi=0) rather than laser.get_unity_n() (the laser's actual, rotated direction), and n2 is the
   // detector's own canonical-frame direction (detector_direction_theta/phi) rather than the electron's
   // own direction of motion. The actual spectrum depends on the observation direction, but in the code we
-  // calculate it at the same set of values for the entire screen. Hard coded to be the first
-  // N_frequencies harmonics; the omega_min/omega_max limits in the input file are ignored (see
-  // CLAUDE.md).
+  // calculate it at the same set of values for the entire screen. Hard coded to be the first N_harmonics
+  // harmonics by default; the omega_min/omega_max limits in the input file are only honored when
+  // dense_frequency_spectrum is true (see CLAUDE.md).
   MathUtils::RealFourVector k1 =
       MathUtils::create_unit_light_like_vector<double>(0.0, 0.0) * laser.get_omega() / PhysUtils::AtomicUnits::c;
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 
-  for (size_t i = 0; i < N_frequencies; i++) {
-    frequencies_list[i] = PhysUtils::non_linear_Thomson_formula(k1, p, n2, i + 1);
+  // Default: the first N_harmonics harmonics of the fundamental, for imaging over the whole
+  // detector screen. When dense_frequency_spectrum is true, frequencies_list is instead a fine
+  // linear scan from omega_min to omega_max (N_omega points) -- meant for a detector collapsed to
+  // a single point (N_total_points == 1, see main.cpp's warning below), to resolve a Thomson
+  // line's width rather than just locate the harmonic peaks.
+  if (dense_spectrum) {
+    auto [omega_min, omega_max] = IoUtils::get_omega_range(config);
+    for (size_t i = 0; i < N_frequencies; i++) {
+      double omega = (N_frequencies > 1) ? omega_min + static_cast<double>(i) * (omega_max - omega_min) /
+                                               static_cast<double>(N_frequencies - 1)
+                                         : omega_min;
+      frequencies_list[i] = omega / PhysUtils::AtomicUnits::c;  // match non_linear_Thomson_formula's omega/c convention
+    }
+  } else {
+    for (size_t i = 0; i < N_frequencies; i++) {
+      frequencies_list[i] = PhysUtils::non_linear_Thomson_formula(k1, p, n2, i + 1);
+    }
   }
 
   return simulation_parameters{tau_0_traj, d_tau_traj, simulation_length, frequencies_list};

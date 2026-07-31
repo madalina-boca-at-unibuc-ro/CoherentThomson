@@ -29,6 +29,13 @@ Running the binary directly requires a config file argument:
 ./bin/coherent_thomson_solver config/coherent_thomson.cfg
 ```
 
+When testing a code change (not validating physics), run with a drastically reduced
+`beam_particle_count` (e.g. `50` instead of the repo default `2000`) — simulation time scales with
+the electron count and a full run can take tens of seconds to minutes, dominating iteration time for
+no benefit while just checking that something builds/runs/exports the right files. Copy the config
+rather than editing `config/coherent_thomson.cfg` in place, unless the task is specifically about
+changing the default config.
+
 Visualize `.dat` outputs (no arguments — each locates the most recent `<output_folder>/YYYYMMDD_HHMMSS` run via
 `py_scripts/run_output_utils.py`, so plotting always targets the last solver run):
 ```
@@ -39,6 +46,7 @@ python3 py_scripts/plot_radiation_field.py
 python3 py_scripts/plot_detector_scatter.py       # only has output if plot_detector_scatter=true in the config
 python3 py_scripts/plot_electron_beam_scatter.py  # only has output if plot_beam_scatter=true in the config
 python3 py_scripts/plot_field_heatmap_z0.py       # only has output if plot_field_heatmap=true in the config
+python3 py_scripts/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -103,9 +111,11 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 `config/coherent_thomson.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
 frequency/envelope/direction/polarization, beam particle count/geometry, initial momentum distribution, radiation
 spectrum range, and a trajectory-print-frequency knob. Numeric values may carry a unit suffix (`lambda`, `pi`,
-`mc`, `cycles_adim`, ...) resolved by `IoUtils::convert_unit_to_number` against the laser's own
-wavelength/frequency — check that function before adding a new unit keyword. A key with a blank value (nothing but
-a trailing comment) is dropped entirely by the parser rather than stored empty, so `config.at(...)` throws
+`mc`, `cycles_adim`, `omega_laser`, `a.u.`, ...) resolved by `IoUtils::convert_unit_to_number` against the laser's
+own wavelength/frequency — check that function before adding a new unit keyword; an unrecognized suffix falls
+through to a `std::cerr` warning and an assumed value of `1.0` rather than throwing, so a typo'd unit fails silently
+(only visible as a startup warning) instead of erroring out. A key with a blank value (nothing but a trailing
+comment) is dropped entirely by the parser rather than stored empty, so `config.at(...)` throws
 `std::out_of_range` for it — always give every key a real value, even a placeholder.
 
 One exception to the single-number-plus-unit convention: the laser's polarization coefficients are complex
@@ -188,10 +198,29 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
 - The whole beam is generated and held in memory upfront rather than per-thread/on-the-fly inside
   `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
   with on-the-fly generation planned as a later memory optimization.
-- **`omega_min`/`omega_max` from the config are currently ignored.** `init_simulation_parameters` builds
-  `frequencies_list` as the first `N_omega` harmonics of the nonlinear Thomson formula
-  (`PhysUtils::non_linear_Thomson_formula`), regardless of the configured frequency range — flagged both in-code
-  and in `config/coherent_thomson.cfg`'s comment on `omega_max`.
+- **`omega_min`/`omega_max` are only honored when `dense_frequency_spectrum` (config key, default `false`) is
+  `true`.** By default `init_simulation_parameters` still builds `frequencies_list` as the first `N_harmonics`
+  harmonics of the nonlinear Thomson formula (`PhysUtils::non_linear_Thomson_formula`), ignoring `omega_min`/
+  `omega_max` entirely — appropriate for imaging over a whole detector screen, where you want the harmonic peaks'
+  locations, not fine resolution between them. When `dense_frequency_spectrum=true`, `frequencies_list` is instead
+  a plain linear scan of `N_omega` points from `omega_min` to `omega_max` (`IoUtils::get_omega_range`, real omega,
+  divided by `c` to match `non_linear_Thomson_formula`'s own `omega/c` return convention) — `N_harmonics` and
+  `N_omega` are deliberately separate config keys (`IoUtils::get_number_of_harmonics`/`get_number_of_frequencies`)
+  so switching `dense_frequency_spectrum` doesn't silently reinterpret whichever count was already configured for
+  the other mode. This mode is meant for probing the *shape* of a single Thomson line (its width, not just its
+  peak position) at one screen point, and doesn't touch `k1`/`p`/`n2` or `non_linear_Thomson_formula` at all
+  — no new `Detector` type or plotting
+  machinery: `Radiation::compute_radiation`/`Simulation::run_simulation`/`Radiation::plot_radiation_field` are
+  already fully generic over both the frequency list's spacing and the detector's point count (every `Detector_2D`
+  subclass already guards `N==1` and collapses to one exact point when its grid counts are set to `1`), so getting
+  "one point, many frequencies" is purely a config choice — set the configured detector's grid to a single point
+  (e.g. a `spherical` detector with `spherical_detector_N_theta=spherical_detector_N_phi=1` and matching
+  `_min`/`_max` angles) and turn on `dense_frequency_spectrum`. `main.cpp` prints a non-fatal `std::cerr` warning if
+  `dense_frequency_spectrum=true` but the detector has more than one point (a dense scan over a full imaging grid
+  is a very expensive footgun, not something to fail silently into). Visualize the result with
+  `py_scripts/plot_point_spectrum.py` (`<long|short> <mu> <nu>`) — a line plot of `radiation_field.dat`'s
+  `F^{mu nu}` vs. `omega`, the 1D counterpart of `plot_radiation_field.py`'s per-frequency 2D field-map PNGs (the
+  wrong plot shape once frequency, not screen position, is the interesting axis).
 - **`k1`, `p`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame** (laser
   along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
   Minkowski contractions, invariant under a *common* rotation, so evaluating pre-rotation gives the same result

@@ -90,6 +90,12 @@ inline double convert_unit_to_number(std::string unit_name, const ConfigMap& con
     return PhysUtils::AtomicUnits::m_0 * PhysUtils::AtomicUnits::c;
   } else if (to_lower(unit_name) == "cycles_adim") {
     return 2 * MathUtils::pi;
+  } else if (to_lower(unit_name) == "omega_laser") {
+    // Read directly rather than via get_laser_frequency (defined later in this file) to avoid a
+    // forward reference -- same pattern the "lambda" branch above already uses.
+    return std::stod(get_required(config, "laser_frequency"));
+  } else if (to_lower(unit_name) == "a.u.") {
+    return 1.0;
   } else {
     std::cerr << "Warning: Unknown unit " << unit_name << ". Assuming 1.0." << std::endl;
     return 1.0;
@@ -168,11 +174,23 @@ inline std::pair<double, double> get_detector_direction_angles(const ConfigMap& 
   return {theta, phi};
 }
 
+// omega_min/omega_max, in raw omega (not omega/c) -- only consulted when dense_frequency_spectrum
+// is true (Simulation::init_simulation_parameters), to build a fine linear frequency scan instead
+// of the default first-N_omega-harmonics list.
+inline std::pair<double, double> get_omega_range(const ConfigMap& config) {
+  auto [min_val, min_unit] = split_value_and_unit(get_required(config, "omega_min"));
+  double omega_min = min_val * convert_unit_to_number(min_unit, config);
+  auto [max_val, max_unit] = split_value_and_unit(get_required(config, "omega_max"));
+  double omega_max = max_val * convert_unit_to_number(max_unit, config);
+  return {omega_min, omega_max};
+}
+
 inline size_t get_laser_NT(const ConfigMap& config) { return std::stoul(get_required(config, "laser_NT")); }
 
 inline size_t get_trajectory_NT(const ConfigMap& config) { return std::stoul(get_required(config, "trajectory_NT")); }
 
-// Number of frequency points in the computed radiation spectrum.
+// Number of points in the dense_frequency_spectrum=true fine frequency scan (see get_omega_range) --
+// distinct from N_harmonics (get_number_of_harmonics), which counts harmonics in the default mode.
 inline size_t get_N_omega(const ConfigMap& config) { return std::stoul(get_required(config, "N_omega")); }
 
 // The per-electron parameters a cylinder beam is generated from: cylinder geometry and Gaussian
@@ -231,9 +249,21 @@ inline double get_laser_period(const ConfigMap& config) {
   return (2 * MathUtils::pi / omega_laser);
 }
 
+// Number of points in the dense_frequency_spectrum=true fine frequency scan -- reads "N_omega".
+// Only used by Simulation::init_simulation_parameters when dense_frequency_spectrum is true; see
+// get_number_of_harmonics for the default (harmonics) mode's count, which reads "N_harmonics"
+// instead -- kept as two separate keys (rather than one shared count) so switching modes doesn't
+// silently reinterpret whatever count was already configured for the other mode.
 inline size_t get_number_of_frequencies(const ConfigMap& config) {
   size_t N_frequencies = std::stol(get_required(config, "N_omega"));
   return N_frequencies;
+}
+
+// Number of harmonics computed in the default (dense_frequency_spectrum=false) mode -- reads
+// "N_harmonics". See get_number_of_frequencies for the dense-scan mode's count ("N_omega").
+inline size_t get_number_of_harmonics(const ConfigMap& config) {
+  size_t N_harmonics = std::stoul(get_required(config, "N_harmonics"));
+  return N_harmonics;
 }
 
 // Raw num_threads config value: 0 means "use the maximum available", resolved by the caller

@@ -116,6 +116,13 @@ int main(int argc, char* argv[]) {
       Detector::plot_detector_scatter(*detector, run_output_dir, detector_axes_scale, detector_axes_unit);
     }
 
+    if (IoUtils::get_required(simulation_config, "dense_frequency_spectrum") == "true" &&
+        detector->get_total_points() != 1) {
+      std::cerr << "Warning: dense_frequency_spectrum=true is meant for a detector collapsed to a single "
+                << "point, but this detector has " << detector->get_total_points() << " points -- the fine "
+                << "frequency scan will run over every one of them.\n";
+    }
+
     size_t num_threads = IoUtils::get_num_threads(simulation_config);
     auto simulation_start = std::chrono::steady_clock::now();
     Simulation::RadiationField radiation_field = Simulation::run_simulation(
