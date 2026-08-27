@@ -47,6 +47,8 @@ python3 py_scripts/plot_detector_scatter.py       # only has output if plot_dete
 python3 py_scripts/plot_electron_beam_scatter.py  # only has output if plot_beam_scatter=true in the config
 python3 py_scripts/plot_field_heatmap_z0.py       # only has output if plot_field_heatmap=true in the config
 python3 py_scripts/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
+python3 py_scripts/plot_debug_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
+python3 py_scripts/plot_debug_exponent.py                        # meaningful output only if debug=true
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -105,6 +107,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
 | `radiation/` | `Core::Radiation` | `compute_radiation` — one electron's contribution to `Simulation::PackedRadiationField` (packed antisymmetric Faraday bivector, long/short-range amplitudes, summed over trajectory points/screen points/frequencies); `plot_radiation_field` exporter |
+| `debug/` | `Core::Debug` | `export_radiation_integrand`/`export_radiation_phase` — diagnostic-only, deliberately duplicated (not shared) reimplementation of `compute_radiation`'s per-tau math; see "Debug mode" below |
 
 ### Config file format
 
@@ -122,6 +125,36 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
 (`Core::MathUtils::Complex`), so each is split into two plain-number keys instead of one `key value [unit]` line —
 `laser_zeta_1_re`/`laser_zeta_1_im` and `laser_zeta_2_re`/`laser_zeta_2_im` — read via
 `IoUtils::get_complex_config_value`/`get_laser_zeta` (`io_utils.hpp`), not `convert_unit_to_number`.
+
+### Debug mode (per-tau radiation integrand diagnostics)
+
+`debug/` (`Core::Debug`, `debug_radiation.hpp`/`.cpp`) is a diagnostic-only module, deliberately kept isolated from
+`radiation.cpp`'s production accumulation path: `export_radiation_integrand`/`export_radiation_phase`
+**reimplement (duplicate, not share) `compute_radiation`'s per-tau `n0`/`R`/`amp_long`/`amp_short`/bivector-term
+math**, so this path can never be affected by, or accidentally affect, the real simulation. Enabled via the
+`debug` config key (default `false`); when `true`, `main.cpp` requires (and throws at startup otherwise)
+`beam_particle_count=1`, `detector_type=rectangular`, and `rectangular_detector_Nx=rectangular_detector_Ny=1`, and
+forces the diagnostic to evaluate at the fundamental only (`sim_par.fundamental_frequency`, already in `k =
+omega/c` units, not raw `omega` — see the `radiation_field.dat` `omega` bullet below), independent of
+`dense_frequency_spectrum`/`N_harmonics`/`N_omega`. Purely additive: the normal pipeline (including
+`run_simulation`/`radiation_field.dat`) still runs, so the integrand's own tau-sum can be cross-checked against
+the coherently-summed field (confirmed to agree to the file's printed precision, both long-range and short-range,
+once `general_factor` and any canonical-frame rotation are accounted for).
+
+Two output files, both one row per trajectory point (`tau`), for the single electron/screen point:
+- `debug_integrand.dat` (`export_radiation_integrand`): the 6 independent upper-triangle Faraday bivector
+  components' long-range/short-range contribution at that tau — the raw terms `compute_radiation` sums over tau,
+  before the final reduction. Visualize with `py_scripts/plot_debug_integrand.py <long|short> <mu> <nu>` (`mu >
+  nu` resolved via `F^{nu mu} = -F^{mu nu}`; `mu == nu` rejected, since the diagonal is identically zero).
+- `debug_exponent.dat` (`export_radiation_phase`): the phase factor `exp(i*(x[0]+R)*k)` common to every component
+  in `debug_integrand.dat` (all 6 x long/short) — factored out into its own file rather than repeated 12x per row.
+  Visualize with `py_scripts/plot_debug_exponent.py`.
+
+Both of those plotting scripts, and `plot_electron_trajectory.py`, plot against `tau/T` rather than raw `tau` (`T
+= 2*pi/omega`, the laser period) — `run_output_utils.get_laser_period(run_dir)` reads `laser_frequency` back out
+of that specific run's own `config.cfg` (written by `IoUtils::copy_config_to_run_directory`), not the live repo
+config, so the axis stays correct even if `config/coherent_thomson.cfg` has since changed. `plot_debug_integrand.py`
+still plots against raw `tau`, not `tau/T`.
 
 ### Known gaps / TODOs worth knowing before touching related code
 

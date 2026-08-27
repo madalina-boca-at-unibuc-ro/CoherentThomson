@@ -3,13 +3,14 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file
+from run_output_utils import find_latest_output_file, get_laser_period
 
 def plot_electron_trajectory(filepath):
     """
     Reads trajectory data (one or more electrons, tagged by 'electron_id') from a
     space-delimited text file and plots the trajectory components (position, momentum)
-    as a function of proper time in a 2x2 matrix array. To the left the temporal
+    as a function of proper time (in units of the laser period T = 2*pi/omega, read from
+    the run's own config.cfg) in a 2x2 matrix array. To the left the temporal
     component is plotted, to the right the three spatial parts. Color encodes which
     electron a line belongs to; on the spatial panels, linestyle encodes which
     component (x1/x2/x3 or p1/p2/p3) it is.
@@ -28,6 +29,10 @@ def plot_electron_trajectory(filepath):
     if not required_cols.issubset(data.columns):
         print(f"Error: File must contain headers: {list(required_cols)}")
         sys.exit(1)
+
+    T = get_laser_period(os.path.dirname(filepath))
+    data = data.copy()
+    data['tau_over_T'] = data['tau'] / T
 
     electron_ids = sorted(data['electron_id'].unique())
     # tab10 is a fixed 10-color qualitative palette; electron.dat never carries more
@@ -61,7 +66,7 @@ def plot_electron_trajectory(filepath):
         for eid in electron_ids:
             electron_data = data[data['electron_id'] == eid]
             for col, linestyle in zip(comp['cols'], comp['linestyles']):
-                ax.plot(electron_data['tau'], electron_data[col], color=electron_colors[eid],
+                ax.plot(electron_data['tau_over_T'], electron_data[col], color=electron_colors[eid],
                         linestyle=linestyle, linewidth=1.5)
         ax.set_title(comp['title'], fontsize=11, fontweight='bold')
         ax.set_ylabel('Amplitude')
@@ -79,8 +84,9 @@ def plot_electron_trajectory(filepath):
               bbox_to_anchor=(0.5, 0.90), fontsize=9, frameon=False)
 
     # 4. Label the bottom-most row X-axes explicitly
-    axes[1, 0].set_xlabel(r'Proper time $\tau$', fontsize=12)
-    axes[1, 1].set_xlabel(r'Proper time $\tau$', fontsize=12)
+    xlabel = r'Proper time $\tau / T$  ($T = 2\pi/\omega$, laser period)'
+    axes[1, 0].set_xlabel(xlabel, fontsize=12)
+    axes[1, 1].set_xlabel(xlabel, fontsize=12)
 
     # Adjust layout padding so titles, the electron-color legend, and axes labels don't overlap
     plt.suptitle(f"Electron Trajectory for {os.path.basename(filepath)}", fontsize=14, fontweight='bold', y=0.99)

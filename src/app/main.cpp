@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/include/debug/debug_radiation.hpp"
 #include "../core/include/detector/detector_factory.hpp"
 #include "../core/include/detector/detector_plotter.hpp"
 #include "../core/include/io_utils/config_parser.hpp"
@@ -114,6 +115,29 @@ int main(int argc, char* argv[]) {
     Detector::plot_detector(*detector, "stereographic_plot", run_output_dir, detector_axes_scale, detector_axes_unit);
     if (IoUtils::get_required(simulation_config, "plot_detector_scatter") == "true") {
       Detector::plot_detector_scatter(*detector, run_output_dir, detector_axes_scale, detector_axes_unit);
+    }
+
+    // Debug mode: dump the per-tau long-range/short-range radiation integrand for a single
+    // electron/screen point/frequency (the fundamental, i.e. N_harmonics=1 regardless of
+    // dense_frequency_spectrum/N_harmonics/N_omega) -- see Core::Debug::export_radiation_integrand.
+    // Purely additive: it only reads already-built state and does not alter the rest of the run, so
+    // the normal pipeline below (including run_simulation) still executes and radiation_field.dat
+    // can be cross-checked against the integrand's own tau-sum.
+    if (IoUtils::get_required(simulation_config, "debug") == "true") {
+      if (electron_beam.size() != 1) {
+        throw std::runtime_error("debug=true requires exactly one electron in the beam (set beam_particle_count=1)");
+      }
+      if (detector->get_type_name() != "RectangularDetector") {
+        throw std::runtime_error("debug=true requires a rectangular detector (set detector_type=rectangular)");
+      }
+      if (detector->get_total_points() != 1) {
+        throw std::runtime_error("debug=true requires exactly one detector point (set rectangular_detector_Nx="
+                                 "rectangular_detector_Ny=1)");
+      }
+      Debug::export_radiation_integrand(electron_beam[0], detector->get_point(0), sim_par.fundamental_frequency,
+                                        run_output_dir + "/debug_integrand.dat");
+      Debug::export_radiation_phase(electron_beam[0], detector->get_point(0), sim_par.fundamental_frequency,
+                                    run_output_dir + "/debug_exponent.dat");
     }
 
     if (IoUtils::get_required(simulation_config, "dense_frequency_spectrum") == "true" &&

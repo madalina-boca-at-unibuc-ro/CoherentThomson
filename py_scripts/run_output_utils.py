@@ -7,6 +7,7 @@ Core::IoUtils::make_run_output_directory created under the .cfg file's
 module centralizes that lookup so it isn't duplicated per script.
 """
 
+import math
 import os
 import re
 
@@ -62,3 +63,31 @@ def find_latest_output_file(filename, output_folder=None):
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"'{filepath}' does not exist")
     return filepath
+
+def read_config_value(config_path, key):
+    """
+    Reads a single 'key value [unit]' entry out of a .cfg file (the raw value token only, unit
+    suffix if any left unparsed) -- mirrors Core::IoUtils::get_required's key lookup. Meant to be
+    called with a specific run's own 'config.cfg' (written by
+    Core::IoUtils::copy_config_to_run_directory into every run directory), so a plot reads back the
+    config that actually produced that run's data rather than whatever config/coherent_thomson.cfg
+    currently contains.
+    """
+    with open(config_path) as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+            parts = stripped.split()
+            if parts[0] == key and len(parts) >= 2:
+                return parts[1]
+    raise ValueError(f"No '{key}' key found in '{config_path}'")
+
+def get_laser_period(run_dir):
+    """
+    Returns the laser period T = 2*pi/omega, reading 'laser_frequency' (bare omega, no unit
+    suffix -- see Core::IoUtils::get_laser_frequency) from run_dir's own 'config.cfg'.
+    """
+    config_path = os.path.join(run_dir, "config.cfg")
+    omega = float(read_config_value(config_path, "laser_frequency"))
+    return 2 * math.pi / omega
