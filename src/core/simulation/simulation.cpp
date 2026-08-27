@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <thread>
 #include <vector>
 
@@ -134,6 +135,15 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       for (size_t p = begin; p < end; ++p) {
         Particle::Electron& electron = electron_beam[p];
         Radiation::compute_radiation(electron, laser, frequencies_list, detector, local_field);
+        // Progress indicator: only thread 0 prints, both to avoid interleaved output from multiple
+        // threads writing to std::cout concurrently and because thread 0's chunk is representative
+        // enough of overall progress for a rough sense of how a long run is advancing.
+        if (thread_idx == 0) {
+          std::cout << "\rThread 0: electron " << (p - begin + 1) << "/" << (end - begin) << std::flush;
+        }
+      }
+      if (thread_idx == 0) {
+        std::cout << "\n";
       }
     });
   }

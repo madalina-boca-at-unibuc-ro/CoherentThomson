@@ -106,6 +106,30 @@ def get_circular_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     y_edges = r_edges[:, None] * np.sin(phi_edges)[None, :]
     return x_edges, y_edges
 
+def get_rectangular_cell_edges(config_path=DEFAULT_CONFIG_PATH):
+    """
+    Returns (x_edges, y_edges), each shape (Nx+1, Ny+1): the lab-plane coordinates of the *cell
+    corners* of the rectangular detector's (Nx, Ny) grid, the same half-step-back trick
+    get_spherical_cell_edges/get_circular_cell_edges use, needed so pcolormesh can render this
+    detector as a true heatmap (like the other two types) instead of a scatter -- a scatter over a
+    coarse Nx*Ny grid shows only sparse colored dots rather than a filled screen.
+    """
+    Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
+    Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
+    x_min, _ = read_config_value('rectangular_detector_x_min', config_path)
+    x_max, _ = read_config_value('rectangular_detector_x_max', config_path)
+    y_min, _ = read_config_value('rectangular_detector_y_min', config_path)
+    y_max, _ = read_config_value('rectangular_detector_y_max', config_path)
+    x_min, x_max, y_min, y_max = float(x_min), float(x_max), float(y_min), float(y_max)
+
+    dx = (x_max - x_min) / (Nx - 1) if Nx > 1 else 0.0
+    dy = (y_max - y_min) / (Ny - 1) if Ny > 1 else 0.0
+
+    x_edges_1d = x_min + (np.arange(Nx + 1) - 0.5) * dx
+    y_edges_1d = y_min + (np.arange(Ny + 1) - 0.5) * dy
+    x_edges, y_edges = np.meshgrid(x_edges_1d, y_edges_1d, indexing='ij')
+    return x_edges, y_edges
+
 def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     """
     Returns (x, y, x_label, y_label): one screen-plane coordinate pair per
@@ -195,13 +219,12 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     F^{mu nu} of the requested (long_range/short_range) Faraday tensor over
     the detector screen, one figure per configured frequency.
 
-    Rectangular detector: rendered as a colored scatter over its grid.
-    Spherical/circular detector: rendered as a true heatmap (pcolormesh over
-    the detector's native (N_theta, N_phi)/(N_R, N_phi) grid) rather than a
-    scatter -- a scatter over these points has no notion of which points are
-    neighbors, which breaks the azimuthal continuity (phi=0 and phi=2*pi are
-    the same physical direction) that any helical/vortex structure in the
-    field needs to actually look like a spiral around the vertex.
+    All three detector types are rendered as a true heatmap (pcolormesh over the detector's native
+    (Nx, Ny)/(N_theta, N_phi)/(N_R, N_phi) grid) rather than a scatter -- a scatter has no notion of
+    which points are neighbors, which both leaves coarse grids looking like sparse colored dots
+    instead of a filled screen, and (for the spherical/circular polar grids specifically) breaks the
+    azimuthal continuity (phi=0 and phi=2*pi are the same physical direction) that any helical/vortex
+    structure in the field needs to actually look like a spiral around the vertex.
     """
     prefix = {'long': 'LR', 'short': 'SR'}[range_type]
     re_col = f'{prefix}_F{mu}{nu}_re'
@@ -231,20 +254,22 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     x, y, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
     detector_geometry_label = get_detector_geometry_label(detector_type, config_path)
 
-    # Spherical/circular points are laid out row-major over their native (N_theta, N_phi)/(N_R, N_phi)
-    # grid -- see Core::Detector_2D::get_grid_indices -- so the field values below reshape cleanly
-    # into that grid; x/y are replaced with the cell-corner coordinates pcolormesh needs (see
-    # get_spherical_cell_edges/get_circular_cell_edges) instead of the per-point centers
-    # get_screen_coordinates returns. Rectangular detectors keep the scatter rendering below: their
-    # grid is already Cartesian-monotonic, so pcolormesh's default edge-inference works fine and a
-    # scatter is simpler to keep consistent with get_screen_coordinates' plain linspace.
-    grid_shape = None
-    if detector_type == 'spherical':
+    # All three detector types lay their points out row-major over their own native grid -- see
+    # Core::Detector_2D::get_grid_indices -- so the field values below reshape cleanly into that
+    # grid; x/y are replaced with the cell-corner coordinates pcolormesh needs (see
+    # get_rectangular_cell_edges/get_spherical_cell_edges/get_circular_cell_edges) instead of the
+    # per-point centers get_screen_coordinates returns.
+    if detector_type == 'rectangular':
+        Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
+        Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
+        grid_shape = (Nx, Ny)
+        x, y = get_rectangular_cell_edges(config_path)
+    elif detector_type == 'spherical':
         N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
         N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
         grid_shape = (N_theta, N_phi)
         x, y = get_spherical_cell_edges(config_path)
-    elif detector_type == 'circular':
+    else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
         grid_shape = (N_R, N_phi)
@@ -275,10 +300,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
 
         fig, axes = plt.subplots(2, 2, figsize=(12, 11))
         for ax, (values, title, cmap, vmin, vmax) in zip(axes.flat, panels):
-            if grid_shape is not None:
-                sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
-            else:
-                sc = ax.scatter(x, y, c=values, cmap=cmap, s=15, edgecolors='none', vmin=vmin, vmax=vmax)
+            sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
             ax.set_aspect('equal', adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)

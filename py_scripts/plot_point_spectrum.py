@@ -67,6 +67,7 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
 
     for ax in axes.flat:
         ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
+        ax.grid(True, which='major')
         if n_screen > 1:
             ax.legend(fontsize=8)
 

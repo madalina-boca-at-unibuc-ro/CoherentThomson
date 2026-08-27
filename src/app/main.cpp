@@ -142,9 +142,10 @@ int main(int argc, char* argv[]) {
 
     if (IoUtils::get_required(simulation_config, "dense_frequency_spectrum") == "true" &&
         detector->get_total_points() != 1) {
-      std::cerr << "Warning: dense_frequency_spectrum=true is meant for a detector collapsed to a single "
-                << "point, but this detector has " << detector->get_total_points() << " points -- the fine "
-                << "frequency scan will run over every one of them.\n";
+      std::cerr << "Error: dense_frequency_spectrum=true requires a detector collapsed to a single point, "
+                << "but this detector has " << detector->get_total_points() << " points -- only the first "
+                << "detector point will be used.\n";
+      detector->restrict_to_first_point();
     }
 
     size_t num_threads = IoUtils::get_num_threads(simulation_config);

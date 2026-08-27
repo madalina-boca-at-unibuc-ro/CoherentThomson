@@ -37,6 +37,16 @@ public:
 
   std::pair<size_t, size_t> get_grid_indices(size_t index) const { return {index / N2, index % N2}; }
 
+  // Collapses this detector down to just its first point (index 0) -- used when
+  // dense_frequency_spectrum requires exactly one screen point but the configured detector has more
+  // (see main.cpp). Safe post-construction: get_row_coordinate/get_col_coordinate at index 0 only
+  // depend on per-detector-type spacing fixed at construction (dx/dy, d_phi, ...), not on N1/N2.
+  void restrict_to_first_point() {
+    N1 = 1;
+    N2 = 1;
+    points.resize(1);
+  }
+
   // Pure virtual function: This handles the one-to-one mapping to 3D space
   virtual std::string get_type_name() const = 0;
   virtual double get_row_coordinate(size_t i) const = 0;  // For diagnostic output

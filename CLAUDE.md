@@ -248,9 +248,15 @@ still plots against raw `tau`, not `tau/T`.
   subclass already guards `N==1` and collapses to one exact point when its grid counts are set to `1`), so getting
   "one point, many frequencies" is purely a config choice — set the configured detector's grid to a single point
   (e.g. a `spherical` detector with `spherical_detector_N_theta=spherical_detector_N_phi=1` and matching
-  `_min`/`_max` angles) and turn on `dense_frequency_spectrum`. `main.cpp` prints a non-fatal `std::cerr` warning if
-  `dense_frequency_spectrum=true` but the detector has more than one point (a dense scan over a full imaging grid
-  is a very expensive footgun, not something to fail silently into). Visualize the result with
+  `_min`/`_max` angles) and turn on `dense_frequency_spectrum`. If `dense_frequency_spectrum=true` but the detector
+  has more than one point (a dense scan over a full imaging grid is a very expensive footgun, not something to fail
+  silently into), `main.cpp` prints a non-fatal `std::cerr` error and then calls `detector->restrict_to_first_point()`
+  (`Detector_2D::restrict_to_first_point`, `detector.hpp`) to collapse it to just index 0 before `run_simulation`
+  runs — safe post-construction since `get_row_coordinate`/`get_col_coordinate` at index 0 only depend on
+  per-detector-type spacing fixed at construction (`dx`/`dy`, `d_phi`, ...), not on the grid dimensions it
+  overwrites. The detector geometry plots (`plot_detector`/`plot_detector_scatter`, called earlier in `main.cpp`)
+  still reflect the full originally-configured grid, since the restriction happens only right before the actual
+  (expensive) simulation. Visualize the result with
   `py_scripts/plot_point_spectrum.py` (`<long|short> <mu> <nu>`) — a line plot of `radiation_field.dat`'s
   `F^{mu nu}` vs. `omega`, the 1D counterpart of `plot_radiation_field.py`'s per-frequency 2D field-map PNGs (the
   wrong plot shape once frequency, not screen position, is the interesting axis).
@@ -286,9 +292,10 @@ still plots against raw `tau`, not `tau/T`.
   linear `r` spacing would make point density diverge as `1/r` near the center and collapse all `N_phi` points at
   `i=0` onto the origin when `R_min=0`. Anything reading `radiation_field.dat`'s circular-detector coordinates must
   reconstruct `r` from `i` via this formula, not assume linear spacing. `plot_radiation_field.py` mirrors it
-  exactly and renders `CircularDetector`/`SphericalDetector` as a `pcolormesh` over the native grid (not a
-  scatter), so the `phi=0`/`phi=2*pi` seam stays continuous for helical/vortex patterns; `RectangularDetector` is
-  the only type still rendered as a scatter, since its grid is already Cartesian-monotonic.
+  exactly and renders all three detector types as a `pcolormesh` over their native grid rather than a scatter —
+  for `CircularDetector`/`SphericalDetector` this keeps the `phi=0`/`phi=2*pi` seam continuous for helical/vortex
+  patterns; for `RectangularDetector` (grid already Cartesian-monotonic, so continuity isn't the issue) it instead
+  avoids a coarse `Nx`/`Ny` grid rendering as sparse colored dots instead of a filled screen.
 - **The beam cylinder's spatial axis is derived from the beam's own mean momentum direction, not fixed along
   canonical `Oz`.** `generate_cylinder_beam` computes a rotation from `average_px/py/pz` once per beam and applies
   it to each electron's local cylinder point before the shared laser rotation (falls back to identity if the mean
