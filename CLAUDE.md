@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Simulates coherent (nonlinear) Thomson scattering of an intense laser pulse off a relativistic electron beam.
 
 End-to-end today (`src/app/main.cpp`): build a config-driven laser pulse and detector screen, generate an electron
-beam, integrate one hardcoded electron's trajectory for plotting, then run the coherent radiation spectrum
+beam, integrate the first up to 10 electrons' trajectories for plotting, then run the coherent radiation spectrum
 calculation (`Simulation::run_simulation`) over the whole beam and export `.dat` files for plotting. The
 per-electron physics `run_simulation` delegates to, `Radiation::compute_radiation`, accumulates the full
 antisymmetric Faraday bivector tensor (long-range and short-range amplitude terms, normalized) per
