@@ -72,14 +72,17 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 
-  //compute the dressed electron momentum q
+  // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 xi^2 / (4 k1.p) * k1,
+  // giving the mass-shell shift m_eff^2 = m^2(1+xi^2/2). The (mc)^2 factor is essential: xi is
+  // dimensionless, so without it the correction term has the wrong units and (since mc = 137.036 in
+  // atomic units) ends up ~(mc)^2 too small to have any visible effect.
   double xi = laser.get_a0();
-  MathUtils::FourVector q = p + xi * xi /(4.0 * MathUtils::contract(p, k1)) * k1;
+  MathUtils::FourVector q = p + mc * mc * xi * xi / (2.0 * MathUtils::contract(p, k1)) * k1;
 
   // The fundamental's frequency, computed the same way regardless of dense_spectrum -- used only to
   // let Radiation::plot_radiation_field normalize its exported "omega" column into units of the
   // fundamental (see simulation_parameters::fundamental_frequency).
-  // to include non linear effects the non_liear_Thomson_formula is called with q
+  // to include non linear effects the non_linear_Thomson_formula is called with q
   double fundamental_frequency = PhysUtils::non_linear_Thomson_formula(k1, q, n2, 1);
 
   // Default: the first N_harmonics harmonics of the fundamental, for imaging over the whole
@@ -88,15 +91,16 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   // a single point (N_total_points == 1, see main.cpp's warning below), to resolve a Thomson
   // line's width rather than just locate the harmonic peaks.
   if (dense_spectrum) {
-    //the scaling factor has the role of adjusting the frequency interval position 
-    //in the case when the emitted frequency is not multiple of omega_laser (this includes also non linear effects)
+    // the scaling factor has the role of adjusting the frequency interval position
+    // in the case when the emitted frequency is not multiple of omega_laser (this includes also non linear effects)
     double frequency_scaling_factor = fundamental_frequency * PhysUtils::AtomicUnits::c / laser.get_omega();
     auto [omega_min, omega_max] = IoUtils::get_omega_range(config);
-    omega_min *= frequency_scaling_factor; 
-    omega_max *= frequency_scaling_factor; 
+    omega_min *= frequency_scaling_factor;
+    omega_max *= frequency_scaling_factor;
+    std::cout << "frequency_scaling_factor " << frequency_scaling_factor << std::endl;
     for (size_t i = 0; i < N_frequencies; i++) {
       double omega = (N_frequencies > 1) ? omega_min + static_cast<double>(i) * (omega_max - omega_min) /
-                                               static_cast<double>(N_frequencies - 1)
+                                                           static_cast<double>(N_frequencies - 1)
                                          : omega_min;
       frequencies_list[i] = omega / PhysUtils::AtomicUnits::c;  // match non_linear_Thomson_formula's omega/c convention
     }

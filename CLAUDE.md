@@ -128,6 +128,10 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
 
 ### Debug mode (per-tau radiation integrand diagnostics)
 
+`config/coherent_thomson_debug.cfg` is a ready-made config satisfying the constraints below (`debug=true`,
+`beam_particle_count=1`, single-point rectangular detector) — use it (or a copy) instead of hand-editing the
+default config when exercising this path.
+
 `debug/` (`Core::Debug`, `debug_radiation.hpp`/`.cpp`) is a diagnostic-only module, deliberately kept isolated from
 `radiation.cpp`'s production accumulation path: `export_radiation_integrand`/`export_radiation_phase`
 **reimplement (duplicate, not share) `compute_radiation`'s per-tau `n0`/`R`/`amp_long`/`amp_short`/bivector-term
@@ -241,8 +245,11 @@ still plots against raw `tau`, not `tau/T`.
   `N_omega` are deliberately separate config keys (`IoUtils::get_number_of_harmonics`/`get_number_of_frequencies`)
   so switching `dense_frequency_spectrum` doesn't silently reinterpret whichever count was already configured for
   the other mode. This mode is meant for probing the *shape* of a single Thomson line (its width, not just its
-  peak position) at one screen point, and doesn't touch `k1`/`p`/`n2` or `non_linear_Thomson_formula` at all
-  — no new `Detector` type or plotting
+  peak position) at one screen point. It does indirectly depend on `fundamental_frequency` (see the `k1`/`q`/`n2`
+  bullet below): `omega_min`/`omega_max` are each multiplied by `frequency_scaling_factor = fundamental_frequency *
+  c / laser.get_omega()` before building the linear scan, so the configured range re-centers on the actual
+  (possibly nonlinearly-shifted) fundamental instead of assuming the emitted frequency is an exact multiple of
+  `laser_omega` — no new `Detector` type or plotting
   machinery: `Radiation::compute_radiation`/`Simulation::run_simulation`/`Radiation::plot_radiation_field` are
   already fully generic over both the frequency list's spacing and the detector's point count (every `Detector_2D`
   subclass already guards `N==1` and collapses to one exact point when its grid counts are set to `1`), so getting
@@ -262,25 +269,54 @@ still plots against raw `tau`, not `tau/T`.
   wrong plot shape once frequency, not screen position, is the interesting axis).
 - **`radiation_field.dat`'s exported `omega` column is in units of the fundamental, not raw atomic-unit omega.**
   `Radiation::plot_radiation_field` divides every `frequencies_list` entry by
-  `simulation_parameters::fundamental_frequency` (`= PhysUtils::non_linear_Thomson_formula(k1, p, n2, 1)`,
-  computed once in `init_simulation_parameters` regardless of `dense_frequency_spectrum`) before writing it, so a
+  `simulation_parameters::fundamental_frequency` (`= PhysUtils::non_linear_Thomson_formula(k1, q, n2, 1)` — note
+  the *dressed* momentum `q`, not bare `p`, see the `k1`/`q`/`n2` bullet below — computed once in
+  `init_simulation_parameters` regardless of `dense_frequency_spectrum`) before writing it, so a
   value of `1.0` always means "the fundamental" and `3.0` always means "third harmonic" — including for the
-  default harmonics mode, where this is exact by construction (`frequencies_list[i] / fundamental_frequency ==
-  i + 1`). This normalizes against the *actual*, possibly Doppler-shifted fundamental for the configured
-  observation direction/electron momentum, not the bare `laser_frequency` — the two coincide only when the beam's
-  average momentum is zero (`non_linear_Thomson_formula`'s `contract(p, n1)/contract(p, n2)` ratio is then `1`
-  regardless of direction), so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam or an
-  off-axis detector direction. Both `plot_radiation_field.py` and `plot_point_spectrum.py` label this axis
+  default harmonics mode, where the per-harmonic list itself is still built from bare `p`
+  (`frequencies_list[i] = non_linear_Thomson_formula(k1, p, n2, i + 1)`), so `frequencies_list[i] /
+  fundamental_frequency == i + 1` no longer holds exactly once `a0 != 0` (the ponderomotive shift in `q` only
+  enters the normalizing `fundamental_frequency`, not the harmonics themselves). This normalizes against the
+  *actual*, possibly Doppler-shifted fundamental for the configured observation direction/electron momentum, not
+  the bare `laser_frequency` — the two coincide only when the beam's average momentum is zero and `a0` is
+  negligible, so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam, an off-axis detector
+  direction, or a strong pulse. Both `plot_radiation_field.py` and `plot_point_spectrum.py` label this axis
   `$\omega/\omega_1$` accordingly.
-- **`k1`, `p`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame** (laser
-  along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
+- **`k1`, `p`/`q`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame**
+  (laser along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
   Minkowski contractions, invariant under a *common* rotation, so evaluating pre-rotation gives the same result
   without rotating anything. (Different from the radiated field itself, which *is* built in the lab frame by
   `compute_radiation` and rotated back explicitly — see above.) `k1` is fixed along canonical `Oz` scaled by
   `laser.get_omega() / c`; `n2` is the detector's own canonical-frame direction via
   `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — building `k1` from
   `laser.get_unity_n()` or `n2` from `average_px/py/pz` directly would mix frames and give wrong frequencies
-  whenever the laser's configured direction isn't along `Oz`.
+  whenever the laser's configured direction isn't along `Oz`. **`q` is a ponderomotively-dressed momentum**, `q =
+  p + (mc)^2*xi^2/(2*contract(p, k1)) * k1` with `xi = laser.get_a0()`, `mc = m_0*c` — used *only* to compute
+  `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`),
+  not for the per-harmonic `frequencies_list` entries in the default (non-dense) mode, which still use bare `p`.
+  **IMPORTANT — the exact coefficient in this formula is still unconfirmed and needs to be checked against a
+  reference** (e.g. the drift/quasi-momentum of a Volkov electron, Kibble 1966; Salamin et al., Phys. Rep. 427
+  (2006) 41, sec. 2). The `(mc)^2` prefactor was added because without it `xi` (dimensionless) leaves the
+  correction term with the wrong units and, since `mc = 137.036` in these atomic units, makes it `~(mc)^2` too
+  small to have any visible effect regardless of `a0` — the original bare-`xi^2` version was mistaken for a
+  no-op for exactly this reason during physics-vs-code debugging of a backward-detector fundamental-frequency
+  mismatch. The `4` vs. `2` denominator (i.e. whether `<a^2> = xi^2/2`, the linear-polarization cycle average, or
+  `xi^2`, the circular-polarization constant value, applies) has since been changed in the working tree from `4` to
+  `2` because `2` was found to visibly fix a backward-detector spectral-peak mismatch — **but this empirical fit is
+  not yet explained and should not be trusted as the derivation**. Naively, `2` looks like the circular-polarization
+  case (this project's example configs use `zeta_1=(1,0)`/`zeta_2=(0,1)`, i.e. circular) — but `create_laser`
+  (`laser_factory.cpp`) normalizes `zeta_1`/`zeta_2` to `|zeta_1|^2+|zeta_2|^2=1`, which for the circular case
+  divides each component's amplitude by `sqrt(2)`; working through `get_faraday_tensor`'s `Ex`/`Ey` for a plane wave
+  with this normalization gives a *constant* instantaneous field magnitude `E0_c/sqrt(2)`, i.e. an effective `a0` of
+  `xi/sqrt(2)`, hence `<a^2> = xi^2/2` — the *same* value as linear polarization's cycle average. Under that
+  reading, circular and linear should both point to denominator `4`, not `2`, matching the original guess rather
+  than what empirically fixed the peak. That contradiction means `2` fixing the peak is likely masking a *different*,
+  still-unidentified compensating factor-of-2 elsewhere (e.g. in `MathUtils::contract`'s metric sign convention, or
+  in how `k1`/`p` are combined) rather than being explained by this coefficient alone. Don't re-derive-and-guess
+  further from formula inspection alone — the more reliable check is to compare `q` (for whichever denominator)
+  against the electron's own **numerically simulated** cycle-averaged drift momentum (already available from the
+  RK4 trajectory data for a single electron at rest in the field, no reference formula needed), since fitting the
+  coefficient to match one observed spectral peak risks hiding a second bug instead of finding it.
 - **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
   laser's, but shares the laser's rotation.** `create_detector` passes both the laser's 4x4 `rotation_matrix` and
   the detector's own local direction into `Detector_2D`, which builds a 3x3 `local_rotation` orthogonal to that
