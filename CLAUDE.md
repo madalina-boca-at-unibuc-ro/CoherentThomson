@@ -49,6 +49,7 @@ python3 py_scripts/plot_field_heatmap_z0.py       # only has output if plot_fiel
 python3 py_scripts/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
 python3 py_scripts/plot_debug_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
 python3 py_scripts/plot_debug_exponent.py                        # meaningful output only if debug=true
+python3 py_scripts/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -238,6 +239,14 @@ still plots against raw `tau`, not `tau/T`.
 - The whole beam is generated and held in memory upfront rather than per-thread/on-the-fly inside
   `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
   with on-the-fly generation planned as a later memory optimization.
+- **`PhysUtils::non_linear_Thomson_formula` (`phys_utils.hpp`) itself is flagged in-code as still needing review**
+  (`// TO BE DOCUMENTED IN CLAUDE.md ; the agreement with the implementation should be checked`). It computes the
+  lab-frame frequency of the `N`-th relativistic-Doppler harmonic radiated by a particle of four-momentum `p1`,
+  seen along direction `n2`, for incident light of four-momentum `k1`: `omega2 = omega1 * N * contract(p1,
+  n1)/contract(p1, n2)` where `omega1 = k1[0]*c` and `n1 = k1/k1[0]`; the return value is `omega2/c` (an `omega/c`
+  convention, not raw angular frequency — see the `omega_min`/`omega_max` bullet below). It is exactly linear in
+  `N`, which is what makes the `radiation_field.dat` `omega`-column normalization (see below) exact once both the
+  harmonics and the fundamental share the same momentum argument.
 - **`omega_min`/`omega_max` are only honored when `dense_frequency_spectrum` (config key, default `false`) is
   `true`.** By default `init_simulation_parameters` still builds `frequencies_list` as `N_harmonics` consecutive
   harmonics of the nonlinear Thomson formula (`PhysUtils::non_linear_Thomson_formula`) starting at harmonic index
@@ -286,10 +295,14 @@ still plots against raw `tau`, not `tau/T`.
   the *dressed* momentum `q`, not bare `p`, see the `k1`/`q`/`n2` bullet below — computed once in
   `init_simulation_parameters` regardless of `dense_frequency_spectrum`) before writing it, so a
   value of `1.0` always means "the fundamental" and `3.0` always means "third harmonic" — including for the
-  default harmonics mode, where the per-harmonic list itself is still built from bare `p`
-  (`frequencies_list[i] = non_linear_Thomson_formula(k1, p, n2, i + 1)`), so `frequencies_list[i] /
-  fundamental_frequency == i + 1` no longer holds exactly once `a0 != 0` (the ponderomotive shift in `q` only
-  enters the normalizing `fundamental_frequency`, not the harmonics themselves). This normalizes against the
+  default harmonics mode, where the per-harmonic list is now also built from the dressed `q`, not bare `p`
+  (`frequencies_list[i] = non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i)`). Since
+  `non_linear_Thomson_formula` is exactly linear in its harmonic index `N` (`omega2 = omega1 * N *
+  contract(p1,n1)/contract(p1,n2)`, `phys_utils.hpp`), and both calls now share the same `q`,
+  `frequencies_list[i] / fundamental_frequency == N_harmonics_min + i` holds *exactly*, including for `a0 != 0` —
+  this used to only hold approximately back when harmonics used bare `p` against a `q`-based
+  `fundamental_frequency`; that mismatch was fixed by the "corrected the dressed momentum" /
+  "changed the dressed momentum" commits. This normalizes against the
   *actual*, possibly Doppler-shifted fundamental for the configured observation direction/electron momentum, not
   the bare `laser_frequency` — the two coincide only when the beam's average momentum is zero and `a0` is
   negligible, so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam, an off-axis detector
@@ -304,9 +317,12 @@ still plots against raw `tau`, not `tau/T`.
   `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — building `k1` from
   `laser.get_unity_n()` or `n2` from `average_px/py/pz` directly would mix frames and give wrong frequencies
   whenever the laser's configured direction isn't along `Oz`. **`q` is a ponderomotively-dressed momentum**, `q =
-  p + (mc)^2*xi^2/(2*contract(p, k1)) * k1` with `xi = laser.get_a0()`, `mc = m_0*c` — used *only* to compute
-  `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`),
-  not for the per-harmonic `frequencies_list` entries in the default (non-dense) mode, which still use bare `p`.
+  p + (mc)^2*xi^2/(2*contract(p, k1)) * k1` with `xi = laser.get_a0()`, `mc = m_0*c` — used both to compute
+  `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`)
+  and, as of the "changed/corrected the dressed momentum" commits, for the per-harmonic `frequencies_list`
+  entries in the default (non-dense) mode too (previously those used bare `p`, which made the
+  `frequencies_list[i]/fundamental_frequency` normalization only approximate for `a0 != 0` — see the
+  `radiation_field.dat`'s exported `omega` column bullet above).
   The `(mc)^2` prefactor is required for unit consistency (`xi` is dimensionless, and `mc = 137.036` in these
   atomic units, so omitting it would make the correction term negligibly small regardless of `a0`). **RESOLVED**:
   the `2` denominator (`<a^2> = xi^2/2`) is confirmed correct — it fixed the backward-detector spectral-peak
@@ -360,4 +376,14 @@ still plots against raw `tau`, not `tau/T`.
   isn't a useful diagnostic here). The fundamental (`i_omega=0`) also isn't a useful test this close to the beam
   axis — its angular variation is ~6 orders of magnitude below its constant offset, below the double-precision
   noise floor.
-</content>
+- **`theory/angular_momentum_flux_density.md` derives the spectral angular-momentum flux density along `Oz`**,
+  split into long-range/short-range field cross-terms (`(ll)`, `(ls)`, `(sl)`, plus the doc's implicitly-omitted
+  `(ss)` needed for the four to sum back to the total) matching the long/short-range amplitude split
+  `compute_radiation` already uses for the Faraday bivector. Implemented in Python only, in
+  `py_scripts/plot_angular_momentum_flux.py`, entirely as post-processing of an existing run's
+  `radiation_field.dat` — no C++ code computes or exports it. Restricted to `rectangular`/`circular` detectors
+  (the formula assumes one flat transverse plane with a shared normal, which a `spherical` detector's points don't
+  generally satisfy) and generalizes "`Oz`" to the detector's own local normal (`detector_direction_theta/phi`),
+  reusing `Core::MathUtils::rotation_matrix_from_direction`'s exact three-case logic (reimplemented in Python) to
+  rotate the exported Faraday tensor from the canonical/lab frame back into the detector's own local frame before
+  applying the formula — see the script's module docstring for the full reasoning and its scope limits.
