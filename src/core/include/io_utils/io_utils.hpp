@@ -266,6 +266,16 @@ inline size_t get_number_of_harmonics(const ConfigMap& config) {
   return N_harmonics;
 }
 
+// Harmonic index the default (dense_frequency_spectrum=false) mode's harmonics list starts at --
+// reads "N_harmonics_min". The list then covers N_harmonics consecutive harmonic indices
+// N_harmonics_min, N_harmonics_min+1, .... A value of 1 (the common case) reproduces the previous
+// "first N_harmonics harmonics" behavior. Only meaningful alongside get_number_of_harmonics; unused
+// in dense_frequency_spectrum=true mode, which instead scans directly between omega_min/omega_max.
+inline size_t get_number_of_harmonics_min(const ConfigMap& config) {
+  size_t N_harmonics_min = std::stoul(get_required(config, "N_harmonics_min"));
+  return N_harmonics_min;
+}
+
 // Raw num_threads config value: 0 means "use the maximum available", resolved by the caller
 // (Simulation::run_simulation) against std::thread::hardware_concurrency().
 inline size_t get_num_threads(const ConfigMap& config) { return std::stoul(get_required(config, "num_threads")); }

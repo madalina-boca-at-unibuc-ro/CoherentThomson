@@ -48,20 +48,24 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
   size_t N_freq = frequencies_list.size();
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
 
-  // Simulation::init_simulation_parameters builds frequencies_list as the first N_freq harmonics
-  // of a single fundamental (frequencies_list[i] == (i+1) * frequencies_list[0] exactly, since
-  // only the harmonic index N varies across non_linear_Thomson_formula calls -- see
-  // simulation.cpp). When that holds, exp(i*phase*frequencies_list[i]) is just
-  // exp(i*phase*frequencies_list[0]) raised to the (i+1)-th power, so every harmonic's phase
-  // factor can be obtained from one cos/sin evaluation plus cheap complex multiplications instead
-  // of N_freq separate transcendental evaluations -- checked once here (not per trajectory/screen
-  // point) so a future change to non-harmonic frequencies (e.g. honoring omega_min/omega_max,
-  // see CLAUDE.md) safely falls back to the direct per-frequency evaluation below rather than
-  // silently computing the wrong phase.
-  bool frequencies_are_harmonics = N_freq > 0;
-  for (size_t i = 1; frequencies_are_harmonics && i < N_freq; ++i) {
-    double expected = static_cast<double>(i + 1) * frequencies_list[0];
-    frequencies_are_harmonics = std::abs(frequencies_list[i] - expected) <= 1e-9 * std::abs(expected);
+  // Simulation::init_simulation_parameters builds frequencies_list as an arithmetic progression in
+  // both its modes: N_freq consecutive harmonics N_harmonics_min, N_harmonics_min+1, ... of a
+  // single fundamental (non_linear_Thomson_formula is exactly linear in the harmonic index, so
+  // frequencies_list[i] == frequencies_list[0] + i*step for a constant step -- see simulation.cpp),
+  // or (dense_frequency_spectrum=true) a plain linear scan between omega_min/omega_max. Either way,
+  // exp(i*phase*frequencies_list[i]) is just exp(i*phase*frequencies_list[0]) times
+  // exp(i*phase*step) raised to the i-th power, so every entry's phase factor can be obtained from
+  // two cos/sin evaluations plus cheap complex multiplications instead of N_freq separate
+  // transcendental evaluations -- checked once here (not per trajectory/screen point) so a future
+  // change to non-evenly-spaced frequencies safely falls back to the direct per-frequency
+  // evaluation below rather than silently computing the wrong phase. Note this is unrelated to
+  // which harmonic index the list starts at (N_harmonics_min): the recurrence only needs constant
+  // spacing, not that frequencies_list[0] itself be the fundamental.
+  double step = N_freq > 1 ? frequencies_list[1] - frequencies_list[0] : 0.0;
+  bool frequencies_are_evenly_spaced = N_freq > 0;
+  for (size_t i = 2; frequencies_are_evenly_spaced && i < N_freq; ++i) {
+    double expected = frequencies_list[0] + static_cast<double>(i) * step;
+    frequencies_are_evenly_spaced = std::abs(frequencies_list[i] - expected) <= 1e-9 * std::abs(expected);
   }
 
   // Per-frequency accumulators for one screen point at a time, reused (and zeroed) across
@@ -122,17 +126,18 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
 
       double phase_base = x[0] + R;
 
-      // cexp_1, the fundamental's phase factor, is computed via one cos/sin evaluation
-      // (std::polar(1, theta) == exp(i*theta) without the generic complex-exp path's extra
-      // real-exponential evaluation). When frequencies_are_harmonics holds, every subsequent
-      // harmonic's phase factor is obtained by multiplying by cexp_1 again rather than by another
-      // transcendental evaluation. Guarded by N_freq > 0 since frequencies_list[0] would
-      // otherwise be an out-of-bounds read.
-      MathUtils::Complex cexp_1 = N_freq > 0 ? std::polar(1.0, phase_base * frequencies_list[0]) : MathUtils::Complex{};
-      MathUtils::Complex cexp = cexp_1;
+      // cexp, frequencies_list[0]'s phase factor, and cexp_step, the constant spacing's phase
+      // factor, are each computed via one cos/sin evaluation (std::polar(1, theta) ==
+      // exp(i*theta) without the generic complex-exp path's extra real-exponential evaluation).
+      // When frequencies_are_evenly_spaced holds, every subsequent entry's phase factor is
+      // obtained by multiplying by cexp_step again rather than by another transcendental
+      // evaluation. Guarded by N_freq > 0 since frequencies_list[0] would otherwise be an
+      // out-of-bounds read.
+      MathUtils::Complex cexp = N_freq > 0 ? std::polar(1.0, phase_base * frequencies_list[0]) : MathUtils::Complex{};
+      MathUtils::Complex cexp_step = N_freq > 1 ? std::polar(1.0, phase_base * step) : MathUtils::Complex{};
 
       for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
-        if (!frequencies_are_harmonics) {
+        if (!frequencies_are_evenly_spaced) {
           cexp = std::polar(1.0, phase_base * frequencies_list[i_freq]);
         }
         // amp_long = (-i * freq/R) * cexp and amp_short = amp_short_0 * cexp, expanded directly
@@ -150,7 +155,7 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         add_bivector_term(local_long[i_freq], local_short[i_freq], 4, term13, amp_long, amp_short);
         add_bivector_term(local_long[i_freq], local_short[i_freq], 5, term23, amp_long, amp_short);
 
-        if (frequencies_are_harmonics) cexp *= cexp_1;
+        if (frequencies_are_evenly_spaced) cexp *= cexp_step;
       }
     }
 

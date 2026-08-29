@@ -64,9 +64,9 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   // phi=0) rather than laser.get_unity_n() (the laser's actual, rotated direction), and n2 is the
   // detector's own canonical-frame direction (detector_direction_theta/phi) rather than the electron's
   // own direction of motion. The actual spectrum depends on the observation direction, but in the code we
-  // calculate it at the same set of values for the entire screen. Hard coded to be the first N_harmonics
-  // harmonics by default; the omega_min/omega_max limits in the input file are only honored when
-  // dense_frequency_spectrum is true (see CLAUDE.md).
+  // calculate it at the same set of values for the entire screen. Hard coded to be N_harmonics
+  // consecutive harmonics starting at N_harmonics_min by default; the omega_min/omega_max limits in
+  // the input file are only honored when dense_frequency_spectrum is true (see CLAUDE.md).
   MathUtils::RealFourVector k1 =
       MathUtils::create_unit_light_like_vector<double>(0.0, 0.0) * laser.get_omega() / PhysUtils::AtomicUnits::c;
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
@@ -85,7 +85,8 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   // to include non linear effects the non_linear_Thomson_formula is called with q
   double fundamental_frequency = PhysUtils::non_linear_Thomson_formula(k1, q, n2, 1);
 
-  // Default: the first N_harmonics harmonics of the fundamental, for imaging over the whole
+  // Default: N_harmonics consecutive harmonics starting at N_harmonics_min (1, the common case,
+  // reproduces the previous "first N_harmonics harmonics" behavior), for imaging over the whole
   // detector screen. When dense_frequency_spectrum is true, frequencies_list is instead a fine
   // linear scan from omega_min to omega_max (N_omega points) -- meant for a detector collapsed to
   // a single point (N_total_points == 1, see main.cpp's warning below), to resolve a Thomson
@@ -105,8 +106,9 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
       frequencies_list[i] = omega / PhysUtils::AtomicUnits::c;  // match non_linear_Thomson_formula's omega/c convention
     }
   } else {
+    size_t N_harmonics_min = IoUtils::get_number_of_harmonics_min(config);
     for (size_t i = 0; i < N_frequencies; i++) {
-      frequencies_list[i] = PhysUtils::non_linear_Thomson_formula(k1, q, n2, i + 1);
+      frequencies_list[i] = PhysUtils::non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i);
     }
   }
 

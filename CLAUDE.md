@@ -140,7 +140,7 @@ math**, so this path can never be affected by, or accidentally affect, the real 
 `beam_particle_count=1`, `detector_type=rectangular`, and `rectangular_detector_Nx=rectangular_detector_Ny=1`, and
 forces the diagnostic to evaluate at the fundamental only (`sim_par.fundamental_frequency`, already in `k =
 omega/c` units, not raw `omega` — see the `radiation_field.dat` `omega` bullet below), independent of
-`dense_frequency_spectrum`/`N_harmonics`/`N_omega`. Purely additive: the normal pipeline (including
+`dense_frequency_spectrum`/`N_harmonics`/`N_harmonics_min`/`N_omega`. Purely additive: the normal pipeline (including
 `run_simulation`/`radiation_field.dat`) still runs, so the integrand's own tau-sum can be cross-checked against
 the coherently-summed field (confirmed to agree to the file's printed precision, both long-range and short-range,
 once `general_factor` and any canonical-frame rotation are accounted for).
@@ -209,10 +209,13 @@ still plots against raw `tau`, not `tau/T`.
   is the dominant cost of a run. The loop nests screen point (`i_d`) outer, trajectory point (`i_tau`) inner,
   reversed from the naive order, so each screen point's tau-sum accumulates in cache/register-resident local
   tensors and the (potentially tens-of-MB) `field` array is written once per `(i_d, i_freq)` instead of once per
-  `(i_tau, i_d, i_freq)` triple. Since `frequencies_list` is built as integer harmonics of one fundamental, the
-  phase factor `exp(i*phase*freq)` is computed via one `std::polar` call plus cheap complex multiplications for
-  higher harmonics (guarded by a per-electron `frequencies_are_harmonics` check, falling back to per-frequency
-  `std::polar` otherwise) — keep this in sync with the `omega_min`/`omega_max` gap below if you touch either.
+  `(i_tau, i_d, i_freq)` triple. Since `frequencies_list` is always built as an evenly-spaced (arithmetic
+  progression) list — consecutive harmonics by default (see the `omega_min`/`omega_max` bullet below), or a
+  linear scan when `dense_frequency_spectrum=true` — the phase factor `exp(i*phase*freq)` for `frequencies_list[0]`
+  and for the constant spacing between entries are each computed via one `std::polar` call, and every other
+  entry's phase factor follows from cheap complex multiplications (guarded by a per-electron
+  `frequencies_are_evenly_spaced` check, falling back to per-frequency `std::polar` otherwise) — keep this in sync
+  with the `omega_min`/`omega_max` gap below if you touch either.
   Measured ~2.6x wall-clock speedup from these two changes together on a fine-detector-grid config.
 - **`tau_0_traj` is hardcoded to `0.0`** in `Simulation::init_simulation_parameters` rather than derived from the
   pulse's actual physical start — every electron starts its proper-time grid at `tau=0` regardless of the pulse's
@@ -236,10 +239,20 @@ still plots against raw `tau`, not `tau/T`.
   `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
   with on-the-fly generation planned as a later memory optimization.
 - **`omega_min`/`omega_max` are only honored when `dense_frequency_spectrum` (config key, default `false`) is
-  `true`.** By default `init_simulation_parameters` still builds `frequencies_list` as the first `N_harmonics`
-  harmonics of the nonlinear Thomson formula (`PhysUtils::non_linear_Thomson_formula`), ignoring `omega_min`/
-  `omega_max` entirely — appropriate for imaging over a whole detector screen, where you want the harmonic peaks'
-  locations, not fine resolution between them. When `dense_frequency_spectrum=true`, `frequencies_list` is instead
+  `true`.** By default `init_simulation_parameters` still builds `frequencies_list` as `N_harmonics` consecutive
+  harmonics of the nonlinear Thomson formula (`PhysUtils::non_linear_Thomson_formula`) starting at harmonic index
+  `N_harmonics_min` (config key; `1`, the fundamental, reproduces the old "first `N_harmonics` harmonics"
+  behavior — `IoUtils::get_number_of_harmonics_min`), ignoring `omega_min`/`omega_max` entirely — appropriate for
+  imaging over a whole detector screen, where you want the harmonic peaks' locations, not fine resolution between
+  them. `N_harmonics_min` only shifts which harmonics are computed; it has no effect on `fundamental_frequency`
+  (always the true, dressed-momentum fundamental at `N=1`, see the `k1`/`q`/`n2` bullet below), so
+  `radiation_field.dat`'s exported `omega` column still reads e.g. `5.0` for the first row when
+  `N_harmonics_min=5` — see that bullet's normalization note. `Radiation::compute_radiation`'s fast phase-factor
+  recurrence (see the loop-order bullet above) was generalized to any evenly-spaced `frequencies_list` (constant
+  step between consecutive entries, checked from `frequencies_list[0]`/`frequencies_list[1]`, not that the list
+  start at harmonic `1`), so it stays in effect for `N_harmonics_min != 1` and, incidentally, for
+  `dense_frequency_spectrum=true`'s linear scan too — verified to reproduce the direct per-frequency evaluation
+  bit-for-bit in both cases. When `dense_frequency_spectrum=true`, `frequencies_list` is instead
   a plain linear scan of `N_omega` points from `omega_min` to `omega_max` (`IoUtils::get_omega_range`, real omega,
   divided by `c` to match `non_linear_Thomson_formula`'s own `omega/c` return convention) — `N_harmonics` and
   `N_omega` are deliberately separate config keys (`IoUtils::get_number_of_harmonics`/`get_number_of_frequencies`)
