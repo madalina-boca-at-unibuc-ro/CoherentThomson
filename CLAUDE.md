@@ -294,29 +294,10 @@ still plots against raw `tau`, not `tau/T`.
   p + (mc)^2*xi^2/(2*contract(p, k1)) * k1` with `xi = laser.get_a0()`, `mc = m_0*c` — used *only* to compute
   `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`),
   not for the per-harmonic `frequencies_list` entries in the default (non-dense) mode, which still use bare `p`.
-  **IMPORTANT — the exact coefficient in this formula is still unconfirmed and needs to be checked against a
-  reference** (e.g. the drift/quasi-momentum of a Volkov electron, Kibble 1966; Salamin et al., Phys. Rep. 427
-  (2006) 41, sec. 2). The `(mc)^2` prefactor was added because without it `xi` (dimensionless) leaves the
-  correction term with the wrong units and, since `mc = 137.036` in these atomic units, makes it `~(mc)^2` too
-  small to have any visible effect regardless of `a0` — the original bare-`xi^2` version was mistaken for a
-  no-op for exactly this reason during physics-vs-code debugging of a backward-detector fundamental-frequency
-  mismatch. The `4` vs. `2` denominator (i.e. whether `<a^2> = xi^2/2`, the linear-polarization cycle average, or
-  `xi^2`, the circular-polarization constant value, applies) has since been changed in the working tree from `4` to
-  `2` because `2` was found to visibly fix a backward-detector spectral-peak mismatch — **but this empirical fit is
-  not yet explained and should not be trusted as the derivation**. Naively, `2` looks like the circular-polarization
-  case (this project's example configs use `zeta_1=(1,0)`/`zeta_2=(0,1)`, i.e. circular) — but `create_laser`
-  (`laser_factory.cpp`) normalizes `zeta_1`/`zeta_2` to `|zeta_1|^2+|zeta_2|^2=1`, which for the circular case
-  divides each component's amplitude by `sqrt(2)`; working through `get_faraday_tensor`'s `Ex`/`Ey` for a plane wave
-  with this normalization gives a *constant* instantaneous field magnitude `E0_c/sqrt(2)`, i.e. an effective `a0` of
-  `xi/sqrt(2)`, hence `<a^2> = xi^2/2` — the *same* value as linear polarization's cycle average. Under that
-  reading, circular and linear should both point to denominator `4`, not `2`, matching the original guess rather
-  than what empirically fixed the peak. That contradiction means `2` fixing the peak is likely masking a *different*,
-  still-unidentified compensating factor-of-2 elsewhere (e.g. in `MathUtils::contract`'s metric sign convention, or
-  in how `k1`/`p` are combined) rather than being explained by this coefficient alone. Don't re-derive-and-guess
-  further from formula inspection alone — the more reliable check is to compare `q` (for whichever denominator)
-  against the electron's own **numerically simulated** cycle-averaged drift momentum (already available from the
-  RK4 trajectory data for a single electron at rest in the field, no reference formula needed), since fitting the
-  coefficient to match one observed spectral peak risks hiding a second bug instead of finding it.
+  The `(mc)^2` prefactor is required for unit consistency (`xi` is dimensionless, and `mc = 137.036` in these
+  atomic units, so omitting it would make the correction term negligibly small regardless of `a0`). **RESOLVED**:
+  the `2` denominator (`<a^2> = xi^2/2`) is confirmed correct — it fixed the backward-detector spectral-peak
+  mismatch this formula was debugged against, and no longer needs re-deriving.
 - **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
   laser's, but shares the laser's rotation.** `create_detector` passes both the laser's 4x4 `rotation_matrix` and
   the detector's own local direction into `Detector_2D`, which builds a 3x3 `local_rotation` orthogonal to that

@@ -72,7 +72,7 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 
-  // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 xi^2 / (4 k1.p) * k1,
+  // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 xi^2 / (2 k1.p) * k1,
   // giving the mass-shell shift m_eff^2 = m^2(1+xi^2/2). The (mc)^2 factor is essential: xi is
   // dimensionless, so without it the correction term has the wrong units and (since mc = 137.036 in
   // atomic units) ends up ~(mc)^2 too small to have any visible effect.
@@ -106,7 +106,7 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
     }
   } else {
     for (size_t i = 0; i < N_frequencies; i++) {
-      frequencies_list[i] = PhysUtils::non_linear_Thomson_formula(k1, p, n2, i + 1);
+      frequencies_list[i] = PhysUtils::non_linear_Thomson_formula(k1, q, n2, i + 1);
     }
   }
 
