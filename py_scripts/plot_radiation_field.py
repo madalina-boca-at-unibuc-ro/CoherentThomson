@@ -71,6 +71,55 @@ def get_spherical_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     y_edges = rho_edges[:, None] * np.sin(phi_edges)[None, :]
     return x_edges, y_edges
 
+def spherical_projection_is_well_defined(config_path=DEFAULT_CONFIG_PATH, tolerance=1e-6):
+    """
+    Returns False when the spherical detector's configured theta range reaches (or numerically
+    comes within `tolerance` of) the pole antipodal to the stereographic projection's own
+    reference pole -- get_spherical_cell_edges' formula (rho = R*sin(theta)/(1+cos(theta)), mirroring
+    Core::Detector::SphericalDetector::get_stereographic_projection) maps that antipodal point
+    (theta=pi) to infinity: sin(pi)=0 and 1+cos(pi)=0 give a 0/0 there, and points close to it
+    project to enormous but finite rho that still make the plot unusable. This is an inherent
+    property of stereographic projection (any single finite 2D chart of a sphere must omit at least
+    one point), not a fixable rounding error -- get_spherical_plot_grid below falls back to a plain
+    (theta, phi) rectangular map instead of raising when this returns False.
+    """
+    theta_max = _angle_radians(*read_config_value('spherical_detector_theta_max', config_path))
+    return (1.0 + np.cos(theta_max)) > tolerance
+
+def get_spherical_plot_grid(config_path=DEFAULT_CONFIG_PATH):
+    """
+    Returns (x_edges, y_edges, x_label, y_label, aspect) for rendering a spherical detector's
+    (N_theta, N_phi) grid as a pcolormesh heatmap. Uses the stereographic projection
+    (get_spherical_cell_edges, aspect='equal' since x/y share the same physical length unit) when
+    spherical_projection_is_well_defined; otherwise falls back to a plain (theta, phi) rectangular
+    map (cell corners built the same half-step-back way, for the same phi=0/2*pi seam-continuity
+    reason get_spherical_cell_edges needs them; aspect='auto', since theta in [0, pi] and phi in
+    [0, 2*pi] are angles, not a shared length scale) -- the standard way to visualize a detector
+    covering all or most of the full 4*pi sphere, where no stereographic chart can represent the
+    point antipodal to its own reference pole.
+    """
+    if spherical_projection_is_well_defined(config_path):
+        x_edges, y_edges = get_spherical_cell_edges(config_path)
+        return x_edges, y_edges, '$x_{proj}$', '$y_{proj}$', 'equal'
+
+    N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
+    N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
+    theta_min = _angle_radians(*read_config_value('spherical_detector_theta_min', config_path))
+    theta_max = _angle_radians(*read_config_value('spherical_detector_theta_max', config_path))
+    phi_min = _angle_radians(*read_config_value('spherical_detector_phi_min', config_path))
+    phi_max = _angle_radians(*read_config_value('spherical_detector_phi_max', config_path))
+
+    cos_theta_min, cos_theta_max = np.cos(theta_min), np.cos(theta_max)
+    d_cos_theta = (cos_theta_max - cos_theta_min) / (N_theta - 1) if N_theta > 1 else 0.0
+    d_phi = (phi_max - phi_min) / (N_phi - 1) if N_phi > 1 else 0.0
+
+    cos_theta_edges = np.clip(cos_theta_min + (np.arange(N_theta + 1) - 0.5) * d_cos_theta, -1.0, 1.0)
+    theta_edges = np.arccos(cos_theta_edges)
+    phi_edges = phi_min + (np.arange(N_phi + 1) - 0.5) * d_phi
+
+    theta_grid, phi_grid = np.meshgrid(theta_edges, phi_edges, indexing='ij')
+    return theta_grid, phi_grid, r'$\theta$ [rad]', r'$\phi$ [rad]', 'auto'
+
 def get_circular_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     """
     Returns (x_edges, y_edges), each shape (N_R+1, N_phi+1): the lab-plane coordinates of the *cell
@@ -259,6 +308,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     # grid; x/y are replaced with the cell-corner coordinates pcolormesh needs (see
     # get_rectangular_cell_edges/get_spherical_cell_edges/get_circular_cell_edges) instead of the
     # per-point centers get_screen_coordinates returns.
+    aspect = 'equal'
     if detector_type == 'rectangular':
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
@@ -268,7 +318,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
         N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
         grid_shape = (N_theta, N_phi)
-        x, y = get_spherical_cell_edges(config_path)
+        x, y, x_label, y_label, aspect = get_spherical_plot_grid(config_path)
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
@@ -301,7 +351,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         fig, axes = plt.subplots(2, 2, figsize=(12, 11))
         for ax, (values, title, cmap, vmin, vmax) in zip(axes.flat, panels):
             sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
-            ax.set_aspect('equal', adjustable='box')
+            ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_title(title)

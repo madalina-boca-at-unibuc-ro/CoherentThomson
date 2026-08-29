@@ -50,6 +50,7 @@ python3 py_scripts/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful o
 python3 py_scripts/plot_debug_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
 python3 py_scripts/plot_debug_exponent.py                        # meaningful output only if debug=true
 python3 py_scripts/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/plot_spherical_field_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -387,3 +388,61 @@ still plots against raw `tau`, not `tau/T`.
   reusing `Core::MathUtils::rotation_matrix_from_direction`'s exact three-case logic (reimplemented in Python) to
   rotate the exported Faraday tensor from the canonical/lab frame back into the detector's own local frame before
   applying the formula — see the script's module docstring for the full reasoning and its scope limits.
+- **`py_scripts/plot_spherical_field_components.py` projects the exported Faraday tensor onto canonical-frame
+  spherical components** (`E_r`/`E_theta`/`E_phi`/`B_r`/`B_theta`/`B_phi`), for `spherical`-detector runs only —
+  again Python-only post-processing of `radiation_field.dat`, no C++ output involved. Unlike
+  `plot_angular_momentum_flux.py`'s flat-screen restriction, a spherical detector is the natural fit here: every
+  screen point already has its own observation direction, obtained by rotating its local (`theta`, `phi`) —
+  `Core::Detector::SphericalDetector`'s own cone-point construction, generally relative to the detector's own axis
+  via `detector_direction_theta/phi`, not necessarily canonical `Oz` — into the canonical frame via
+  `get_detector_local_rotation`, then building the standard orthonormal `(r_hat, theta_hat, phi_hat)` basis at that
+  direction and dotting it into the (already-canonical, or canonical-ized from lab frame via
+  `get_field_to_canonical_rotation`) Cartesian `E`/`B`. Both new scripts share this rotation machinery, defined
+  once in `plot_angular_momentum_flux.py` (`get_detector_local_rotation`, `get_laser_lab_rotation`,
+  `get_field_to_canonical_rotation`, `extract_rotated_faraday_fields`) and imported by
+  `plot_spherical_field_components.py` rather than duplicated.
+  **Non-obvious physics sanity check surfaced while validating this script**: `compute_radiation`'s per-`(tau,
+  screen point)` bivector term is built once from `n0`/`u` and shared, unscaled, between the long-range and
+  short-range complex amplitude prefactors (`radiation.cpp`'s `add_bivector_term`) — so for a single contribution,
+  `B` (built purely from the spatial `F^{jk}` block, i.e. an `n0 x u`-like construction) is *exactly* orthogonal to
+  `n0` (triple product identity, `n0 . (n0 x u) = 0`), while `E` (built from the mixed `F^{i0}` block) is generally
+  *not* exactly transverse to `n0` — unlike the textbook Lienard-Wiechert acceleration field. This was confirmed
+  numerically on a 30-electron spherical-detector test run: `|B_r|/|B_theta|` came out ~`1e-5` (consistent with
+  pure numerical/finite-beam-size residual) while `|E_r|/|E_theta|` was ~`0.1` (a real, nonzero effect of this
+  formula, not a bug) — a useful regression check if this script (or `compute_radiation` itself) is ever modified:
+  `B_r` should stay pinned near zero; `E_r` should not.
+- **A spherical detector covering (close to) the full 4*pi sphere breaks a naive stereographic-projection
+  heatmap plot** — a real bug, found and fixed while validating `plot_spherical_field_components.py` against a
+  `spherical_detector_theta_max=1.0 pi` config. The stereographic formula both
+  `Core::Detector::SphericalDetector::get_stereographic_projection` (`detector.cpp`, feeding
+  `detector_stereographic.dat`) and its Python mirror `get_spherical_cell_edges`
+  (`py_scripts/plot_radiation_field.py`) use — `rho = R*sin(theta)/(1+cos(theta))` — maps `theta=pi` (the pole
+  antipodal to the projection's own reference pole) to `0/0`; this is an inherent property of stereographic
+  projection (no single finite 2D chart can cover an entire sphere), not a rounding-error bug, so
+  `detector_stereographic.dat` correctly (if silently) contains `nan` rows for any grid ring that reaches `theta=pi`
+  — expected, not itself a defect. The actual bug was downstream: `plot_radiation_field.py`'s
+  `plot_radiation_component` fed those `nan`-containing edges straight into `pcolormesh`, which raises
+  (`x and y arguments to pcolormesh cannot have non-finite values`) instead of degrading gracefully. Fixed via two
+  new functions in `plot_radiation_field.py`: `spherical_projection_is_well_defined` (checks whether
+  `spherical_detector_theta_max` comes within a small tolerance of `pi`) and `get_spherical_plot_grid`, which uses
+  the stereographic projection when that holds and otherwise falls back to a plain `(theta, phi)` rectangular map
+  (own explicit cell corners, `aspect='auto'` since the axes are angles, not a shared length scale) — the standard
+  way to visualize near-full-sphere angular data, since it has no polar singularity. Both
+  `plot_radiation_component` (`plot_radiation_field.py`) and the heatmap branch of
+  `plot_spherical_field_components.py` now call `get_spherical_plot_grid` instead of `get_spherical_cell_edges`
+  directly, so both degrade gracefully together. `plot_detector_stereographic.py` was not touched — it renders
+  with `plt.scatter`, which already drops `nan` points silently rather than crashing (so a full-sphere config just
+  shows a scatter plot missing the exact-pole ring, not an error).
+- **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
+  should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
+  `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
+  `zeta_2=(0,1)` — independent of azimuthal `phi`, in the weak-field/small-`a0` dipole limit; `sin^2` about the
+  polarization axis instead, for linear polarization). This is the standard benchmark any Thomson-scattering
+  solver should reproduce for a single free electron (`beam_particle_count=1`, `beam_cylinder_radius`/
+  `beam_cylinder_height`/`beam_center_x/y/z=0`, zero `average_p*`/`sigma_p*`), and as of this note it has been
+  tried and does **not** come out matching that expected angular pattern — not yet root-caused (candidates worth
+  checking first: whether `general_factor`/`amp_long`/`amp_short`'s normalization, the long+short recombination,
+  or the observation-direction convention feeding `compute_radiation` actually reduce to the standard dipole
+  formula in this weak-field/single-electron/large-`R` limit). Flagging this here since it's a fundamental
+  correctness check that should hold before trusting the solver's absolute intensities/angular patterns for
+  anything more complex (a coherent beam, higher `a0`, etc.) — revisit before relying on those.

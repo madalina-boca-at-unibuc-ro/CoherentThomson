@@ -92,34 +92,52 @@ def rotation_matrix_from_direction(nx, ny, nz):
     ])
 
 
-def get_canonical_to_local_rotation(config_path):
+def get_detector_local_rotation(config_path):
     """
-    Returns the 3x3 rotation R such that v_local = R @ v_canonical (or @ v_lab, see below),
-    undoing Core::Detector::Detector_2D's own local_rotation (built from
-    detector_direction_theta/phi) -- needed because radiation_field.dat's Faraday tensor is stored
-    in the canonical/lab frame, while this script's screen coordinates (x_local, y_local from
-    get_screen_coordinates_local_au) are the detector's own local, pre-rotation coordinates.
-
-    If this run's config has print_field_in_canonical_frame=false, radiation_field.dat is in the
-    lab frame rather than the canonical one, so the laser's own rotation (from laser_nx/ny/nz) is
-    undone first.
+    Returns the 3x3 rotation R such that v_canonical = R @ v_local -- a Python mirror of
+    Core::Detector::Detector_2D's own local_rotation, built from detector_direction_theta/phi.
     """
     theta_str, theta_unit = read_config_value('detector_direction_theta', config_path)
     phi_str, phi_unit = read_config_value('detector_direction_phi', config_path)
     theta = float(theta_str) * convert_unit_to_number(theta_unit, config_path)
     phi = float(phi_str) * convert_unit_to_number(phi_unit, config_path)
     dir_x, dir_y, dir_z = np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)
-    R_detector = rotation_matrix_from_direction(dir_x, dir_y, dir_z)
+    return rotation_matrix_from_direction(dir_x, dir_y, dir_z)
 
-    canonical_frame = read_config_value('print_field_in_canonical_frame', config_path)[0]
-    if canonical_frame.lower() == 'true':
-        return R_detector.T
 
+def get_laser_lab_rotation(config_path):
+    """
+    Returns the 3x3 rotation R such that v_lab = R @ v_canonical -- a Python mirror of
+    Core::Laser::LaserField's own rotation_matrix, built from laser_nx/ny/nz.
+    """
     nx = float(read_config_value('laser_nx', config_path)[0])
     ny = float(read_config_value('laser_ny', config_path)[0])
     nz = float(read_config_value('laser_nz', config_path)[0])
-    R_laser = rotation_matrix_from_direction(nx, ny, nz)
-    return R_detector.T @ R_laser.T
+    return rotation_matrix_from_direction(nx, ny, nz)
+
+
+def get_field_to_canonical_rotation(config_path):
+    """
+    Returns the 3x3 rotation R such that v_canonical = R @ v_field, where v_field is however
+    radiation_field.dat's Faraday tensor is actually stored: the canonical frame itself (identity)
+    if this run's config has print_field_in_canonical_frame=true (the default), or the lab frame
+    otherwise, in which case the laser's own rotation (get_laser_lab_rotation) is undone.
+    """
+    canonical_frame = read_config_value('print_field_in_canonical_frame', config_path)[0]
+    if canonical_frame.lower() == 'true':
+        return np.eye(3)
+    return get_laser_lab_rotation(config_path).T
+
+
+def get_canonical_to_local_rotation(config_path):
+    """
+    Returns the 3x3 rotation R such that v_local = R @ v_field (see get_field_to_canonical_rotation
+    for what frame v_field is actually in), undoing Core::Detector::Detector_2D's own
+    local_rotation on top of that -- needed because this script's screen coordinates (x_local,
+    y_local from get_screen_coordinates_local_au) are the detector's own local, pre-rotation
+    coordinates, while radiation_field.dat's Faraday tensor is not.
+    """
+    return get_detector_local_rotation(config_path).T @ get_field_to_canonical_rotation(config_path)
 
 
 def get_screen_coordinates_local_au(detector_type, config_path):
@@ -171,11 +189,14 @@ def get_screen_coordinates_local_au(detector_type, config_path):
         )
 
 
-def load_local_frame_fields(data, R_to_local):
+def extract_rotated_faraday_fields(data, R):
     """
     Returns a dict of six complex numpy arrays per range (Ex/Ey/Ez/Bx/By/Bz, suffixed '_l' for
-    long-range and '_s' for short-range), rotated from the frame radiation_field.dat stores
-    (canonical or lab, see get_canonical_to_local_rotation) into the detector's own local frame.
+    long-range and '_s' for short-range), read out of radiation_field.dat's F^{mu nu} columns and
+    rotated by R into whatever target frame the caller needs (this script's callers pass
+    get_canonical_to_local_rotation's result to land in the detector's own local frame;
+    plot_spherical_field_components.py instead passes get_field_to_canonical_rotation's result to
+    land in the canonical frame).
 
     Column mapping mirrors Core::Laser::LaserField::get_faraday_tensor's F^{mu nu} <-> E/B sign
     convention (F^{i0}=E_i, F^{jk}=-eps_jkl B_l): Ex=F10, Ey=F20, Ez=F30, Bx=F32, By=F13, Bz=F21.
@@ -185,10 +206,10 @@ def load_local_frame_fields(data, R_to_local):
         def col(mu, nu):
             return (data[f'{prefix}_F{mu}{nu}_re'] + 1j * data[f'{prefix}_F{mu}{nu}_im']).to_numpy()
 
-        E_canonical = np.stack([col(1, 0), col(2, 0), col(3, 0)])
-        B_canonical = np.stack([col(3, 2), col(1, 3), col(2, 1)])
-        Ex, Ey, Ez = R_to_local @ E_canonical
-        Bx, By, Bz = R_to_local @ B_canonical
+        E_stored = np.stack([col(1, 0), col(2, 0), col(3, 0)])
+        B_stored = np.stack([col(3, 2), col(1, 3), col(2, 1)])
+        Ex, Ey, Ez = R @ E_stored
+        Bx, By, Bz = R @ B_stored
         fields[f'Ex_{suffix}'], fields[f'Ey_{suffix}'], fields[f'Ez_{suffix}'] = Ex, Ey, Ez
         fields[f'Bx_{suffix}'], fields[f'By_{suffix}'], fields[f'Bz_{suffix}'] = Bx, By, Bz
     return fields
@@ -226,7 +247,7 @@ def compute_angular_momentum_flux(radiation_filepath):
     y = y_local[data['i_screen'].to_numpy()]
 
     R_to_local = get_canonical_to_local_rotation(config_path)
-    f = load_local_frame_fields(data, R_to_local)
+    f = extract_rotated_faraday_fields(data, R_to_local)
 
     flux_ll = angular_momentum_flux_density(x, y, f['Ex_l'], f['Ey_l'], f['Ez_l'], f['Bx_l'], f['By_l'], f['Bz_l'])
     flux_ls = angular_momentum_flux_density(x, y, f['Ex_l'], f['Ey_l'], f['Ez_l'], f['Bx_s'], f['By_s'], f['Bz_s'])
