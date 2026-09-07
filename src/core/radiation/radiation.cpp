@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../include/phys_utils/phys_utils.hpp"
+
 namespace Core::Radiation {
 
 // ComplexBivector aliases std::array, whose only associated namespace (for ADL) is std -- pull
@@ -20,27 +22,96 @@ inline double bivector_element(const MathUtils::RealFourVector& n, const MathUti
   return n[alpha] * u[beta] - n[beta] * u[alpha];
 }
 
-// Accumulates amp_long/amp_short * term into slot `index` (0..5, in the fixed
+// Accumulates amp_long*term_long / amp_short*term_short into slot `index` (0..5, in the fixed
 // (0,1),(0,2),(0,3),(1,2),(1,3),(2,3) order -- see MathUtils::ComplexBivector) of
-// `long_bivector`/`short_bivector`, where `term` is the frequency-independent geometric factor
-// n^alpha u^beta - n^beta u^alpha, precomputed once per (tau, screen point) and shared across
-// every frequency. Only the 6 independent upper-triangle elements of the corresponding Faraday
-// tensor are ever accumulated -- the antisymmetric lower triangle and zero diagonal are filled in
-// once, after all contributions (from every tau, electron, and thread) have been summed, via
-// MathUtils::unpack_bivector, called once in Simulation::run_simulation on the final reduced
-// field.
+// `long_bivector`/`short_bivector`. term_long/term_short are frequency-independent geometric
+// factors precomputed once per (tau, screen point) and shared across every frequency -- the
+// simplified form (see below) shares one bare n^alpha u^beta - n^beta u^alpha factor between both,
+// but the direct form's long-range term needs a different combined (n, u, w) factor, hence the two
+// separate parameters rather than one shared `term`. Only the 6 independent upper-triangle
+// elements of the corresponding Faraday tensor are ever accumulated -- the antisymmetric lower
+// triangle and zero diagonal are filled in once, after all contributions (from every tau,
+// electron, and thread) have been summed, via MathUtils::unpack_bivector, called once in
+// Simulation::run_simulation on the final reduced field.
 inline void add_bivector_term(MathUtils::ComplexBivector& long_bivector, MathUtils::ComplexBivector& short_bivector,
-                              size_t index, double term, const MathUtils::Complex& amp_long,
+                              size_t index, double term_long, double term_short, const MathUtils::Complex& amp_long,
                               const MathUtils::Complex& amp_short) {
-  long_bivector[index] += amp_long * term;
-  short_bivector[index] += amp_short * term;
+  long_bivector[index] += amp_long * term_long;
+  short_bivector[index] += amp_short * term_short;
+}
+
+// ---- Integrand construction: PREFACT * exp(i * freq * phase_argument) ----
+//
+// The per-(tau, screen point, frequency) integrand factors into an exponential phase term
+// (radiation_phase_argument) and two PREFACT terms (long_range_prefactor/short_range_prefactor)
+// that each multiply the shared geometric bivector term. The current PREFACT formulas were
+// obtained by integrating the standard radiation integral by parts, and are the piece most
+// likely to change if a different derivation is adopted (see CLAUDE.md's "OPEN VALIDATION GAP"
+// note) -- isolated into their own functions below for exactly that reason, so a new formula can
+// be dropped in here without touching the phase/loop-structure code around them.
+
+// The "rest of the exponent" in PREFACT * exp(i * N*omega * phase_argument): frequency itself is
+// applied by the caller, not here, so the fast evenly-spaced-frequency phase-factor recurrence in
+// compute_radiation's i_freq loop stays valid regardless of how this function or the PREFACT
+// terms below change. Shared verbatim by both the simplified and direct forms (see
+// theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Common notation" section) -- the two
+// forms differ only in their PREFACT terms, never in this phase.
+inline double radiation_phase_argument(const MathUtils::RealFourVector& x, double R) { return x[0] + R; }
+
+// Long-range PREFACT term (multiplies the shared bivector term n0^alpha u^beta - n0^beta
+// u^alpha). Frequency-dependent: proportional to freq/R. `inv_R` (rather than R) is taken as a
+// parameter so callers that sweep many frequencies at fixed (tau, screen point) can precompute
+// the division once.
+inline MathUtils::Complex long_range_prefactor(double freq, double inv_R) {
+  return MathUtils::Complex{0.0, -freq * inv_R};
+}
+
+// Short-range PREFACT term (multiplies the same shared bivector term). Frequency-independent in
+// the current formula.
+inline double short_range_prefactor(const MathUtils::RealFourVector& n0, const MathUtils::RealFourVector& u, double R,
+                                    double n0_contract_u) {
+  return MathUtils::dot3(n0, u) / (R * R * n0_contract_u);
+}
+
+// ---- Direct form (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, Form 1) ----
+//
+// The direct FT of the closed-form Lienard-Wiechert field, as opposed to the simplified form's
+// integration-by-parts derivation above: neither PREFACT term below carries an explicit frequency
+// factor (the only omega-dependence is in the shared exp(i*omega*phase_argument) factor, applied
+// by the caller), and the long-range term's geometric factor is a genuine combination of the
+// (n0, u) and (n0, w) bivectors, not the bare (n0, u) bivector alone -- see
+// direct_long_range_tensor_term below. Selected via the "radiation_formula"="direct" config key.
+
+// Direct-form long-range PREFACT term: 1 / (R * (n0.u)^3).
+inline double long_range_prefactor_direct(double R, double n0_contract_u) {
+  return 1.0 / (R * n0_contract_u * n0_contract_u * n0_contract_u);
+}
+
+// Direct-form short-range PREFACT term: c^2 / (R^2 * (n0.u)^3). Carries an explicit extra c^2
+// factor the simplified form's short-range prefactor doesn't have (the direct form's F_s
+// normalization constant is e*c^2/(4 pi eps0 c), vs both forms' shared e/(4 pi eps0 c) elsewhere)
+// -- baked in here, specific to this one formula, rather than into
+// Simulation::run_simulation's uniform general_factor.
+inline double short_range_prefactor_direct(double R, double n0_contract_u) {
+  return PhysUtils::AtomicUnits::c * PhysUtils::AtomicUnits::c /
+        (R * R * n0_contract_u * n0_contract_u * n0_contract_u);
+}
+
+// Direct-form long-range geometric factor: (n0.u)*(n0^alpha w^beta - n0^beta w^alpha) -
+// (n0.w)*(n0^alpha u^beta - n0^beta u^alpha), replacing the simplified form's bare (n0, u)
+// bivector for the long-range term only -- the short-range term still uses the bare (n0, u)
+// bivector (bivector_element(n0, u, alpha, beta)) in both forms.
+inline double direct_long_range_tensor_term(const MathUtils::RealFourVector& n0, const MathUtils::RealFourVector& u,
+                                            const MathUtils::RealFourVector& w, double n0_contract_u,
+                                            double n0_contract_w, size_t alpha, size_t beta) {
+  return n0_contract_u * bivector_element(n0, w, alpha, beta) - n0_contract_w * bivector_element(n0, u, alpha, beta);
 }
 
 }  // namespace
 
 void compute_radiation(Particle::Electron& electron, const Laser::LaserField& laser,
                        const std::vector<double>& frequencies_list, const Detector::Detector_2D& detector,
-                       Simulation::PackedRadiationField& field) {
+                       Simulation::PackedRadiationField& field, bool use_direct_formula) {
   electron.compute_trajectory(laser);
 
   size_t N_tau = electron.get_N_tau();
@@ -105,18 +176,13 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       MathUtils::RealFourVector n0 = diff;
       double R = MathUtils::create_unit_light_like_vector_in_place(n0);
 
-      double n0_contract_u = MathUtils::contract(n0, u) * R;
-      double n0_dot3_u = MathUtils::dot3(n0, u);
-      // amp_short_0 (real) and amp_long_0 = -i/R (purely imaginary) are kept as plain doubles
-      // rather than Complex(amp_short_0, 0) / Complex(0, -1/R): below, amp_short = amp_short_0 *
-      // cexp and amp_long = amp_long_0 * freq * cexp then reduce to a handful of real multiplies
-      // directly from cexp's own real/imaginary parts, instead of two generic
-      // complex-times-complex multiplications per frequency.
-      double amp_short_0 = n0_dot3_u / (R * R * n0_contract_u);
-      double inv_R = 1.0 / R;
+      double n0_contract_u = MathUtils::contract(n0, u);
 
-      // The geometric bivector terms depend only on n0 and u, not on frequency, so they're
-      // computed once per (tau, screen point) here rather than once per frequency below.
+      // The bare (n0, u) bivector terms depend only on n0 and u, not on frequency, so they're
+      // computed once per (tau, screen point) here rather than once per frequency below. Used
+      // directly as the short-range term in both formulas, and as the long-range term in the
+      // simplified formula (see long_term01..23 below for the direct formula's own long-range
+      // factor).
       double term01 = bivector_element(n0, u, 0, 1);
       double term02 = bivector_element(n0, u, 0, 2);
       double term03 = bivector_element(n0, u, 0, 3);
@@ -124,7 +190,36 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       double term13 = bivector_element(n0, u, 1, 3);
       double term23 = bivector_element(n0, u, 2, 3);
 
-      double phase_base = x[0] + R;
+      // amp_short_0/inv_R (simplified formula) or prefactor_l_direct/prefactor_s_direct (direct
+      // formula) are the tau/screen-point-level pieces of the PREFACT terms that don't depend on
+      // frequency, so they're computed once per tau here rather than once per frequency below.
+      // long_term01..23 is the long-range geometric factor: the bare (n0, u) bivector for the
+      // simplified formula, or direct_long_range_tensor_term's (n0, u, w) combination for the
+      // direct formula -- see radiation.hpp's use_direct_formula doc comment and
+      // theory/FT_Faraday_tensor-direct_and_simplified_forms.md.
+      double amp_short_0 = 0.0;
+      double inv_R = 1.0 / R;
+      double prefactor_l_direct = 0.0;
+      double prefactor_s_direct = 0.0;
+      double long_term01 = term01, long_term02 = term02, long_term03 = term03;
+      double long_term12 = term12, long_term13 = term13, long_term23 = term23;
+
+      if (use_direct_formula) {
+        const MathUtils::RealFourVector& w = trajectory[i_tau].acceleration;
+        double n0_contract_w = MathUtils::contract(n0, w);
+        prefactor_l_direct = long_range_prefactor_direct(R, n0_contract_u);
+        prefactor_s_direct = short_range_prefactor_direct(R, n0_contract_u);
+        long_term01 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 0, 1);
+        long_term02 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 0, 2);
+        long_term03 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 0, 3);
+        long_term12 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 1, 2);
+        long_term13 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 1, 3);
+        long_term23 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 2, 3);
+      } else {
+        amp_short_0 = short_range_prefactor(n0, u, R, n0_contract_u);
+      }
+
+      double phase_base = radiation_phase_argument(x, R);
 
       // cexp, frequencies_list[0]'s phase factor, and cexp_step, the constant spacing's phase
       // factor, are each computed via one cos/sin evaluation (std::polar(1, theta) ==
@@ -132,7 +227,9 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       // When frequencies_are_evenly_spaced holds, every subsequent entry's phase factor is
       // obtained by multiplying by cexp_step again rather than by another transcendental
       // evaluation. Guarded by N_freq > 0 since frequencies_list[0] would otherwise be an
-      // out-of-bounds read.
+      // out-of-bounds read. Both formulas share the exact same phase (see
+      // radiation_phase_argument's doc comment), so this construction is unaffected by
+      // use_direct_formula.
       MathUtils::Complex cexp = N_freq > 0 ? std::polar(1.0, phase_base * frequencies_list[0]) : MathUtils::Complex{};
       MathUtils::Complex cexp_step = N_freq > 1 ? std::polar(1.0, phase_base * step) : MathUtils::Complex{};
 
@@ -140,20 +237,19 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         if (!frequencies_are_evenly_spaced) {
           cexp = std::polar(1.0, phase_base * frequencies_list[i_freq]);
         }
-        // amp_long = (-i * freq/R) * cexp and amp_short = amp_short_0 * cexp, expanded directly
-        // from cexp = c + i*s (see the amp_short_0/inv_R comment above).
-        double c = cexp.real();
-        double s = cexp.imag();
-        double w = frequencies_list[i_freq] * inv_R;
-        MathUtils::Complex amp_long{w * s, -w * c};
-        MathUtils::Complex amp_short{amp_short_0 * c, amp_short_0 * s};
+        // The direct formula's PREFACT terms carry no explicit frequency factor (only the shared
+        // phase cexp above does), unlike the simplified formula's long-range term -- see
+        // long_range_prefactor_direct/short_range_prefactor_direct's doc comments.
+        MathUtils::Complex amp_long = use_direct_formula ? prefactor_l_direct * cexp
+                                                         : long_range_prefactor(frequencies_list[i_freq], inv_R) * cexp;
+        MathUtils::Complex amp_short = use_direct_formula ? prefactor_s_direct * cexp : amp_short_0 * cexp;
 
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 0, term01, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 1, term02, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 2, term03, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 3, term12, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 4, term13, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 5, term23, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 0, long_term01, term01, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 1, long_term02, term02, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 2, long_term03, term03, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 3, long_term12, term12, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 4, long_term13, term13, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 5, long_term23, term23, amp_long, amp_short);
 
         if (frequencies_are_evenly_spaced) cexp *= cexp_step;
       }

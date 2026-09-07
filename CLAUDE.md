@@ -104,7 +104,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `math_utils/` | `Core::MathUtils` | `FourVector<T>`/`FourTensor<T>` (+ `Real*`/`Complex*` aliases), Minkowski contractions, 3D rotation helpers, constants |
 | `phys_utils/` | `Core::PhysUtils::AtomicUnits` | Physical constants in atomic units |
 | `io_utils/` | `Core::IoUtils` (`ConfigMap` alias lives in `Core`) | Config parsing, unit conversion, per-key laser/beam accessors, `CylinderBeamParams`, `make_run_output_directory` |
-| `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, optional trajectory recording), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
+| `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, always records its trajectory), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
 | `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each implementing `complex_amplitude`, already scaled by `E0_c`, returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser` has no transverse profile so its derivatives are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`, `export_field_heatmap_z0` (canonical-frame z=0 transverse snapshot — see "Known gaps") |
 | `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
@@ -237,6 +237,15 @@ still plots against raw `tau`, not `tau/T`.
   `pandas.read_csv` skips blank lines automatically). `plot_electron_trajectory.py` groups by `electron_id` and
   encodes electron identity by color (fixed `tab10` order, never cycled past its 10 slots — matching the `main.cpp`
   cap) and the x/y/z (or p1/p2/p3) component by linestyle, since color is already spent on electron identity.
+- **Each recorded `Electron::State` also carries the electron's exact 4-acceleration** (`du^mu/dtau =
+  (q_0/m_0) F^{mu nu} u_nu`), exported as `electron.dat`'s trailing `a0 a1 a2 a3` columns (not currently
+  plotted by `plot_electron_trajectory.py`). `Electron::update_state`'s RK4 stage `k1` is already the exact
+  derivative at the state being stepped away from (`trajectory.back()` on entry), so it's reused to fill in
+  that state's acceleration at no extra `Faraday`-tensor-evaluation cost; the very last state in a trajectory
+  has no following `update_state()` call to supply its `k1`, so `Electron::compute_trajectory` fills it with
+  one extra explicit `compute_derivative()` call after the loop — the only additional evaluation this scheme
+  costs for the whole trajectory. Any `State` read back before `compute_trajectory()` has run holds a
+  zero-initialized, not physically meaningful, acceleration.
 - The whole beam is generated and held in memory upfront rather than per-thread/on-the-fly inside
   `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
   with on-the-fly generation planned as a later memory optimization.
@@ -446,3 +455,44 @@ still plots against raw `tau`, not `tau/T`.
   formula in this weak-field/single-electron/large-`R` limit). Flagging this here since it's a fundamental
   correctness check that should hold before trusting the solver's absolute intensities/angular patterns for
   anything more complex (a coherent beam, higher `a0`, etc.) — revisit before relying on those.
+- **`compute_radiation`'s per-`(tau, screen point, frequency)` integrand is factored into isolated
+  `long_range_prefactor`/`short_range_prefactor`/`radiation_phase_argument` functions** (`radiation.cpp`, anonymous
+  namespace), in preparation for the above gap: the current PREFACT formulas (multiplying the shared geometric
+  bivector term `n0^alpha u^beta - n0^beta u^alpha`) were derived via integration by parts of the standard
+  radiation integral and are suspected as the root cause, so they're kept swappable independently of the
+  loop/phase machinery around them. `radiation_phase_argument(x, R) = x[0] + R` is the frequency-independent "rest
+  of the exponent" in `PREFACT * exp(i*freq*phase_argument)` — frequency is applied by the caller, not this
+  function, so it must stay frequency-independent for `compute_radiation`'s evenly-spaced-frequency phase-factor
+  recurrence (see the loop-order bullet above) to remain valid regardless of how the PREFACT terms change.
+  `debug/debug_radiation.cpp`'s `export_radiation_integrand`/`export_radiation_phase` deliberately duplicate (per
+  the "Debug mode" section above) this same per-tau math inline rather than calling these functions — if the
+  PREFACT formula is changed, that duplicated diagnostic path needs a matching update, or its cross-check against
+  `compute_radiation`'s coherently-summed field (see "Debug mode" above) will silently go stale.
+- **`theory/FT_Faraday_tensor-direct_and_simplified_forms.md` documents two independently-derived, analytically
+  equivalent closed forms for the Fourier-transformed radiation field** (a "direct" form, straight FT of the
+  Lienard-Wiechert field, vs. a "simplified" form via integration by parts on Jackson's compact form — the same
+  integration-by-parts approach `compute_radiation`'s PREFACT formulas came from), each split into its own
+  long-range/short-range pieces — **the two derivations' `F_l`/`F_s` splits do not agree term-by-term with each
+  other or with `compute_radiation`'s; only each form's own `F_l+F_s` total is a valid cross-check target**.
+  **Both forms are now implemented in `compute_radiation`**, selected via the `radiation_formula` config key
+  (`"simplified"`, the default, or `"direct"`; `Simulation::run_simulation` throws at startup for any other
+  value). The simplified form is what the anonymous-namespace `long_range_prefactor`/`short_range_prefactor`
+  functions above compute (an explicit frequency factor on the long-range term, no acceleration needed); the
+  direct form (`long_range_prefactor_direct`/`short_range_prefactor_direct`/`direct_long_range_tensor_term`,
+  `radiation.cpp`) needs the electron's 4-acceleration (`Particle::Electron::State::acceleration`, already stored
+  per trajectory point — see the acceleration bullet above) and has **no explicit frequency factor outside the
+  shared phase** (`radiation_phase_argument` is identical between the two forms — confirmed against the theory
+  doc's "Common notation" section — so the evenly-spaced-frequency phase-factor recurrence stays valid for both
+  formulas unchanged). The direct form's short-range PREFACT also carries an extra `c^2` factor relative to the
+  long-range term (baked into `short_range_prefactor_direct` itself, not into `run_simulation`'s uniform
+  `general_factor`, since it's specific to this one formula — see the theory doc's Form 1 constants). `debug=true`
+  only supports `radiation_formula=simplified`: `debug/debug_radiation.cpp`'s diagnostic still only reimplements
+  the simplified form's per-tau math (unchanged by this addition), so `main.cpp` throws at startup if both are set
+  together, rather than silently producing a debug export that can't cross-check a direct-formula run.
+  **Fixing a pre-existing bug found while implementing this**: the short-range PREFACT's `n0·u` four-dot was
+  previously computed as `contract(n0, u) * R` (an extra, erroneous factor of `R`, present in both
+  `radiation.cpp` and its `debug_radiation.cpp` duplicate before this fix) rather than the bare `contract(n0, u)`
+  the simplified-form formula calls for — this made the short-range term scale as `1/R^3` instead of the
+  documented `1/R^2` near-field scaling. Fixed in both files; per the regime tested so far the short-range term
+  doesn't contribute either way, so this fix alone does not resolve the OPEN VALIDATION GAP above — that
+  remains open, and is now suspected to sit in the long-range term instead.

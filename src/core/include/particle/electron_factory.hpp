@@ -29,7 +29,7 @@ using CylinderBeamParams = Core::IoUtils::CylinderBeamParams;
 // sequence.
 Electron generate_electron(const CylinderBeamParams& params, const Core::MathUtils::RealFourTensor& rotation_matrix,
                            const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation, double tau_0, double d_tau,
-                           size_t N_tau, std::mt19937& gen, bool store_trajectory);
+                           size_t N_tau, std::mt19937& gen);
 
 std::vector<Electron> generate_cylinder_beam(const ConfigMap& config,
                                              const Core::MathUtils::RealFourTensor rotation_matrix, const double tau_0,

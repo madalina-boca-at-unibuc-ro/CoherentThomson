@@ -4,7 +4,7 @@ namespace Core::Particle {
 
 Electron generate_electron(const CylinderBeamParams& params, const Core::MathUtils::RealFourTensor& rotation_matrix,
                            const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation, double tau_0, double d_tau,
-                           size_t N_tau, std::mt19937& gen, bool store_trajectory) {
+                           size_t N_tau, std::mt19937& gen) {
   std::uniform_real_distribution<double> dis_uniform(0.0, 1.0);
   std::uniform_real_distribution<double> dis_z(-params.height / 2.0, params.height / 2.0);
 
@@ -40,7 +40,7 @@ Electron generate_electron(const CylinderBeamParams& params, const Core::MathUti
   position = MathUtils::contract(rotation_matrix, position);
   momentum = MathUtils::contract(rotation_matrix, momentum);
 
-  return Electron(position, momentum, tau_0, d_tau, N_tau, store_trajectory);
+  return Electron(position, momentum, tau_0, d_tau, N_tau);
 }
 
 std::vector<Electron> generate_cylinder_beam(const ConfigMap& config,
@@ -57,12 +57,6 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config,
   size_t num_particles = std::stoull(IoUtils::get_required(config, "beam_particle_count"));
   size_t random_seed = std::stoull(IoUtils::get_required(config, "random_seed"));
 
-  // Trajectory storage: off by default (zero overhead for large runs); when
-  // enabled, each electron reserves exactly the number of RK4 steps the
-  // laser's own phase grid implies (laser_NT points per cycle times the
-  // pulse length in cycles), so no reallocation happens during the run.
-  bool store_trajectory = IoUtils::get_required(config, "store_trajectory") == "true";
-
   std::vector<Electron> beam;
   beam.reserve(num_particles);  // Allocate memory upfront for speed
 
@@ -71,8 +65,7 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config,
   // random sequence.
   std::mt19937 gen(random_seed);
   for (size_t p = 0; p < num_particles; ++p) {
-    beam.push_back(
-        generate_electron(params, rotation_matrix, beam_axis_rotation, tau_0, d_tau, N_tau, gen, store_trajectory));
+    beam.push_back(generate_electron(params, rotation_matrix, beam_axis_rotation, tau_0, d_tau, N_tau, gen));
   }
 
   return beam;

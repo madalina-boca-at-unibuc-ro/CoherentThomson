@@ -134,6 +134,11 @@ int main(int argc, char* argv[]) {
         throw std::runtime_error("debug=true requires exactly one detector point (set rectangular_detector_Nx="
                                  "rectangular_detector_Ny=1)");
       }
+      if (IoUtils::get_required(simulation_config, "radiation_formula") != "simplified") {
+        throw std::runtime_error("debug=true requires radiation_formula=simplified: "
+                                 "Debug::export_radiation_integrand/export_radiation_phase only reimplement the "
+                                 "simplified form's per-tau math, so they cannot cross-check a direct-formula run");
+      }
       Debug::export_radiation_integrand(electron_beam[0], detector->get_point(0), sim_par.fundamental_frequency,
                                         run_output_dir + "/debug_integrand.dat");
       Debug::export_radiation_phase(electron_beam[0], detector->get_point(0), sim_par.fundamental_frequency,

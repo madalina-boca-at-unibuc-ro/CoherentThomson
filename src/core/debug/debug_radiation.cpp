@@ -29,9 +29,8 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
                                 double k, const std::string& filepath) {
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
   if (trajectory.empty()) {
-    throw std::runtime_error(
-        "Debug::export_radiation_integrand: electron has no recorded trajectory -- call "
-        "electron.compute_trajectory() (with store_trajectory=true) before exporting the debug integrand");
+    throw std::runtime_error("Debug::export_radiation_integrand: electron has no recorded trajectory -- call "
+                             "electron.compute_trajectory() before exporting the debug integrand");
   }
 
   std::ofstream file(filepath);
@@ -63,7 +62,7 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     MathUtils::RealFourVector n0 = x - detector_point;
     double R = MathUtils::create_unit_light_like_vector_in_place(n0);
 
-    double n0_contract_u = MathUtils::contract(n0, u) * R;
+    double n0_contract_u = MathUtils::contract(n0, u);
     double n0_dot3_u = MathUtils::dot3(n0, u);
     double amp_short_0 = n0_dot3_u / (R * R * n0_contract_u);
 
@@ -91,9 +90,8 @@ void export_radiation_phase(const Particle::Electron& electron, const MathUtils:
                             double k, const std::string& filepath) {
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
   if (trajectory.empty()) {
-    throw std::runtime_error(
-        "Debug::export_radiation_phase: electron has no recorded trajectory -- call "
-        "electron.compute_trajectory() (with store_trajectory=true) before exporting the debug phase");
+    throw std::runtime_error("Debug::export_radiation_phase: electron has no recorded trajectory -- call "
+                             "electron.compute_trajectory() before exporting the debug phase");
   }
 
   std::ofstream file(filepath);

@@ -15,9 +15,9 @@ def plot_electron_trajectory(filepath):
     electron a line belongs to; on the spatial panels, linestyle encodes which
     component (x1/x2/x3 or p1/p2/p3) it is.
     """
-    # 1. Read data cleanly using pandas (electron.dat starts with '#'-prefixed
-    # metadata lines, e.g. '# store_trajectory value ...', before the header row;
-    # blank lines separate each electron's block and are skipped automatically)
+    # 1. Read data cleanly using pandas (electron.dat starts with a '#'-prefixed
+    # metadata line before the header row; blank lines separate each electron's
+    # block and are skipped automatically)
     try:
         data = pd.read_csv(filepath, sep=" ", comment='#')
     except Exception as e:

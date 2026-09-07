@@ -194,10 +194,10 @@ inline size_t get_trajectory_NT(const ConfigMap& config) { return std::stoul(get
 inline size_t get_N_omega(const ConfigMap& config) { return std::stoul(get_required(config, "N_omega")); }
 
 // The per-electron parameters a cylinder beam is generated from: cylinder geometry and Gaussian
-// momentum distribution. Deliberately excludes beam_particle_count/random_seed (which control the
-// generation loop rather than any individual electron) and store_trajectory (a per-run toggle read
-// separately). Shared by Particle::generate_cylinder_beam and Simulation::init_simulation_parameters
-// (the latter only needs average_px/py/pz, for the initial-motion Doppler scaling of d_tau).
+// momentum distribution. Deliberately excludes beam_particle_count/random_seed, which control the
+// generation loop rather than any individual electron. Shared by Particle::generate_cylinder_beam
+// and Simulation::init_simulation_parameters (the latter only needs average_px/py/pz, for the
+// initial-motion Doppler scaling of d_tau).
 struct CylinderBeamParams {
   double radius;
   double height;

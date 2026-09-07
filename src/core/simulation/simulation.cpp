@@ -122,6 +122,17 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   size_t N_screen = detector.get_total_points();
   size_t num_electrons = electron_beam.size();
 
+  // Selects which of the two closed forms in theory/FT_Faraday_tensor-direct_and_simplified_forms.md
+  // Radiation::compute_radiation evaluates -- see that function's doc comment. Validated here
+  // (rather than left as a silent `== "direct"` comparison) so a typo'd value doesn't silently fall
+  // back to "simplified" the way an unrecognized config unit silently falls back to 1.0 elsewhere.
+  const std::string& radiation_formula = IoUtils::get_required(config, "radiation_formula");
+  if (radiation_formula != "simplified" && radiation_formula != "direct") {
+    throw std::runtime_error("Simulation::run_simulation: unknown radiation_formula \"" + radiation_formula +
+                             "\" (expected \"simplified\" or \"direct\")");
+  }
+  bool use_direct_formula = radiation_formula == "direct";
+
   size_t max_threads = std::thread::hardware_concurrency();
   if (max_threads == 0) max_threads = 1;
   if (num_threads == 0 || num_threads > max_threads) num_threads = max_threads;
@@ -150,7 +161,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       PackedRadiationField& local_field = thread_fields[thread_idx];
       for (size_t p = begin; p < end; ++p) {
         Particle::Electron& electron = electron_beam[p];
-        Radiation::compute_radiation(electron, laser, frequencies_list, detector, local_field);
+        Radiation::compute_radiation(electron, laser, frequencies_list, detector, local_field, use_direct_formula);
         // Progress indicator: only thread 0 prints, both to avoid interleaved output from multiple
         // threads writing to std::cout concurrently and because thread 0's chunk is representative
         // enough of overall progress for a rough sense of how a long run is advancing.
