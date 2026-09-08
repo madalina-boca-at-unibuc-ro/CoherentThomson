@@ -44,15 +44,15 @@ F^{\alpha\beta}(ck,{\bf x}) = F^{\alpha\beta}_{l}(ck,{\bf x}) + F^{\alpha\beta}_
 $$
 
 $$
-F_l^{\alpha\beta}(ck,{\bf x}) =\frac{1}{2\pi}\frac{e}{4\pi\epsilon_0c^2|{\bf R}_0|}
-\int_{-\infty}^{\infty} d\tau\; e^{ik\left(r_0^0(\tau)+|{\bf R}_0(\tau)|\right)}\;
+F_l^{\alpha\beta}(ck,{\bf x}) =\frac{1}{2\pi}\frac{e}{4\pi\epsilon_0c^2}
+\int_{-\infty}^{\infty} d\tau\; \frac{1}{|{\bf R}_0(\tau)|}\,e^{ik\left(r_0^0(\tau)+|{\bf R}_0(\tau)|\right)}\;
 \frac{(u\cdot n_{R_0})(n_{R_0}^{\alpha}w^{\beta}-n_{R_0}^{\beta}w^{\alpha})-(w\cdot n_{R_0})(n_{R_0}^{\alpha}u^{\beta}-n_{R_0}^{\beta}u^{\alpha})}
 {(u\cdot n_{R_0})^2}
 $$
 
 $$
-F_s^{\alpha\beta}(ck,{\bf x}) =\frac{1}{2\pi}\frac{e}{4\pi\epsilon_0|{\bf R}_0|^2}
-\int_{-\infty}^{\infty} d\tau\; e^{ik\left(r_0^0(\tau)+|{\bf R}_0(\tau)|\right)}\;
+F_s^{\alpha\beta}(ck,{\bf x}) =\frac{1}{2\pi}\frac{e}{4\pi\epsilon_0}
+\int_{-\infty}^{\infty} d\tau\; \frac{1}{|{\bf R}_0(\tau)|^2}\,e^{ik\left(r_0^0(\tau)+|{\bf R}_0(\tau)|\right)}\;
 \frac{n_{R_0}^{\alpha}u^{\beta}-n_{R_0}^{\beta}u^{\alpha}}
 {(u\cdot n_{R_0})^2}
 $$
@@ -66,6 +66,14 @@ Notes for implementation:
 - Denominator power: $(u\cdot n_{R_0})^2$ in both terms (**not** $^3$ — see below).
 - **Do not confuse $n_{R_0}(\tau)$ with $n_0$.** $n_{R_0}(\tau)=(1,{\bf n}_{R_0}(\tau))$ is the *exact*, $\tau$-dependent unit direction from the emitting charge to the observation point, defined above and used throughout this note. $n_0=(1,{\bf n}_0)$, ${\bf n}_0={\bf x}_0/|{\bf x}_0|$, is a *different*, constant vector used only in the separate long-distance/far-field expansion (`shared_src/elm_el_sc/time-domain/c2.tex`, `c3.tex`); it never appears in the exact Fourier-transform formulas here. An earlier version of the `FT-direct.tex` source used `n_0` as shorthand for `n_{R_0}` in this section — that was a notation bug in the LaTeX source and has since been fixed to write `n_{R_0}` explicitly; this note now matches the corrected source.
 - **Jacobian bug (fixed).** An earlier version of `FT-direct.tex` derived $d(ct)/d\tau=u\cdot n_{R_0}$ but then never multiplied the integrand by the corresponding $dt/d\tau=(u\cdot n_{R_0})/c$ when switching the outer integral from $t$ to $\tau$ — the Jacobian was dropped entirely. The source has been corrected to insert it explicitly, which (after using $u\cdot n_{R_0}=(u\cdot R_0)/|{\bf R}_0|$ to cancel one power of $u\cdot R_0$) changes the overall prefactor from $e/(4\pi\epsilon_0c)$ to $e/(4\pi\epsilon_0c^2)$ and drops the denominator power from $(u\cdot n_{R_0})^3$ to $(u\cdot n_{R_0})^2$ in both $F_l$ and $F_s$; $F_s$ also loses its separate $c^2$ prefactor (it cancels against the new $1/c^2$). The formulas above already reflect the corrected source.
+- **Typesetting fix (this doc only, not a source/physics bug).** $|{\bf R}_0|$ and $|{\bf R}_0|^2$ were previously
+  written in the constant prefactor in front of the $\int d\tau$, as if independent of the integration variable —
+  but $|{\bf R}_0|=|{\bf R}_0(\tau)|$ is $\tau$-dependent (the electron-to-screen distance at that trajectory
+  point), so it cannot be pulled outside the integral. Moved inside, multiplying the integrand, matching how Form
+  2 below already has it. `Radiation::compute_radiation` (`radiation.cpp`) was never affected by this — its
+  direct-form prefactors (`long_range_prefactor_direct`/`short_range_prefactor_direct`) are computed once per
+  trajectory point inside the `i_tau` loop, using that point's own `R`, i.e. the code already treated $|{\bf
+  R}_0|$ as $\tau$-dependent; only this `.md` transcription had it factored out.
 
 ---
 
@@ -90,16 +98,17 @@ $$
 
 $$
 F^{\alpha\beta}_{s}(ck,{\bf x}) =
-\frac{1}{2\pi}\frac{e}{4\pi\epsilon_0c^2}\int_{-\infty}^{\infty} d\tau\;
+-\frac{1}{2\pi}\frac{e}{4\pi\epsilon_0c^2}\int_{-\infty}^{\infty} d\tau\;
 e^{ik\left(r_0^0(\tau)+|{\bf R}_0(\tau)|\right)}
 \left(\frac{{\bf n}_{R_0}\cdot{\bf u}}{|{\bf R}_0|^2}\right)
 \frac{n_{R_0}^{\alpha}u^{\beta}-n_{R_0}^{\beta}u^{\alpha}}{n_{R_0}\cdot u}
 $$
 
 Notes for implementation:
-- Both terms share the same tensor factor $\dfrac{n_{R_0}^{\alpha}u^{\beta}-n_{R_0}^{\beta}u^{\alpha}}{n_{R_0}\cdot u}$; they differ only in the scalar weight multiplying it: $-ik\,(u\cdot n_{R_0})/|{\bf R}_0|$ for $F_l$ (linear in $k$, radiation term) vs. $({\bf n}_{R_0}\cdot{\bf u})/|{\bf R}_0|^2$ for $F_s$ ($k$-independent, near-field term). Note ${\bf n}_{R_0}\cdot{\bf u}$ in $F_s$ is a **3-vector** dot product (spatial part of $u$), unlike the four-dot $u\cdot n_{R_0}$ used in $F_l$.
+- Both terms share the same tensor factor $\dfrac{n_{R_0}^{\alpha}u^{\beta}-n_{R_0}^{\beta}u^{\alpha}}{n_{R_0}\cdot u}$; they differ only in the scalar weight multiplying it: $-ik\,(u\cdot n_{R_0})/|{\bf R}_0|$ for $F_l$ (linear in $k$, radiation term) vs. $-({\bf n}_{R_0}\cdot{\bf u})/|{\bf R}_0|^2$ for $F_s$ ($k$-independent, near-field term). Note ${\bf n}_{R_0}\cdot{\bf u}$ in $F_s$ is a **3-vector** dot product (spatial part of $u$), unlike the four-dot $u\cdot n_{R_0}$ used in $F_l$.
 - This form is algebraically simpler to implement (one shared tensor factor, two scalar weights) and is a good candidate for a first numerical implementation.
 - **Jacobian bug (fixed).** An earlier version of `FT-simplified.tex` combined the Jacobian $dt/d\tau=(u\cdot n_{R_0})/c$ with Jackson's own $1/(u\cdot R_0)$ prefactor into $\dfrac{u\cdot n_{R_0}}{u\cdot R_0}=\dfrac1{|{\bf R}_0|}$ — dropping the $1/c$, so the combined factor had units of $1/\text{length}$ instead of being dimensionless as required. The correct combination is $\dfrac{u\cdot n_{R_0}}{c\,(u\cdot R_0)}=\dfrac1{c\,|{\bf R}_0|}$. The source has been corrected: every prefactor from this point on carries $c^2$ instead of $c$ (the shape of the integration-by-parts result is otherwise unchanged). The formulas above already reflect the corrected source.
+- **Sign bug (fixed).** An earlier version of `FT-simplified.tex` computed $\dfrac{d}{d\tau}\!\left[\dfrac{e^{ik(r_0^0+|{\bf R}_0|)}}{|{\bf R}_0|}\right] = ik(u\cdot n_{R_0})\dfrac{e^{ik(\cdots)}}{|{\bf R}_0|} - \dfrac{e^{ik(\cdots)}\,{\bf n}_{R_0}\cdot{\bf u}}{|{\bf R}_0|^2}$ — i.e. with a **minus** sign on the $d/d\tau(1/|{\bf R}_0|)$ term. Direct differentiation gives the opposite: from $|{\bf R}_0|^2={\bf R}_0\cdot{\bf R}_0$ and $d{\bf R}_0/d\tau=-{\bf u}$, $\;d|{\bf R}_0|/d\tau = -{\bf n}_{R_0}\cdot{\bf u}$, so $d(1/|{\bf R}_0|)/d\tau = +({\bf n}_{R_0}\cdot{\bf u})/|{\bf R}_0|^2$ — **plus**, not minus. That sign error propagated through the subsequent integration by parts and flipped the sign of the entire $F_s$ term. The source has been corrected (the $F_s$ formula above now carries the extra minus sign this fix introduces); $F_l$ is unaffected, since it comes from the *other* term in that same derivative (the one built from $\phi'=n_{R_0}\cdot u$), which had the correct sign already. This was found by comparing this "simplified" total field against the independently-derived "direct" form (Form 1): the two agreed to good precision on 5 of the 6 independent Faraday-tensor components, but disagreed by an order of magnitude (and had unrelated phase/sign) specifically on $F^{03}$ — the one component small enough, by transversality, for a near-field ($F_s$) sign error to dominate its total instead of being swamped by the (correct, ~7-orders-larger) $F_l$ contribution that masks this bug everywhere else.
 
 ---
 

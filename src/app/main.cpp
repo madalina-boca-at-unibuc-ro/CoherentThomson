@@ -44,17 +44,19 @@ int main(int argc, char* argv[]) {
 
       // A plane wave has no transverse profile at all (the heat map is uniform regardless of window
       // size), so its window stays fixed at the field_heatmap_x/y_min/max config values below. A
-      // Laguerre-Gauss mode's actual transverse scale is set by its own waist w0, not by those fixed
-      // values, so size the window to it instead (+-2*w0, generous enough to show the mode's rings/
-      // lobes for the small p/l indices this is meant to be used with).
+      // Laguerre-Gauss mode's actual transverse scale of interest is the electron beam's own extent,
+      // not the fixed config values, so size the window to the beam's cylinder radius instead --
+      // this does not account for beam_center_x/y or the mean-momentum beam_axis_rotation
+      // (Particle::generate_cylinder_beam), so it's centered on canonical-frame (0,0) regardless of
+      // where the beam itself actually sits.
       std::string laser_type = IoUtils::get_required(simulation_config, "laser_type");
       double x_min, x_max, y_min, y_max;
       if (laser_type == "laguerre_gauss") {
-        double lg_w0 = std::get<2>(IoUtils::get_laser_lg_params(simulation_config));
-        x_min = -2.0 * lg_w0;
-        x_max = 2.0 * lg_w0;
-        y_min = -2.0 * lg_w0;
-        y_max = 2.0 * lg_w0;
+        double beam_radius = IoUtils::parse_cylinder_beam_params(simulation_config).radius;
+        x_min = -beam_radius;
+        x_max = beam_radius;
+        y_min = -beam_radius;
+        y_max = beam_radius;
       } else {
         auto [x_min_val, x_min_unit] =
             IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_x_min"));
