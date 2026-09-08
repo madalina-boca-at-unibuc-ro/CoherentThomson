@@ -197,7 +197,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   // instead of on every trajectory point of every electron. Everything downstream (plotting,
   // observable calculations) consumes this, not the packed representation.
   //
-  // compute_radiation builds E/B (and hence F) straight in the lab frame, using n0/u vectors that
+  // compute_radiation builds E/B (and hence F) straight in the lab frame, using n_R0/u vectors that
   // already carry the laser's actual (rotated) orientation -- but plots are usually meant to be read in
   // the laser's own canonical frame (laser along Oz), the same convention init_simulation_parameters
   // uses for k1/p/n2 above. Rotating back with the inverse of the laser's rotation_matrix
@@ -221,10 +221,15 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
     }
   }
 
-  // multiply with a common factor; it reduces to 1/(2pi c) in atomic units
+  // multiply with a common factor; it reduces to 1/(2pi c^2) in atomic units. The c^2 (not c) is
+  // required by the Jacobian of the t->tau change of variable (dt/d(tau) = (u.n_R0)/c, on top of
+  // Jackson's own 1/c) -- see theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Jacobian
+  // of the change of variable" note; both the simplified and direct formulas now share this same
+  // overall constant.
 
-  double general_factor = 1 / (2 * MathUtils::pi) * PhysUtils::AtomicUnits::e_0 /
-                          (4 * MathUtils::pi * PhysUtils::AtomicUnits::epsilon_0 * PhysUtils::AtomicUnits::c);
+  double general_factor =
+      1 / (2 * MathUtils::pi) * PhysUtils::AtomicUnits::e_0 /
+      (4 * MathUtils::pi * PhysUtils::AtomicUnits::epsilon_0 * PhysUtils::AtomicUnits::c * PhysUtils::AtomicUnits::c);
 
   for (size_t i_omega = 0; i_omega < N_omega; ++i_omega) {
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {

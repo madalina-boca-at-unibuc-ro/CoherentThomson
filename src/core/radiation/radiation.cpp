@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "../include/phys_utils/phys_utils.hpp"
-
 namespace Core::Radiation {
 
 // ComplexBivector aliases std::array, whose only associated namespace (for ADL) is std -- pull
@@ -13,7 +11,7 @@ using Core::MathUtils::operator+=;
 
 namespace {
 
-// One element of the antisymmetric bivector n^\mu u^\nu - n^\nu u^\mu, for alpha < beta.
+// One element of the antisymmetric bivector n_R0^\mu u^\nu - n_R0^\nu u^\mu, for alpha < beta.
 // F[beta][alpha] is always -F[alpha][beta] and the diagonal is identically zero, so only
 // the 6 independent upper-triangle elements of the (otherwise 4x4) tensor are ever
 // evaluated below -- never the full 16.
@@ -58,7 +56,7 @@ inline void add_bivector_term(MathUtils::ComplexBivector& long_bivector, MathUti
 // forms differ only in their PREFACT terms, never in this phase.
 inline double radiation_phase_argument(const MathUtils::RealFourVector& x, double R) { return x[0] + R; }
 
-// Long-range PREFACT term (multiplies the shared bivector term n0^alpha u^beta - n0^beta
+// Long-range PREFACT term (multiplies the shared bivector term n_R0^alpha u^beta - n_R0^beta
 // u^alpha). Frequency-dependent: proportional to freq/R. `inv_R` (rather than R) is taken as a
 // parameter so callers that sweep many frequencies at fixed (tau, screen point) can precompute
 // the division once.
@@ -68,9 +66,9 @@ inline MathUtils::Complex long_range_prefactor(double freq, double inv_R) {
 
 // Short-range PREFACT term (multiplies the same shared bivector term). Frequency-independent in
 // the current formula.
-inline double short_range_prefactor(const MathUtils::RealFourVector& n0, const MathUtils::RealFourVector& u, double R,
-                                    double n0_contract_u) {
-  return MathUtils::dot3(n0, u) / (R * R * n0_contract_u);
+inline double short_range_prefactor(const MathUtils::RealFourVector& n_R0, const MathUtils::RealFourVector& u, double R,
+                                    double n_R0_contract_u) {
+  return MathUtils::dot3(n_R0, u) / (R * R * n_R0_contract_u);
 }
 
 // ---- Direct form (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, Form 1) ----
@@ -79,32 +77,37 @@ inline double short_range_prefactor(const MathUtils::RealFourVector& n0, const M
 // integration-by-parts derivation above: neither PREFACT term below carries an explicit frequency
 // factor (the only omega-dependence is in the shared exp(i*omega*phase_argument) factor, applied
 // by the caller), and the long-range term's geometric factor is a genuine combination of the
-// (n0, u) and (n0, w) bivectors, not the bare (n0, u) bivector alone -- see
+// (n_R0, u) and (n_R0, w) bivectors, not the bare (n_R0, u) bivector alone -- see
 // direct_long_range_tensor_term below. Selected via the "radiation_formula"="direct" config key.
 
-// Direct-form long-range PREFACT term: 1 / (R * (n0.u)^3).
-inline double long_range_prefactor_direct(double R, double n0_contract_u) {
-  return 1.0 / (R * n0_contract_u * n0_contract_u * n0_contract_u);
+// Direct-form long-range PREFACT term: 1 / (R * (n_R0.u)^2). Denominator power is 2, not 3 -- an
+// earlier version of this formula (and of the theory doc it implements) dropped the Jacobian
+// dt/d(tau) = (u.n_R0)/c when changing the outer integration variable from t to tau, which left an
+// extra spurious power of (u.n_R0) in the denominator; see the theory doc's Form 1 "Jacobian bug
+// (fixed)" note.
+inline double long_range_prefactor_direct(double R, double n_R0_contract_u) {
+  return 1.0 / (R * n_R0_contract_u * n_R0_contract_u);
 }
 
-// Direct-form short-range PREFACT term: c^2 / (R^2 * (n0.u)^3). Carries an explicit extra c^2
-// factor the simplified form's short-range prefactor doesn't have (the direct form's F_s
-// normalization constant is e*c^2/(4 pi eps0 c), vs both forms' shared e/(4 pi eps0 c) elsewhere)
-// -- baked in here, specific to this one formula, rather than into
-// Simulation::run_simulation's uniform general_factor.
-inline double short_range_prefactor_direct(double R, double n0_contract_u) {
-  return PhysUtils::AtomicUnits::c * PhysUtils::AtomicUnits::c /
-        (R * R * n0_contract_u * n0_contract_u * n0_contract_u);
+// Direct-form short-range PREFACT term: 1 / (R^2 * (n_R0.u)^2). No longer carries an explicit c^2
+// factor: the same Jacobian fix that drops the denominator power to 2 (see
+// long_range_prefactor_direct above) also folds what used to be this term's separate c^2 into the
+// overall e/(4 pi eps0 c^2) normalization constant now shared uniformly by F_l and F_s -- applied
+// once, for every formula, via Simulation::run_simulation's general_factor, rather than baked in
+// here per formula as before.
+inline double short_range_prefactor_direct(double R, double n_R0_contract_u) {
+  return 1.0 / (R * R * n_R0_contract_u * n_R0_contract_u);
 }
 
-// Direct-form long-range geometric factor: (n0.u)*(n0^alpha w^beta - n0^beta w^alpha) -
-// (n0.w)*(n0^alpha u^beta - n0^beta u^alpha), replacing the simplified form's bare (n0, u)
-// bivector for the long-range term only -- the short-range term still uses the bare (n0, u)
-// bivector (bivector_element(n0, u, alpha, beta)) in both forms.
-inline double direct_long_range_tensor_term(const MathUtils::RealFourVector& n0, const MathUtils::RealFourVector& u,
-                                            const MathUtils::RealFourVector& w, double n0_contract_u,
-                                            double n0_contract_w, size_t alpha, size_t beta) {
-  return n0_contract_u * bivector_element(n0, w, alpha, beta) - n0_contract_w * bivector_element(n0, u, alpha, beta);
+// Direct-form long-range geometric factor: (n_R0.u)*(n_R0^alpha w^beta - n_R0^beta w^alpha) -
+// (n_R0.w)*(n_R0^alpha u^beta - n_R0^beta u^alpha), replacing the simplified form's bare (n_R0, u)
+// bivector for the long-range term only -- the short-range term still uses the bare (n_R0, u)
+// bivector (bivector_element(n_R0, u, alpha, beta)) in both forms.
+inline double direct_long_range_tensor_term(const MathUtils::RealFourVector& n_R0, const MathUtils::RealFourVector& u,
+                                            const MathUtils::RealFourVector& w, double n_R0_contract_u,
+                                            double n_R0_contract_w, size_t alpha, size_t beta) {
+  return n_R0_contract_u * bivector_element(n_R0, w, alpha, beta) -
+         n_R0_contract_w * bivector_element(n_R0, u, alpha, beta);
 }
 
 }  // namespace
@@ -169,32 +172,35 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       const MathUtils::RealFourVector& x = trajectory[i_tau].position;
       const MathUtils::RealFourVector& u = trajectory[i_tau].momentum;
 
-      MathUtils::RealFourVector diff = x - detector_point;
+      // R_0 = x_0 - r_0(tau) (observation point minus particle position), matching
+      // theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Common notation" section --
+      // n_R0 = R_0/|R_0| points from the emitting particle to the observer, not the reverse.
+      MathUtils::RealFourVector diff = detector_point - x;
 
-      // n0 is built in place from diff, which also yields R (the spatial norm) without
+      // n_R0 is built in place from diff, which also yields R (the spatial norm) without
       // recomputing the sqrt a second time.
-      MathUtils::RealFourVector n0 = diff;
-      double R = MathUtils::create_unit_light_like_vector_in_place(n0);
+      MathUtils::RealFourVector n_R0 = diff;
+      double R = MathUtils::create_unit_light_like_vector_in_place(n_R0);
 
-      double n0_contract_u = MathUtils::contract(n0, u);
+      double n_R0_contract_u = MathUtils::contract(n_R0, u);
 
-      // The bare (n0, u) bivector terms depend only on n0 and u, not on frequency, so they're
+      // The bare (n_R0, u) bivector terms depend only on n_R0 and u, not on frequency, so they're
       // computed once per (tau, screen point) here rather than once per frequency below. Used
       // directly as the short-range term in both formulas, and as the long-range term in the
       // simplified formula (see long_term01..23 below for the direct formula's own long-range
       // factor).
-      double term01 = bivector_element(n0, u, 0, 1);
-      double term02 = bivector_element(n0, u, 0, 2);
-      double term03 = bivector_element(n0, u, 0, 3);
-      double term12 = bivector_element(n0, u, 1, 2);
-      double term13 = bivector_element(n0, u, 1, 3);
-      double term23 = bivector_element(n0, u, 2, 3);
+      double term01 = bivector_element(n_R0, u, 0, 1);
+      double term02 = bivector_element(n_R0, u, 0, 2);
+      double term03 = bivector_element(n_R0, u, 0, 3);
+      double term12 = bivector_element(n_R0, u, 1, 2);
+      double term13 = bivector_element(n_R0, u, 1, 3);
+      double term23 = bivector_element(n_R0, u, 2, 3);
 
       // amp_short_0/inv_R (simplified formula) or prefactor_l_direct/prefactor_s_direct (direct
       // formula) are the tau/screen-point-level pieces of the PREFACT terms that don't depend on
       // frequency, so they're computed once per tau here rather than once per frequency below.
-      // long_term01..23 is the long-range geometric factor: the bare (n0, u) bivector for the
-      // simplified formula, or direct_long_range_tensor_term's (n0, u, w) combination for the
+      // long_term01..23 is the long-range geometric factor: the bare (n_R0, u) bivector for the
+      // simplified formula, or direct_long_range_tensor_term's (n_R0, u, w) combination for the
       // direct formula -- see radiation.hpp's use_direct_formula doc comment and
       // theory/FT_Faraday_tensor-direct_and_simplified_forms.md.
       double amp_short_0 = 0.0;
@@ -206,17 +212,17 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
 
       if (use_direct_formula) {
         const MathUtils::RealFourVector& w = trajectory[i_tau].acceleration;
-        double n0_contract_w = MathUtils::contract(n0, w);
-        prefactor_l_direct = long_range_prefactor_direct(R, n0_contract_u);
-        prefactor_s_direct = short_range_prefactor_direct(R, n0_contract_u);
-        long_term01 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 0, 1);
-        long_term02 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 0, 2);
-        long_term03 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 0, 3);
-        long_term12 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 1, 2);
-        long_term13 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 1, 3);
-        long_term23 = direct_long_range_tensor_term(n0, u, w, n0_contract_u, n0_contract_w, 2, 3);
+        double n_R0_contract_w = MathUtils::contract(n_R0, w);
+        prefactor_l_direct = long_range_prefactor_direct(R, n_R0_contract_u);
+        prefactor_s_direct = short_range_prefactor_direct(R, n_R0_contract_u);
+        long_term01 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 0, 1);
+        long_term02 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 0, 2);
+        long_term03 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 0, 3);
+        long_term12 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 1, 2);
+        long_term13 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 1, 3);
+        long_term23 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 2, 3);
       } else {
-        amp_short_0 = short_range_prefactor(n0, u, R, n0_contract_u);
+        amp_short_0 = short_range_prefactor(n_R0, u, R, n_R0_contract_u);
       }
 
       double phase_base = radiation_phase_argument(x, R);

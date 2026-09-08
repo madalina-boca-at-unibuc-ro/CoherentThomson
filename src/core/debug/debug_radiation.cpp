@@ -41,7 +41,7 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
   file << std::scientific << std::setprecision(6);
   file << "# debug radiation integrand: one row per trajectory point (tau), for a single electron/screen "
           "point/wavenumber k (= omega/c)\n";
-  file << "# per-tau contribution to the packed Faraday bivector, (n0^alpha u^beta - n0^beta u^alpha) * "
+  file << "# per-tau contribution to the packed Faraday bivector, (n_R0^alpha u^beta - n_R0^beta u^alpha) * "
           "amp_{long,short}(tau) -- the raw terms Radiation::compute_radiation sums over tau to build the final "
           "field\n";
   file << "# LR/SR = long_range/short_range, printed as 're im' pairs, in the fixed (01,02,03,12,13,23) bivector "
@@ -57,14 +57,15 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     const MathUtils::RealFourVector& x = trajectory[i_tau].position;
     const MathUtils::RealFourVector& u = trajectory[i_tau].momentum;
 
-    // Same n0/R/amp_long/amp_short construction as Radiation::compute_radiation's inner tau loop --
-    // see radiation.cpp for the derivation/comments.
-    MathUtils::RealFourVector n0 = x - detector_point;
-    double R = MathUtils::create_unit_light_like_vector_in_place(n0);
+    // Same n_R0/R/amp_long/amp_short construction as Radiation::compute_radiation's inner tau loop --
+    // see radiation.cpp for the derivation/comments. n_R0 = R_0/|R_0| = (x_0 - r_0)/|x_0 - r_0|
+    // points from the emitting particle to the observer (detector_point - x, not x - detector_point).
+    MathUtils::RealFourVector n_R0 = detector_point - x;
+    double R = MathUtils::create_unit_light_like_vector_in_place(n_R0);
 
-    double n0_contract_u = MathUtils::contract(n0, u);
-    double n0_dot3_u = MathUtils::dot3(n0, u);
-    double amp_short_0 = n0_dot3_u / (R * R * n0_contract_u);
+    double n_R0_contract_u = MathUtils::contract(n_R0, u);
+    double n_R0_dot3_u = MathUtils::dot3(n_R0, u);
+    double amp_short_0 = n_R0_dot3_u / (R * R * n_R0_contract_u);
 
     double phase_base = x[0] + R;
     MathUtils::Complex cexp = std::polar(1.0, phase_base * k);
@@ -73,11 +74,11 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
 
     file << i_tau << " " << trajectory[i_tau].tau;
     for (auto [alpha, beta] : kBivectorIndex) {
-      MathUtils::Complex long_term = amp_long * bivector_element(n0, u, alpha, beta);
+      MathUtils::Complex long_term = amp_long * bivector_element(n_R0, u, alpha, beta);
       file << " " << long_term.real() << " " << long_term.imag();
     }
     for (auto [alpha, beta] : kBivectorIndex) {
-      MathUtils::Complex short_term = amp_short * bivector_element(n0, u, alpha, beta);
+      MathUtils::Complex short_term = amp_short * bivector_element(n_R0, u, alpha, beta);
       file << " " << short_term.real() << " " << short_term.imag();
     }
     file << "\n";
@@ -110,8 +111,8 @@ void export_radiation_phase(const Particle::Electron& electron, const MathUtils:
   for (size_t i_tau = 0; i_tau < trajectory.size(); ++i_tau) {
     const MathUtils::RealFourVector& x = trajectory[i_tau].position;
 
-    MathUtils::RealFourVector n0 = x - detector_point;
-    double R = MathUtils::create_unit_light_like_vector_in_place(n0);
+    MathUtils::RealFourVector n_R0 = detector_point - x;
+    double R = MathUtils::create_unit_light_like_vector_in_place(n_R0);
 
     double phase_base = x[0] + R;
     double phase = phase_base * k;

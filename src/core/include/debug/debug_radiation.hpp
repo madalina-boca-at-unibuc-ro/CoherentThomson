@@ -17,7 +17,7 @@ namespace Core::Debug {
 // components -- i.e. the raw terms Radiation::compute_radiation sums over tau, rather than only
 // their final sum -- to `filepath`.
 //
-// The underlying physics (n0/u geometry, retarded phase, amp_long/amp_short) is intentionally
+// The underlying physics (n_R0/u geometry, retarded phase, amp_long/amp_short) is intentionally
 // reimplemented here rather than shared with radiation.cpp, so this diagnostic path can never be
 // affected by, or accidentally affect, the production accumulation path.
 void export_radiation_integrand(const Particle::Electron& electron, const MathUtils::RealFourVector& detector_point,
@@ -25,7 +25,7 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
 
 // Companion to export_radiation_integrand above: writes the one phase factor common to every
 // long-range/short-range bivector component at every (tau, screen point) -- the geometric
-// bivector_element(n0, u, alpha, beta) terms vary per component and are handled there, but
+// bivector_element(n_R0, u, alpha, beta) terms vary per component and are handled there, but
 // exp(i * phase_base * k), phase_base = x[0] + R, multiplies all of them identically -- so it's
 // exported separately rather than repeated 12 times (6 components x long/short) per row of
 // export_radiation_integrand's file. Same preconditions and `k` convention as
