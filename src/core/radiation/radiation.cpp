@@ -74,10 +74,13 @@ inline MathUtils::Complex long_range_prefactor(double freq, double inv_R) {
 }
 
 // Short-range PREFACT term (multiplies the same shared bivector term). Frequency-independent in
-// the current formula.
+// the current formula. Negative sign: d/dtau(1/|R_0|) = +(n_R0.u)/|R_0|^2 (three-vector dot), so
+// the integration-by-parts term -integral(f' * B) that produces this piece carries an overall
+// minus -- see theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Sign bug (fixed)" note
+// under Form 2.
 inline double short_range_prefactor(const MathUtils::RealFourVector& n_R0, const MathUtils::RealFourVector& u, double R,
                                     double n_R0_contract_u) {
-  return MathUtils::dot3(n_R0, u) / (R * R * n_R0_contract_u);
+  return -MathUtils::dot3(n_R0, u) / (R * R * n_R0_contract_u);
 }
 
 // ---- Boundary term (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, "Form 2's boundary

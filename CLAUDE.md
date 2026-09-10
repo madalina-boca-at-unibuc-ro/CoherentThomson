@@ -563,10 +563,52 @@ still plots against raw `tau`, not `tau/T`.
   documented `1/R^2` near-field scaling. Fixed in both files; per the regime tested so far the short-range term
   doesn't contribute either way, so this fix alone does not resolve the OPEN VALIDATION GAP above — that
   remains open, and is now suspected to sit in the long-range term instead.
+- **Cross-checking `radiation_formula=simplified` against `radiation_formula=direct` (same beam/laser/detector
+  config, differing only in that key) found and fixed a genuine sign bug in the simplified form's `F_s` term, but
+  also surfaced a second discrepancy in `F_l` (`F03`/`F30`) that this fix alone does not touch — see the following
+  bullet for how that second discrepancy was subsequently resolved.** Comparing the two forms'
+  total field (`LR+SR`) component-by-component: 5 of the 6 independent Faraday-tensor components (`F01`, `F02`,
+  `F12`, `F13`, `F23`) agree to ~4 significant figures between the two formulas, as expected; `F03` (equivalently
+  `F30`) disagreed by roughly 1-2 orders of magnitude with an unrelated phase/sign, isolated to that one component
+  pair. Because `SR` is ~6-7 orders of magnitude below `LR` in every config tested so far (confirmed again during
+  this investigation), "only the total `F_l+F_s` needs to match, not the individual pieces" (the caveat in the
+  theory doc above) is moot in practice: total is dominated entirely by `F_l`, so an `F_l`-vs-`F_l` mismatch shows
+  up directly in the total, and an `F_s` bug of any size can't visibly move it.
+  - **Sign bug (fixed).** Hand-rederiving the simplified form's integration-by-parts step (`theory/
+    FT_Faraday_tensor-direct_and_simplified_forms.md`, Form 2) found `d/dτ(1/|R_0|) = +(n_{R_0}·u)/|R_0|^2`
+    (three-vector dot), whereas the derivation this repo's `FT-simplified.tex` was built from had that term with
+    the opposite sign — flipping the sign of the entire derived `F_s` term. Confirmed against the actual
+    `FT-simplified.tex` source (since deleted from the repo — it was a working scratch file, not needed once the
+    result was transcribed into the theory doc, and the bug is now documented there under "Sign bug (fixed)").
+    Fixed in `radiation.cpp`'s `short_range_prefactor` (now returns the negated value) and in the theory doc's
+    Form 2 `F_s` formula and its "shared tensor factor" note. **Verified this fix alone does not resolve the `F03`
+    discrepancy above** — re-running both formulas after the fix still shows the same-sized `F03` mismatch, exactly
+    because `SR`'s magnitude is too small relative to `LR` for its sign to matter to the total. So this is a real,
+    independent bug (worth having fixed before relying on `F_s` on its own — see the angular-momentum-flux bullet
+    below, where `(ls)`/`(sl)` cross-terms depend on `F_s`'s sign directly, unlike the total field), but it is not
+    the explanation for the `F03` anomaly.
+  - **`F03`/`F30` discrepancy — root cause identified and fixed, see the following bullet.** Leading hypothesis at
+    the time: the simplified form's IBP derivation drops a boundary term, evaluated at the τ-integration limits.
+    The theory doc's Form 2 justifies dropping it as "contributes only as ω→0", but its actual suppression
+    mechanism is the explicit `1/|R_0|` factor — i.e. it requires the electron to have travelled far enough that
+    its distance to the (fixed, finite) detector point has grown large relative to its interaction-region value.
+    For a realistic detector distance and pulse-timescale trajectory, the electron's total excursion is a tiny
+    fraction of `|R_0|` regardless of how long the trajectory is integrated, so `1/|R_0|` barely changes — meaning
+    this term may not actually be small at any practically affordable `wing_sigma_cutoff`, unlike the short-range
+    term (whose own vanishing outside the pulse comes from a different, unrelated condition: the particle's
+    velocity/acceleration settling to a constant, not from `1/|R_0|` growing). This was tested directly:
+    increasing `wing_sigma_cutoff` did not shrink the `F03` gap, consistent with the boundary term being a fixed
+    geometric omission rather than a finite-window artifact that integrates away. `F03` specifically (and not
+    `F01`/`F02`/`F12`/`F13`/`F23`) is where this shows up because `F03` (`Ez`, the field component along the
+    beam/propagation axis) is physically expected to be small (near-cancellation, by transversality) while the
+    other components are not — so `F03` is the one component small enough for an uncounted boundary term to
+    dominate its total, rather than being swamped by a genuinely large signal the way it is everywhere else. This
+    hypothesis was then confirmed and implemented — see the next bullet.
 - **`compute_radiation`'s simplified formula now computes a third term, the boundary term `F_b`** (theory doc's
-  "Form 2's boundary term F_b" section), alongside `F_l`/`F_s` — a plausible fix for (part of) the OPEN VALIDATION
-  GAP above, since the original "simplified" derivation drops `F_b` on the grounds that it's negligible as
-  `omega->0`, which only holds for an integral over all of `tau` in `(-infinity, infinity)`; `compute_radiation`
+  "Form 2's boundary term F_b" section), alongside `F_l`/`F_s` — the fix for the `F03`/`F30` discrepancy just
+  described, and a plausible fix for (part of) the OPEN VALIDATION GAP above, since the original "simplified"
+  derivation drops `F_b` on the grounds that it's negligible as `omega->0`, which only holds for an integral over
+  all of `tau` in `(-infinity, infinity)`; `compute_radiation`
   integrates each electron over its actual **finite** recorded trajectory, so `F_b` is generally significant and
   was previously missing entirely. Unlike `F_l`/`F_s` (summed over every trajectory point), `F_b` is a pure
   boundary evaluation — nonzero only at the first/last recorded trajectory point (`i_tau == 0` /
