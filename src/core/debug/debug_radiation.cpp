@@ -57,6 +57,9 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     file << " BR_F" << alpha << beta << "_re BR_F" << alpha << beta << "_im";
   file << "\n";
 
+  double d_tau = electron.get_d_tau();
+  size_t N_tau = trajectory.size();
+
   for (size_t i_tau = 0; i_tau < trajectory.size(); ++i_tau) {
     const MathUtils::RealFourVector& x = trajectory[i_tau].position;
     const MathUtils::RealFourVector& u = trajectory[i_tau].momentum;
@@ -75,6 +78,15 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     MathUtils::Complex cexp = std::polar(1.0, phase_base * k);
     MathUtils::Complex amp_long = MathUtils::Complex{0.0, -k / R} * cexp;
     MathUtils::Complex amp_short = amp_short_0 * cexp;
+
+    // Mirrors compute_radiation's tau_weight construction (radiation.cpp): trapezoidal quadrature
+    // weight for the continuous tau-integral F_l/F_s are defined as -- full d_tau at every interior
+    // tau, half weight at the two endpoints. Applied to amp_long/amp_short only, not amp_boundary
+    // below (F_b is an exact antiderivative evaluation at the endpoints, not a tau-sum).
+    double tau_weight = d_tau;
+    if (N_tau > 1 && (i_tau == 0 || i_tau == N_tau - 1)) tau_weight *= 0.5;
+    amp_long *= tau_weight;
+    amp_short *= tau_weight;
 
     // Mirrors compute_radiation's boundary_weight construction (radiation.cpp): -1/(R*n_R0.u) at
     // tau_min (i_tau == 0), +1/(R*n_R0.u) at tau_max (i_tau == N_tau - 1), both applied (and

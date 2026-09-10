@@ -270,14 +270,27 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
     }
   }
 
-  // multiply with a common factor; it reduces to 1/(2pi c^2) in atomic units. The c^2 (not c) is
-  // required by the Jacobian of the t->tau change of variable (dt/d(tau) = (u.n_R0)/c, on top of
-  // Jackson's own 1/c) -- see theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Jacobian
-  // of the change of variable" note; both the simplified and direct formulas now share this same
-  // overall constant.
-
+  // multiply with a common factor; it reduces to -1/(2pi c^2) in atomic units (the minus sign is
+  // the emitting particle's own charge, see below). The c^2 (not c) is required by the Jacobian of
+  // the t->tau change of variable (dt/d(tau) = (u.n_R0)/c, on top of Jackson's own 1/c) -- see
+  // theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Jacobian of the change of variable"
+  // note; both the simplified and direct formulas now share this same overall constant.
+  //
+  // FIXED: this used to multiply by PhysUtils::AtomicUnits::e_0 (the electron charge *in modulus*,
+  // = +1.0 -- correct for a0/E0's amplitude normalization in laser_field.cpp, which only ever needs
+  // |e|), instead of q_0 (the electron's actual signed charge, = -1.0, already used correctly in
+  // Particle::Electron's own equation of motion in electron.cpp). The theory doc's prefactor is
+  // e/(4*pi*epsilon_0*c^2) with "e = charge" (theory doc's "Common notation" section) -- i.e. the
+  // emitting particle's signed charge, not its magnitude -- and the independent Python reference
+  // implementation (superradiant_thomson/screen.py) uses q=-1.0 explicitly in its own equivalent
+  // prefactor. Using e_0 instead of q_0 flipped the sign of every exported F_l/F_s/F_b component.
+  // This sign cancels out of anything quadratic in the field (|F|^2 intensity, the angular-momentum
+  // flux density, which is bilinear in E/B) and out of relative phases between electrons in the
+  // coherent sum (every electron shares the same global sign), but it does flip the sign of every
+  // raw exported Re/Im Faraday-tensor component in radiation_field.dat, and would have shown up as
+  // an overall sign mismatch against the Python reference on any component-by-component comparison.
   double general_factor =
-      1 / (2 * MathUtils::pi) * PhysUtils::AtomicUnits::e_0 /
+      1 / (2 * MathUtils::pi) * PhysUtils::AtomicUnits::q_0 /
       (4 * MathUtils::pi * PhysUtils::AtomicUnits::epsilon_0 * PhysUtils::AtomicUnits::c * PhysUtils::AtomicUnits::c);
 
   for (size_t i_omega = 0; i_omega < N_omega; ++i_omega) {

@@ -649,3 +649,53 @@ still plots against raw `tau`, not `tau/T`.
   given a `'total'` option (not asked for; would follow the same pattern if wanted).
   **Still open**: full validation against the single-electron Thomson-dipole benchmark (still not attempted) —
   the boundary term is expected to help but has not been confirmed to resolve the OPEN VALIDATION GAP outright.
+- **FIXED: `compute_radiation`'s tau-sum was missing the trapezoidal quadrature weight entirely**, found by
+  cross-checking this repo's solver against an independent Python reimplementation of the same physics
+  (`~/Dropbox/work/bin/python/Superradiant_Thomson`, `superradiant_thomson/screen.py`'s
+  `_compute_single_electron_screen_field`) that produced "similar but not identical" results for nominally the
+  same config. `theory/FT_Faraday_tensor-direct_and_simplified_forms.md` defines `F_l`/`F_s` as genuine continuous
+  integrals `\int d\tau (...)` over the electron's finite recorded trajectory; the Python reference evaluates this
+  with an explicit trapezoidal rule (`tau_weights = full(N_tau, dtau)` with the first/last entries halved), but
+  `radiation.cpp`'s `compute_radiation` was summing the per-tau integrand with no `dtau` factor anywhere -- neither
+  in the tau loop itself nor in `Simulation::run_simulation`'s `general_factor` (a pure physical constant,
+  independent of the trajectory's time step) -- even though `Electron::get_d_tau()` already exposes the fixed RK4
+  step needed to compute it. This made every long-range/short-range contribution scale with raw sample count
+  instead of converging to the physical integral as the trajectory is resolved more finely (i.e. changing
+  `trajectory_NT` changed the answer rather than just its accuracy), and for the repo's default
+  `config/config.cfg` (`laser_frequency=0.057`, `trajectory_NT=100`, `average_pz=-1.0 mc`) the missing weight
+  (`d_tau ~ 0.457` after the Doppler rescale in `init_simulation_parameters`) made the old output roughly 2.2x too
+  large. **Fixed** by computing `tau_weight = d_tau` (full weight at every interior tau, half weight at the two
+  endpoints -- standard trapezoidal rule on a uniform grid, since the trajectory is recorded at a fixed RK4 step)
+  once per tau in `compute_radiation`'s tau loop, and multiplying `amp_long`/`amp_short` by it before accumulating
+  into `local_long`/`local_short` -- **deliberately not applied to the boundary term** `F_b`, which is an exact
+  antiderivative evaluation at the two endpoints, not itself a tau-sum, and needs no quadrature weight (confirmed
+  against the Python reference, which treats it the same way). `debug/debug_radiation.cpp`'s duplicated per-tau
+  math (see "Debug mode" above) was given the identical `tau_weight` construction to keep its documented
+  tau-sum-vs-`compute_radiation` cross-check valid, applied to its `amp_long`/`amp_short` only, never to
+  `amp_boundary`. **Verified** via that same cross-check after the fix
+  (`config/coherent_thomson_debug.cfg`, comparing `debug_integrand.dat`'s summed `LR+SR+BR` against
+  `radiation_field.dat`'s row nearest the fundamental once `general_factor` is divided back out): magnitudes agree
+  to ~0.2% (the residual being the frequency-grid point landing at `omega/omega_1 ~ 0.9995` rather than exactly
+  `1.0`, not a bug) across all 6 independent components. **Not yet re-attempted**: the OPEN VALIDATION GAP above
+  (full single-electron Thomson-dipole benchmark) and a direct side-by-side numeric comparison against the Python
+  reference implementation on a shared config -- this fix is expected to materially change (shrink) the gap
+  between the two codebases' outputs, but that has not itself been re-checked yet.
+- **FIXED: `Simulation::run_simulation`'s `general_factor` multiplied by `PhysUtils::AtomicUnits::e_0` (the
+  electron charge *in modulus*, `= +1.0`) instead of `q_0` (the electron's actual signed charge, `= -1.0`)** --
+  found from the same cross-check against the Python reference above, prompted by a direct question about
+  whether the charge's sign was actually included. `e_0` is the right constant for `laser_field.cpp`'s `a0`/`E0`
+  amplitude normalization (which only ever needs `|e|`), and `q_0` is already used correctly in
+  `Particle::Electron`'s own equation of motion (`electron.cpp`) -- but `simulation.cpp`'s `general_factor` (the
+  overall `e/(4*pi*epsilon_0*c^2)` prefactor applied to `long_range`/`short_range`/`boundary` after unpacking) had
+  been using the wrong one of the two. The theory doc's own "Common notation" section states "All prefactors use
+  `e` = charge" (the signed value, not a magnitude), and the Python reference's equivalent prefactor
+  (`superradiant_thomson/screen.py`'s `scale_pre`) uses `q=-1.0` explicitly. Since `|e_0| == |q_0| == 1`, this bug
+  flips the *sign* only, not the magnitude, of every exported `F_l`/`F_s`/`F_b` component -- confirmed directly by
+  diffing `radiation_field.dat` before/after the fix at the same frequency/screen point: every `LR_F*`/`SR_F*`/
+  `BR_F*` real and imaginary value flips exactly (ratio `-1.000`), magnitude unchanged. This sign cancels out of
+  anything quadratic in the field (`|F|^2` intensity, the angular-momentum flux density, which is bilinear in
+  E/B) and out of relative phases between electrons in the coherent sum (every electron in the beam shares the
+  same global sign, so their interference pattern is unaffected) -- but it does flip the sign of every raw
+  exported Faraday-tensor component, and would show up as a uniform sign mismatch on any component-by-component
+  comparison against another correctly-signed reference (such as the Python code above). Fixed by changing
+  `simulation.cpp`'s `general_factor` to multiply by `q_0` instead of `e_0`.

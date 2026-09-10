@@ -149,6 +149,7 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
   size_t N_d = detector.get_total_points();
   size_t N_freq = frequencies_list.size();
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
+  double d_tau = electron.get_d_tau();
 
   // Simulation::init_simulation_parameters builds frequencies_list as an arithmetic progression in
   // both its modes: N_freq consecutive harmonics N_harmonics_min, N_harmonics_min+1, ... of a
@@ -274,6 +275,20 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       if (is_upper_endpoint) boundary_weight += boundary_prefactor(inv_R, n_R0_contract_u);
       bool has_boundary_contribution = is_lower_endpoint || is_upper_endpoint;
 
+      // Trapezoidal quadrature weight approximating the continuous tau-integral that F_l/F_s
+      // are defined as (theory/FT_Faraday_tensor-direct_and_simplified_forms.md's F_l/F_s formulas
+      // are literally \int d\tau ... over the electron's finite recorded trajectory). Electron
+      // trajectories are recorded at a fixed RK4 step (Electron::get_d_tau), so this reduces to the
+      // standard uniform-grid trapezoidal rule: full d_tau weight at every interior tau, half weight
+      // at the two endpoints. Deliberately NOT applied to the boundary term below: F_b is an exact
+      // antiderivative evaluation at the two endpoints, not itself a tau-sum, so it needs no
+      // quadrature weight (verified against the independent Python reference implementation, which
+      // treats it the same way). Previously missing entirely, which made every long-range/
+      // short-range contribution scale with N_tau (number of trajectory samples) instead of
+      // converging to the physical integral as the trajectory is resolved more finely.
+      double tau_weight = d_tau;
+      if (N_tau > 1 && (i_tau == 0 || i_tau == N_tau - 1)) tau_weight *= 0.5;
+
       double phase_base = radiation_phase_argument(x, R);
 
       // cexp, frequencies_list[0]'s phase factor, and cexp_step, the constant spacing's phase
@@ -298,6 +313,8 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         MathUtils::Complex amp_long = use_direct_formula ? prefactor_l_direct * cexp
                                                          : long_range_prefactor(frequencies_list[i_freq], inv_R) * cexp;
         MathUtils::Complex amp_short = use_direct_formula ? prefactor_s_direct * cexp : amp_short_0 * cexp;
+        amp_long *= tau_weight;
+        amp_short *= tau_weight;
 
         add_bivector_term(local_long[i_freq], local_short[i_freq], 0, long_term01, term01, amp_long, amp_short);
         add_bivector_term(local_long[i_freq], local_short[i_freq], 1, long_term02, term02, amp_long, amp_short);
