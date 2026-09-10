@@ -4,6 +4,37 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from run_output_utils import find_latest_output_file
+from plot_radiation_field import read_config_value
+
+def get_laser_lg_w0_in_axes_units(filepath, axes_unit):
+    """
+    Returns laser_lg_w0 (the Laguerre-Gauss beam waist) expressed in the same units as the
+    heatmap's own x/y columns (axes_unit, read from the .dat file's header -- currently always
+    'lambda', since main.cpp hardcodes heatmap_axes_unit to that), or None if this run's
+    laser_type isn't 'laguerre_gauss' (no w0 to label with) or laser_lg_w0's own config unit
+    doesn't match axes_unit (defensive: laser_lg_w0 is always given in 'lambda' units by this
+    project's own config convention, matching axes_unit -- but degrades to None instead of
+    silently mislabeling the axis if that ever changes, rather than doing a full unit conversion
+    for a case that shouldn't occur in practice).
+
+    Reads the run's own config.cfg snapshot (Core::IoUtils::copy_config_to_run_directory), not
+    the live repo config, per the convention every other script here already follows.
+    """
+    config_path = os.path.join(os.path.dirname(filepath), 'config.cfg')
+    if not os.path.exists(config_path):
+        return None
+    try:
+        laser_type, _ = read_config_value('laser_type', config_path)
+        if laser_type != 'laguerre_gauss':
+            return None
+        w0_str, w0_unit = read_config_value('laser_lg_w0', config_path)
+    except ValueError:
+        return None
+    if w0_unit != axes_unit:
+        print(f"Warning: laser_lg_w0's unit ('{w0_unit}') does not match the heatmap's axes_unit "
+              f"('{axes_unit}') -- skipping the w0-unit axis labels.")
+        return None
+    return float(w0_str)
 
 def read_header_comments(filepath):
     """
@@ -49,13 +80,24 @@ def plot_field_heatmap(filepath):
     grid = data.pivot(index='y', columns='x', values='intensity')
 
     axes_label = f" [{axes_unit}]" if axes_unit else ""
+    w0 = get_laser_lg_w0_in_axes_units(filepath, axes_unit)
 
-    plt.figure(figsize=(8, 7))
-    mesh = plt.pcolormesh(grid.columns, grid.index, grid.values, shading='nearest', cmap='inferno')
-    plt.colorbar(mesh, label=r"Intensity $E_x^2+E_y^2+E_z^2$")
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.xlabel(f"$x${axes_label}", fontsize=12)
-    plt.ylabel(f"$y${axes_label}", fontsize=12)
+    fig, ax = plt.subplots(figsize=(8, 7))
+    mesh = ax.pcolormesh(grid.columns, grid.index, grid.values, shading='nearest', cmap='inferno')
+    fig.colorbar(mesh, ax=ax, label=r"Intensity $E_x^2+E_y^2+E_z^2$")
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_xlabel(f"$x${axes_label}", fontsize=12)
+    ax.set_ylabel(f"$y${axes_label}", fontsize=12)
+
+    # Secondary top/right axes in units of the beam waist w0 (laguerre_gauss runs only -- w0 is
+    # None otherwise, see get_laser_lg_w0_in_axes_units), alongside the primary bottom/left axes
+    # already in axes_unit -- both shown at once rather than replacing one with the other, so
+    # either physical position or w0-multiples can be read directly off the plot.
+    if w0 is not None and w0 > 0:
+        secax_x = ax.secondary_xaxis('top', functions=(lambda x: x / w0, lambda x: x * w0))
+        secax_x.set_xlabel("$x / w_0$", fontsize=12)
+        secax_y = ax.secondary_yaxis('right', functions=(lambda y: y / w0, lambda y: y * w0))
+        secax_y.set_ylabel("$y / w_0$", fontsize=12)
 
     plt.title("Field Intensity in Canonical z=0 Plane", fontsize=12, fontweight='bold')
     if snapshot_description:

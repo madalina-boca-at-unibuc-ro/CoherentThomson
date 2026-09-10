@@ -38,6 +38,15 @@ inline void add_bivector_term(MathUtils::ComplexBivector& long_bivector, MathUti
   short_bivector[index] += amp_short * term_short;
 }
 
+// Accumulates one signed endpoint contribution into slot `index` of `boundary_bivector` -- see
+// "Form 2's boundary term F_b" below. Kept as its own one-line helper (rather than folded into
+// add_bivector_term above) since it's only ever called from the two endpoint branches
+// (i_tau == 0 / i_tau == N_tau - 1), not from every tau like add_bivector_term.
+inline void add_boundary_term(MathUtils::ComplexBivector& boundary_bivector, size_t index, double term,
+                              const MathUtils::Complex& amp_boundary) {
+  boundary_bivector[index] += amp_boundary * term;
+}
+
 // ---- Integrand construction: PREFACT * exp(i * freq * phase_argument) ----
 //
 // The per-(tau, screen point, frequency) integrand factors into an exponential phase term
@@ -70,6 +79,22 @@ inline double short_range_prefactor(const MathUtils::RealFourVector& n_R0, const
                                     double n_R0_contract_u) {
   return MathUtils::dot3(n_R0, u) / (R * R * n_R0_contract_u);
 }
+
+// ---- Boundary term (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, "Form 2's boundary
+// term F_b") -- only meaningful for the simplified formula, and only nonzero at the two ends of the
+// trajectory's finite tau range. ----
+//
+// The integration by parts that produces F_l/F_s from Jackson's compact form also produces a
+// boundary term F_b = [e^{ik*Phi(tau)}/|R_0(tau)| * T^{alpha beta}(tau)]_{tau_min}^{tau_max}, where
+// T^{alpha beta} = (n_R0^alpha u^beta - n_R0^beta u^alpha)/(n_R0.u) is the same tensor factor F_l/F_s
+// share. This is only negligible for an integral over all of tau in (-infinity, infinity); since
+// compute_radiation integrates each electron over a *finite* recorded trajectory, F_b is generally
+// significant and is not optional -- see the theory doc's "On-axis F^03 cancellation" section, which
+// shows it can be as large as F_l itself near the beam axis. F_b's prefactor shares the shared
+// bivector term T^{alpha beta} = term_{alpha beta}/n_R0_contract_u with F_s's short-range term
+// above, so only n_R0_contract_u's reciprocal is new here; the endpoint sign (+1 at tau_max, -1 at
+// tau_min) is applied by the caller, which is the only place that knows a given tau is an endpoint.
+inline double boundary_prefactor(double inv_R, double n_R0_contract_u) { return inv_R / n_R0_contract_u; }
 
 // ---- Direct form (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, Form 1) ----
 //
@@ -149,6 +174,11 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
   // stay cache/register-resident across the N_tau sweep below even for a large N_freq.
   std::vector<MathUtils::ComplexBivector> local_long(N_freq);
   std::vector<MathUtils::ComplexBivector> local_short(N_freq);
+  // Boundary-term accumulator (see boundary_prefactor's doc comment above) -- always allocated but
+  // only ever written to for the simplified formula, and only at the two trajectory endpoints
+  // (i_tau == 0 / i_tau == N_tau - 1), so it stays zero for the direct formula and for every
+  // interior tau either way.
+  std::vector<MathUtils::ComplexBivector> local_boundary(N_freq);
 
   // Here frequencies are actually divided by c; see PhysUtils.hpp
   //
@@ -167,6 +197,7 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
     const MathUtils::RealFourVector detector_point = detector.get_point(i_d);
     std::fill(local_long.begin(), local_long.end(), MathUtils::ComplexBivector{});
     std::fill(local_short.begin(), local_short.end(), MathUtils::ComplexBivector{});
+    std::fill(local_boundary.begin(), local_boundary.end(), MathUtils::ComplexBivector{});
 
     for (size_t i_tau = 0; i_tau < N_tau; i_tau++) {
       const MathUtils::RealFourVector& x = trajectory[i_tau].position;
@@ -225,6 +256,21 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         amp_short_0 = short_range_prefactor(n_R0, u, R, n_R0_contract_u);
       }
 
+      // Boundary term only exists for the simplified formula (see boundary_prefactor's doc comment
+      // above), and only contributes at the two ends of the finite tau range: -1 at tau_min
+      // (i_tau == 0), +1 at tau_max (i_tau == N_tau - 1). Both conditions hold simultaneously when
+      // N_tau == 1, in which case the two signed contributions are equal and opposite and cancel
+      // exactly -- the correct limit for a zero-width integration interval -- so no special-casing
+      // is needed beyond evaluating both independently. amp_boundary_sign is folded in here (rather
+      // than at the accumulation site) so the i_freq loop below only ever needs to check "is this
+      // an endpoint at all", not which one.
+      bool is_lower_endpoint = !use_direct_formula && i_tau == 0;
+      bool is_upper_endpoint = !use_direct_formula && i_tau == N_tau - 1;
+      double boundary_weight = 0.0;
+      if (is_lower_endpoint) boundary_weight -= boundary_prefactor(inv_R, n_R0_contract_u);
+      if (is_upper_endpoint) boundary_weight += boundary_prefactor(inv_R, n_R0_contract_u);
+      bool has_boundary_contribution = is_lower_endpoint || is_upper_endpoint;
+
       double phase_base = radiation_phase_argument(x, R);
 
       // cexp, frequencies_list[0]'s phase factor, and cexp_step, the constant spacing's phase
@@ -257,6 +303,19 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         add_bivector_term(local_long[i_freq], local_short[i_freq], 4, long_term13, term13, amp_long, amp_short);
         add_bivector_term(local_long[i_freq], local_short[i_freq], 5, long_term23, term23, amp_long, amp_short);
 
+        // Only the two endpoint tau values ever reach this (has_boundary_contribution is false,
+        // hence amp_boundary needs never be formed, for every interior tau) -- negligible added
+        // cost relative to the N_tau-wide long/short accumulation above.
+        if (has_boundary_contribution) {
+          MathUtils::Complex amp_boundary = boundary_weight * cexp;
+          add_boundary_term(local_boundary[i_freq], 0, term01, amp_boundary);
+          add_boundary_term(local_boundary[i_freq], 1, term02, amp_boundary);
+          add_boundary_term(local_boundary[i_freq], 2, term03, amp_boundary);
+          add_boundary_term(local_boundary[i_freq], 3, term12, amp_boundary);
+          add_boundary_term(local_boundary[i_freq], 4, term13, amp_boundary);
+          add_boundary_term(local_boundary[i_freq], 5, term23, amp_boundary);
+        }
+
         if (frequencies_are_evenly_spaced) cexp *= cexp_step;
       }
     }
@@ -264,6 +323,7 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
     for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
       field.field[i_freq][i_d].long_range += local_long[i_freq];
       field.field[i_freq][i_d].short_range += local_short[i_freq];
+      field.field[i_freq][i_d].boundary += local_boundary[i_freq];
     }
   }
 }

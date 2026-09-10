@@ -33,7 +33,9 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
 
   file << std::scientific << std::setprecision(6);
   file << "# coherent radiation field: one row per (frequency, screen point)\n";
-  file << "# LR/SR = long_range/short_range Faraday tensor F^{mu nu}, printed as 're im' pairs\n";
+  file << "# LR/SR/BR = long_range/short_range/boundary Faraday tensor F^{mu nu}, printed as 're im' pairs -- BR "
+          "is identically zero for radiation_formula=\"direct\" (see theory/"
+          "FT_Faraday_tensor-direct_and_simplified_forms.md's \"Form 2's boundary term F_b\" section)\n";
   file << "# omega is in units of the fundamental (non_linear_Thomson_formula(k1, p, n2, 1)); 1.0 = fundamental, "
           "3.0 = third harmonic\n";
   file << "i_omega omega i_screen";
@@ -47,6 +49,11 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
       file << " SR_F" << mu << nu << "_re SR_F" << mu << nu << "_im";
     }
   }
+  for (size_t mu = 0; mu < 4; ++mu) {
+    for (size_t nu = 0; nu < 4; ++nu) {
+      file << " BR_F" << mu << nu << "_re BR_F" << mu << nu << "_im";
+    }
+  }
   file << "\n";
 
   size_t N_omega = field.field.size();
@@ -55,9 +62,11 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {
       const Simulation::Faraday& point = field.field[i_omega][i_screen];
       file << i_omega << " " << frequencies_list[i_omega] / fundamental_frequency << " "
-           << i_screen;  // omega in units of the fundamental (both frequencies_list and fundamental_frequency are k = omega/c, so the ratio is dimensionless)
+           << i_screen;  // omega in units of the fundamental (both frequencies_list and fundamental_frequency are k =
+                         // omega/c, so the ratio is dimensionless)
       write_tensor(file, point.long_range);
       write_tensor(file, point.short_range);
+      write_tensor(file, point.boundary);
       file << "\n";
     }
   }

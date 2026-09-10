@@ -9,12 +9,17 @@ from run_output_utils import find_latest_output_file
 def plot_debug_integrand(range_type, mu, nu, debug_filepath):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of the requested
-    (long_range/short_range) Faraday bivector component's per-tau integrand, read from
+    (long_range/short_range/boundary) Faraday bivector component's per-tau integrand, read from
     debug_integrand.dat (Core::Debug::export_radiation_integrand, only written when the config's
     'debug' key is true) -- the raw per-trajectory-point terms Radiation::compute_radiation sums
     over tau to build the coherent field, for the single electron/screen point/wavenumber k (= omega/c)
     that debug mode requires. The "point spectrum" counterpart (plot_point_spectrum.py) instead plots
     the already-summed field vs. omega; this plots the unsummed tau-integrand at one k.
+
+    'boundary' is nonzero only at the first/last tau (everywhere else it's exactly zero by
+    construction -- it isn't itself a sum over tau, unlike long/short -- see
+    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section),
+    so this plot shows two spikes rather than a smooth curve.
 
     debug_integrand.dat only stores the 6 independent upper-triangle (mu < nu) bivector elements
     (F^{mu nu} = -F^{nu mu}, diagonal zero), so mu == nu is rejected and mu > nu is resolved by
@@ -26,7 +31,7 @@ def plot_debug_integrand(range_type, mu, nu, debug_filepath):
     sign = 1.0 if mu < nu else -1.0
     a, b = (mu, nu) if mu < nu else (nu, mu)
 
-    prefix = {'long': 'LR', 'short': 'SR'}[range_type]
+    prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
     re_col = f'{prefix}_F{a}{b}_re'
     im_col = f'{prefix}_F{a}{b}_im'
 
@@ -81,12 +86,12 @@ def plot_debug_integrand(range_type, mu, nu, debug_filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short> <mu> <nu> [path_to_debug_integrand.dat]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary> <mu> <nu> [path_to_debug_integrand.dat]")
         sys.exit(1)
 
     range_type = sys.argv[1]
-    if range_type not in ('long', 'short'):
-        print("Error: first argument must be 'long' or 'short'")
+    if range_type not in ('long', 'short', 'boundary'):
+        print("Error: first argument must be 'long', 'short', or 'boundary'")
         sys.exit(1)
 
     try:

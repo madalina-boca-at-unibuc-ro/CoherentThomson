@@ -21,12 +21,18 @@ Scope and restrictions (read before trusting a result):
 - Requires print_field_in_canonical_frame=true (the config default) OR laser_nx/ny/nz to be
   present so the lab-frame case can be un-rotated -- both are handled below.
 
-Decomposition: the theory doc splits the total field into long-range ('l', the ~1/R radiation
-field) and short-range ('s', the ~1/R^2 velocity field) contributions and works out the flux's
-long-long ('ll'), long-short ('ls'), and short-long ('sl') cross-terms; the short-short ('ss') term
-is the obvious omitted fourth term needed for ll+ls+sl+ss to equal the flux computed directly from
-the physical total field (E_l+E_s, B_l+B_s) -- included here for that consistency, not because the
-doc names it.
+Computation: the physical field is the sum of every contribution radiation_field.dat exports for
+the run's radiation_formula -- long-range ('l', the ~1/R radiation field) and short-range ('s', the
+~1/R^2 velocity field) for "direct"; those two plus the boundary term ('b', see
+theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section) for
+"simplified". E_b/B_b are identically zero for "direct" (Radiation::compute_radiation never writes
+to it in that case), so summing all three unconditionally (E_total = E_l+E_s+E_b, B_total =
+B_l+B_s+B_b) gives the correct total field either way, with no need to branch on which formula
+produced the file. The flux density is then evaluated once from that total field -- this
+deliberately replaces an earlier (ll)/(ls)/(sl)/(ss) cross-term decomposition of just the l/s split,
+which would have needed extending to nine cross-terms (3x3) once the boundary term existed; summing
+the fields first and evaluating the (bilinear-in-E,B) flux formula once is both simpler and
+insensitive to how many terms compose the total field.
 """
 import sys
 import os
@@ -192,17 +198,21 @@ def get_screen_coordinates_local_au(detector_type, config_path):
 def extract_rotated_faraday_fields(data, R):
     """
     Returns a dict of six complex numpy arrays per range (Ex/Ey/Ez/Bx/By/Bz, suffixed '_l' for
-    long-range and '_s' for short-range), read out of radiation_field.dat's F^{mu nu} columns and
-    rotated by R into whatever target frame the caller needs (this script's callers pass
-    get_canonical_to_local_rotation's result to land in the detector's own local frame;
+    long-range, '_s' for short-range, '_b' for boundary), read out of radiation_field.dat's
+    F^{mu nu} columns and rotated by R into whatever target frame the caller needs (this script's
+    callers pass get_canonical_to_local_rotation's result to land in the detector's own local frame;
     plot_spherical_field_components.py instead passes get_field_to_canonical_rotation's result to
-    land in the canonical frame).
+    land in the canonical frame). '_b' is identically zero when the run used
+    radiation_formula="direct" -- see
+    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section --
+    so summing all three ranges unconditionally (see compute_angular_momentum_flux below) always
+    gives the correct physical total field, regardless of which formula produced the file.
 
     Column mapping mirrors Core::Laser::LaserField::get_faraday_tensor's F^{mu nu} <-> E/B sign
     convention (F^{i0}=E_i, F^{jk}=-eps_jkl B_l): Ex=F10, Ey=F20, Ez=F30, Bx=F32, By=F13, Bz=F21.
     """
     fields = {}
-    for prefix, suffix in (('LR', 'l'), ('SR', 's')):
+    for prefix, suffix in (('LR', 'l'), ('SR', 's'), ('BR', 'b')):
         def col(mu, nu):
             return (data[f'{prefix}_F{mu}{nu}_re'] + 1j * data[f'{prefix}_F{mu}{nu}_im']).to_numpy()
 
@@ -230,8 +240,10 @@ def compute_angular_momentum_flux(radiation_filepath):
     """
     Returns (result, detector_type, config_path). `result` is a DataFrame with one row per
     radiation_field.dat row (i_omega, omega, i_screen), plus the local-frame (x_local, y_local)
-    position and the flux density's long-long/long-short/short-long/short-short decomposition and
-    total (their sum, equal to what plugging in the full field E_l+E_s, B_l+B_s would give).
+    position and the spectral angular-momentum flux density, computed once from the physical total
+    field E_total = E_l+E_s+E_b, B_total = B_l+B_s+B_b (see extract_rotated_faraday_fields's doc
+    comment -- '_b' is identically zero for radiation_formula="direct", so this sum is the correct
+    total field regardless of which formula produced the file).
     """
     config_path = os.path.join(os.path.dirname(radiation_filepath), 'config.cfg')
     if not os.path.exists(config_path):
@@ -249,58 +261,43 @@ def compute_angular_momentum_flux(radiation_filepath):
     R_to_local = get_canonical_to_local_rotation(config_path)
     f = extract_rotated_faraday_fields(data, R_to_local)
 
-    flux_ll = angular_momentum_flux_density(x, y, f['Ex_l'], f['Ey_l'], f['Ez_l'], f['Bx_l'], f['By_l'], f['Bz_l'])
-    flux_ls = angular_momentum_flux_density(x, y, f['Ex_l'], f['Ey_l'], f['Ez_l'], f['Bx_s'], f['By_s'], f['Bz_s'])
-    flux_sl = angular_momentum_flux_density(x, y, f['Ex_s'], f['Ey_s'], f['Ez_s'], f['Bx_l'], f['By_l'], f['Bz_l'])
-    flux_ss = angular_momentum_flux_density(x, y, f['Ex_s'], f['Ey_s'], f['Ez_s'], f['Bx_s'], f['By_s'], f['Bz_s'])
+    Ex = f['Ex_l'] + f['Ex_s'] + f['Ex_b']
+    Ey = f['Ey_l'] + f['Ey_s'] + f['Ey_b']
+    Ez = f['Ez_l'] + f['Ez_s'] + f['Ez_b']
+    Bx = f['Bx_l'] + f['Bx_s'] + f['Bx_b']
+    By = f['By_l'] + f['By_s'] + f['By_b']
+    Bz = f['Bz_l'] + f['Bz_s'] + f['Bz_b']
 
     result = data[['i_omega', 'omega', 'i_screen']].copy()
     result['x_local'] = x
     result['y_local'] = y
-    result['flux_ll'] = flux_ll
-    result['flux_ls'] = flux_ls
-    result['flux_sl'] = flux_sl
-    result['flux_ss'] = flux_ss
-    result['flux_total'] = flux_ll + flux_ls + flux_sl + flux_ss
+    result['flux_total'] = angular_momentum_flux_density(x, y, Ex, Ey, Ez, Bx, By, Bz)
     return result, detector_type, config_path
 
 
 def plot_angular_momentum_flux(radiation_filepath):
     """
-    Plots all four of the theory doc's flux-density terms -- total, long-range only (ll), and the
-    two long/short cross-terms (ls, sl) -- computed by compute_angular_momentum_flux, in one of two
-    shapes depending on the detector's point count, mirroring the two shapes
+    Plots the single total-field flux density computed by compute_angular_momentum_flux, in one of
+    two shapes depending on the detector's point count, mirroring the two shapes
     plot_radiation_field.py/plot_point_spectrum.py already use for the Faraday tensor itself:
     - a single screen point (a 1x1 rectangular/circular detector, the dense_frequency_spectrum
-      workflow): one line plot vs. omega, all four terms overlaid.
-    - multiple screen points: one 2x2-panel heatmap PNG per frequency, rendered on the detector's
-      own native grid like plot_radiation_field.py's pcolormesh panels.
+      workflow): one line plot vs. omega.
+    - multiple screen points: one heatmap PNG per frequency, rendered on the detector's own native
+      grid like plot_radiation_field.py's pcolormesh panels.
     """
     result, detector_type, config_path = compute_angular_momentum_flux(radiation_filepath)
 
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder")
     os.makedirs(png_dir, exist_ok=True)
 
-    # The four terms named in the theory doc: total (the full field), long-range only (ll), and
-    # the two long/short cross-terms (ls, sl) -- the doc's own decomposition, short of the
-    # implicit (ss) term folded into 'total' but not surfaced as its own panel/line.
-    terms = (
-        ('flux_total', 'Total (long+short)'),
-        ('flux_ll', 'Long-range only'),
-        ('flux_ls', 'Long E x Short B'),
-        ('flux_sl', 'Short E x Long B'),
-    )
-
     if result['i_screen'].nunique() == 1:
         subset = result.sort_values('omega')
         fig, ax = plt.subplots(figsize=(8, 5))
-        for col, label in terms:
-            ax.plot(subset['omega'], subset[col], marker='.', label=label)
+        ax.plot(subset['omega'], subset['flux_total'], marker='.')
         ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
         ax.set_ylabel("$d\\mathcal{F}_{J_z}/d\\omega$ (a.u.)")
         ax.grid(True)
-        ax.legend()
-        fig.suptitle("Spectral angular-momentum flux density", fontsize=13, fontweight='bold')
+        fig.suptitle("Spectral angular-momentum flux density (total field)", fontsize=13, fontweight='bold')
         plt.tight_layout()
 
         output_img = os.path.join(png_dir, "angular_momentum_flux_spectrum.png")
@@ -327,18 +324,17 @@ def plot_angular_momentum_flux(radiation_filepath):
         subset = subset.sort_values('i_screen')
         omega_value = subset['omega'].iloc[0]
 
-        fig, axes = plt.subplots(2, 2, figsize=(13, 11))
-        for ax, (col, title) in zip(axes.flat, terms):
-            values = subset[col].to_numpy().reshape(grid_shape)
-            vmax = np.max(np.abs(values)) if np.any(values) else 1.0
-            sc = ax.pcolormesh(x_edges, y_edges, values, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
-            ax.set_aspect('equal', adjustable='box')
-            ax.set_xlabel(x_label)
-            ax.set_ylabel(y_label)
-            ax.set_title(title)
-            fig.colorbar(sc, ax=ax)
+        values = subset['flux_total'].to_numpy().reshape(grid_shape)
+        vmax = np.max(np.abs(values)) if np.any(values) else 1.0
 
-        fig.suptitle(f"$d\\mathcal{{F}}_{{J_z}}/d\\omega$, $\\omega$ index {i_omega} "
+        fig, ax = plt.subplots(figsize=(7, 6))
+        sc = ax.pcolormesh(x_edges, y_edges, values, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        fig.colorbar(sc, ax=ax, label="$d\\mathcal{F}_{J_z}/d\\omega$ (a.u.)")
+
+        fig.suptitle(f"$d\\mathcal{{F}}_{{J_z}}/d\\omega$ (total field), $\\omega$ index {i_omega} "
                      f"($\\omega/\\omega_1$={omega_value:.4g}), {detector_type} detector, "
                      f"{detector_geometry_label}", fontsize=12, fontweight='bold')
         plt.tight_layout()

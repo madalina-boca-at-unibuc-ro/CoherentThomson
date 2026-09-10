@@ -97,8 +97,12 @@ def compute_spherical_field_components(radiation_filepath):
     """
     Returns (result, config_path). `result` is a DataFrame with one row per radiation_field.dat row
     (i_omega, omega, i_screen), plus six complex columns per range -- 'LR_Er'/'LR_Etheta'/
-    'LR_Ephi'/'LR_Br'/'LR_Btheta'/'LR_Bphi' and the 'SR_' equivalents -- the canonical-frame
-    spherical components of the long-range/short-range Faraday tensor.
+    'LR_Ephi'/'LR_Br'/'LR_Btheta'/'LR_Bphi' and the 'SR_'/'BR_' equivalents -- the canonical-frame
+    spherical components of the long-range/short-range/boundary Faraday tensor. Unlike
+    plot_angular_momentum_flux.py's compute_angular_momentum_flux, this function makes no
+    long+short 'total' assumption that boundary would invalidate -- it just projects each range's
+    tensor independently, so adding 'BR' here is a plain three-way extension of the existing
+    two-way loop below.
     """
     config_path = os.path.join(os.path.dirname(radiation_filepath), 'config.cfg')
     if not os.path.exists(config_path):
@@ -125,7 +129,7 @@ def compute_spherical_field_components(radiation_filepath):
     f = extract_rotated_faraday_fields(data, R_to_canonical)
 
     result = data[['i_omega', 'omega', 'i_screen']].copy()
-    for prefix, suffix in (('LR', 'l'), ('SR', 's')):
+    for prefix, suffix in (('LR', 'l'), ('SR', 's'), ('BR', 'b')):
         E = np.stack([f[f'Ex_{suffix}'], f[f'Ey_{suffix}'], f[f'Ez_{suffix}']])
         B = np.stack([f[f'Bx_{suffix}'], f[f'By_{suffix}'], f[f'Bz_{suffix}']])
         for name, vec in (('E', E), ('B', B)):
@@ -140,15 +144,18 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of the requested
     canonical-frame spherical field component (field in {'E', 'B'}, component in
-    {'r', 'theta', 'phi'}, long-range or short-range) -- the spherical-component counterpart of
-    plot_radiation_field.py's plot_radiation_component / plot_point_spectrum.py's
+    {'r', 'theta', 'phi'}, long-range, short-range, or boundary) -- the spherical-component
+    counterpart of plot_radiation_field.py's plot_radiation_component / plot_point_spectrum.py's
     plot_point_spectrum (which instead read Cartesian F^{mu nu} components directly).
+
+    'boundary' is identically zero when the run used radiation_formula="direct" -- see
+    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
 
     Renders as a heatmap per frequency (on the spherical detector's own stereographic-projection
     grid, like plot_radiation_field.py) if there's more than one screen point, or a line plot vs.
     omega (like plot_point_spectrum.py) for a single-point (dense_frequency_spectrum-style) run.
     """
-    prefix = {'long': 'LR', 'short': 'SR'}[range_type]
+    prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
     col = f'{prefix}_{field}{component}'
 
     result, config_path = compute_spherical_field_components(radiation_filepath)
@@ -235,12 +242,12 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short> <E|B> <r|theta|phi> [path_to_radiation_field.dat]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary> <E|B> <r|theta|phi> [path_to_radiation_field.dat]")
         sys.exit(1)
 
     range_type = sys.argv[1]
-    if range_type not in ('long', 'short'):
-        print("Error: first argument must be 'long' or 'short'")
+    if range_type not in ('long', 'short', 'boundary'):
+        print("Error: first argument must be 'long', 'short', or 'boundary'")
         sys.exit(1)
 
     field = sys.argv[2]

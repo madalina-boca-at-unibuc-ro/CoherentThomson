@@ -16,10 +16,14 @@ namespace Core::Radiation {
 // theory/FT_Faraday_tensor-direct_and_simplified_forms.md is evaluated per trajectory point:
 // false (default, matches the config key "radiation_formula"="simplified") uses the integration-
 // by-parts "simplified" form (an explicit i*omega factor on the long-range term, no acceleration
-// needed); true ("direct") uses the direct-FT form instead, which needs the electron's
-// 4-acceleration (Particle::Electron::State::acceleration) and has no explicit frequency factor
-// outside the phase. Only the *production* path (this function) supports both forms --
-// debug/debug_radiation.cpp's diagnostic still only implements the simplified form (see CLAUDE.md).
+// needed) -- which also carries a third, boundary term (`field`'s `boundary` slot) evaluated only
+// at the two ends of the electron's finite recorded trajectory, not summed over every tau like
+// long_range/short_range (see the theory doc's "Form 2's boundary term F_b" section); true
+// ("direct") uses the direct-FT form instead, which needs the electron's 4-acceleration
+// (Particle::Electron::State::acceleration), has no explicit frequency factor outside the phase,
+// and needs no boundary term (`boundary` is left untouched, i.e. zero, in this case). Only the
+// *production* path (this function) supports both forms -- debug/debug_radiation.cpp's diagnostic
+// still only implements the simplified form (see CLAUDE.md).
 void compute_radiation(Particle::Electron& electron, const Laser::LaserField& laser,
                        const std::vector<double>& frequencies_list, const Detector::Detector_2D& detector,
                        Simulation::PackedRadiationField& field, bool use_direct_formula);

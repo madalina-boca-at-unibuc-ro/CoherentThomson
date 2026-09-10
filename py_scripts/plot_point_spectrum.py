@@ -9,19 +9,22 @@ from run_output_utils import find_latest_output_file
 def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
-    F^{mu nu} of the requested (long_range/short_range) Faraday tensor as a
+    F^{mu nu} of the requested (long_range/short_range/boundary) Faraday tensor as a
     function of omega, read from radiation_field.dat -- the "fine spectrum at
     a point" counterpart of plot_radiation_field.py's plot_radiation_component,
     which instead renders one 2D field-map PNG per frequency (the wrong shape
     of plot when frequency, not screen position, is the interesting axis; see
     the dense_frequency_spectrum config key).
 
+    'boundary' is identically zero when the run used radiation_formula="direct" -- see
+    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
+
     Draws one line per distinct i_screen (normally just one, if the detector
     that produced radiation_field.dat was collapsed to a single point per the
     dense_frequency_spectrum convention -- degrades gracefully to an overlaid
     multi-line plot otherwise).
     """
-    prefix = {'long': 'LR', 'short': 'SR'}[range_type]
+    prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
     re_col = f'{prefix}_F{mu}{nu}_re'
     im_col = f'{prefix}_F{mu}{nu}_im'
 
@@ -83,12 +86,12 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short> <mu> <nu> [path_to_radiation_field.dat]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary> <mu> <nu> [path_to_radiation_field.dat]")
         sys.exit(1)
 
     range_type = sys.argv[1]
-    if range_type not in ('long', 'short'):
-        print("Error: first argument must be 'long' or 'short'")
+    if range_type not in ('long', 'short', 'boundary'):
+        print("Error: first argument must be 'long', 'short', or 'boundary'")
         sys.exit(1)
 
     try:

@@ -36,9 +36,15 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
 // fully-reconstructed tensor, built (once, via MathUtils::unpack_bivector) only after every
 // electron's and every thread's contribution has been summed — see PackedFaraday for the
 // accumulation-time representation. Observables should be computed from this, not PackedFaraday.
+// boundary is only ever nonzero for radiation_formula="simplified" (Radiation::compute_radiation
+// leaves it identically zero for "direct", which needs no integration-by-parts boundary term --
+// see theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b"
+// section) -- summing/unpacking/rotating/scaling it the same way as long_range/short_range
+// regardless of which formula ran is harmless since it's already zero in the direct case.
 struct Faraday {
   Core::MathUtils::ComplexFourTensor long_range;
   Core::MathUtils::ComplexFourTensor short_range;
+  Core::MathUtils::ComplexFourTensor boundary;
 };
 
 // The coherently-summed radiation field, indexed field[i_omega][i_screen_point].
@@ -57,6 +63,7 @@ struct RadiationField {
 struct PackedFaraday {
   Core::MathUtils::ComplexBivector long_range;
   Core::MathUtils::ComplexBivector short_range;
+  Core::MathUtils::ComplexBivector boundary;
 };
 
 struct PackedRadiationField {

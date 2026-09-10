@@ -207,6 +207,30 @@ still plots against raw `tau`, not `tau/T`.
   by `general_factor` (`= 1/(2*pi*c)`). `MathUtils::mirror_antisymmetric_in_place` is dead code (predates
   `unpack_bivector`, nothing calls it). `num_threads` (config key, default `0` = all hardware threads) controls
   `run_simulation`'s beam partitioning.
+- **`run_simulation` times each thread's chunk individually** (`std::chrono::steady_clock`, one `thread_start` per
+  thread, written to its own slot of a `thread_elapsed`/`thread_electron_count` vector pair — no synchronization
+  needed since each thread only ever writes its own index) and prints one `Thread <idx>: <N> electrons in <T> s
+  (<T/N> s/electron, <T/N/N_screen> s/screen pt)` line per thread once every thread has joined (never from inside
+  a still-running thread — only thread 0's separate progress indicator, above, is allowed to print concurrently,
+  since it's the sole writer to `std::cout` while others are still running). Surfaces load imbalance directly: the
+  last chunk is smaller than the others whenever `num_electrons` isn't evenly divisible by `num_threads`, so its
+  thread finishes sooner — visible in the per-thread lines, not in any single aggregate number.
+  `run_simulation` then prints two aggregate lines, `Time per electron`/`Total CPU-seconds per Electron per Screen
+  Point`, computed from
+  `total_cpu_seconds` — the **sum of every thread's own elapsed time** (`thread_elapsed`, already measured above),
+  not `main.cpp`'s wall-clock `simulation_elapsed`. This distinction matters: dividing wall-clock time by
+  electron/screen-point count would understate the true per-unit cost by roughly `num_threads`, since electrons
+  are processed in parallel, not sequentially — and approximating the correction as `wall_time * num_threads`
+  would itself be inexact, since it implicitly assumes every thread ran equally long, which the load-imbalance
+  case above already shows isn't true. Summing the actual per-thread times (already available from the per-thread
+  loop) avoids both problems, with no extra measurement needed — though `total_cpu_seconds` itself is still an
+  aggregate over *concurrently*-running threads (each `thread_elapsed` entry was measured while every other thread
+  was also running, competing for cache/memory bandwidth), not a true isolated single-thread measurement, so it's
+  best read as "CPU-seconds consumed" (analogous to `/usr/bin/time`'s `user` field) rather than a guaranteed
+  prediction of what an actual single-thread run would take (contention can make it a slight overestimate of
+  that). No per-tau or per-frequency timing is
+  exposed anywhere: `compute_radiation`'s inner loops are the documented performance-critical hot path (see the
+  loop-order bullet below), and were deliberately left uninstrumented to avoid adding timer overhead there.
 - **`compute_radiation`'s loop order and phase-factor evaluation are deliberately tuned for performance** — this
   is the dominant cost of a run. The loop nests screen point (`i_d`) outer, trajectory point (`i_tau`) inner,
   reversed from the naive order, so each screen point's tau-sum accumulates in cache/register-resident local
@@ -226,9 +250,29 @@ still plots against raw `tau`, not `tau/T`.
   `wing_sigma_cutoff * wing_sigma`, discarding the parsed `laser_delay`. Because of this,
   `export_field_heatmap_z0`'s snapshot time (`t = wing_sigma_cutoff * wing_sigma / omega`, computed in
   `main.cpp`) is deliberately keyed off `wing_sigma_cutoff`/`wing_sigma` rather than `laser_delay` — revisit both
-  together if the delay bug is fixed. The heatmap's x/y window is also laser-type-dependent: `plane_wave` (no
-  transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss` ignores those and uses
-  `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
+  together if the delay bug is fixed. **The heatmap's x/y window is sized to the electron beam's own transverse
+  extent** (`main.cpp`, `+-beam_cylinder_radius`, read via `IoUtils::parse_cylinder_beam_params` straight from the
+  config — `generate_cylinder_beam` hasn't run yet at this point in `main`, so this reads the same
+  `beam_cylinder_radius` key it would use, not the generated beam itself), independent of `laser_type` — the point
+  of the heatmap is to see the field where the beam actually sits. Deliberately **ignores
+  `beam_center_x`/`beam_center_y`** (window stays axis-centered, not beam-centered): those offsets are applied in
+  the beam's own local frame, before the mean-momentum rotation `generate_cylinder_beam` performs (see the beam
+  cylinder's spatial axis bullet below), which generally does *not* land back on this heatmap's canonical
+  (laser-along-`Oz`) frame unless the beam's mean momentum has zero transverse component — centering the window
+  correctly in the general case would need reproducing that rotation here. Falls back to the previous
+  laser-type-dependent windowing only when `beam_cylinder_radius == 0` (a single on-axis point beam, e.g.
+  `config/coherent_thomson_debug.cfg`, where a zero-radius window would otherwise collapse the heatmap to a single
+  point): `plane_wave` (no transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss`
+  ignores those and uses `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
+  **`py_scripts/plot_field_heatmap_z0.py` also adds secondary top/right axes in units of `w0`** (`x/w0`, `y/w0`)
+  alongside the primary bottom/left axes (still in `axes_unit`, i.e. `lambda`) — both shown at once via
+  matplotlib's `ax.secondary_xaxis`/`secondary_yaxis` with a `lambda(x) = x/w0` forward transform, rather than
+  replacing one labeling with the other. `get_laser_lg_w0_in_axes_units` (same file) reads the run's own
+  `config.cfg` snapshot and returns `None` — skipping the secondary axes entirely, not mislabeling them — whenever
+  `laser_type != laguerre_gauss` (no `w0` to label with) or `laser_lg_w0`'s own config unit doesn't match the
+  `.dat` file's `axes_unit` header (both are always `lambda` by this project's convention, so this defensive check
+  should never actually trigger, but a real unit conversion was deliberately not implemented for a case that
+  shouldn't occur in practice).
 - All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
   `compute_radiation`); `main.cpp` additionally runs it once more directly on the first `min(10,
   electron_beam.size())` electrons (indices `0..N-1`) purely to export their trajectories to `electron.dat`.
@@ -236,7 +280,25 @@ still plots against raw `tau`, not `tau/T`.
   selected electron's rows into one file tagged with a leading `electron_id` column (blank-line-separated blocks;
   `pandas.read_csv` skips blank lines automatically). `plot_electron_trajectory.py` groups by `electron_id` and
   encodes electron identity by color (fixed `tab10` order, never cycled past its 10 slots — matching the `main.cpp`
-  cap) and the x/y/z (or p1/p2/p3) component by linestyle, since color is already spent on electron identity.
+  cap). Renders **two separate figures** (`<basename>_position_profile.png`/`_momentum_profile.png`, via the
+  shared `_plot_four_vector_figure` helper), one for the position four-vector (`x0..x3`) and one for the momentum
+  four-vector (`p0..p3`), each a 2x2 grid with **one panel per component** rather than overlaying `x1`/`x2`/`x3`
+  (or `p1`/`p2`/`p3`) on one shared panel distinguished by linestyle, as an earlier version did. That overlay had
+  a real readability bug: components with very different absolute magnitudes on one shared linear y-axis (e.g. a
+  beam electron's large-but-nearly-constant transverse starting offset in `x1`/`x2` vs. `x3`'s genuine large
+  excursion from `0`) made the smaller-*looking* one appear flat/constant even when it was actually varying
+  substantially, purely because the axis had to stretch to fit the other components too — confirmed on a real run
+  where `x3` swept `187,644` a.u. (matching a roughly constant `p3 ~ -mc`) but looked like a flat line next to
+  `x1`/`x2`'s `~2e6`-scale offsets, which themselves barely moved (range `~25`). Splitting into one independently-
+  scaled panel per component fixes this for any future run/config, not just that one.
+  **Both figures' y-axes are unit-converted, not raw atomic units**: position panels (`x0..x3`, `x0=ct` included
+  since it's a length too) are divided by `lambda_au = T * C_LIGHT` (`T` is the same `get_laser_period` value
+  already used for the x-axis — a time; multiplying by `c` converts it to the wavelength, a length, mirroring
+  `Core::IoUtils::convert_unit_to_number`'s own `'lambda'` branch, `2*pi/omega*c`); momentum panels (`p0..p3`,
+  `p0=E/c` included since it's momentum-like too) are divided by `C_LIGHT` alone (`= 137.036`, the same constant
+  other Python scripts already hardcode from `Core::PhysUtils::AtomicUnits::c`), since `m_0 = 1.0` in these atomic
+  units so `mc = c` exactly. `_plot_four_vector_figure`'s `scale`/`ylabel` parameters carry this through generically
+  for both figures rather than hardcoding the conversion twice.
 - **Each recorded `Electron::State` also carries the electron's exact 4-acceleration** (`du^mu/dtau =
   (q_0/m_0) F^{mu nu} u_nu`), exported as `electron.dat`'s trailing `a0 a1 a2 a3` columns (not currently
   plotted by `plot_electron_trajectory.py`). `Electron::update_state`'s RK4 stage `k1` is already the exact
@@ -387,11 +449,16 @@ still plots against raw `tau`, not `tau/T`.
   axis — its angular variation is ~6 orders of magnitude below its constant offset, below the double-precision
   noise floor.
 - **`theory/angular_momentum_flux_density.md` derives the spectral angular-momentum flux density along `Oz`**,
-  split into long-range/short-range field cross-terms (`(ll)`, `(ls)`, `(sl)`, plus the doc's implicitly-omitted
-  `(ss)` needed for the four to sum back to the total) matching the long/short-range amplitude split
-  `compute_radiation` already uses for the Faraday bivector. Implemented in Python only, in
-  `py_scripts/plot_angular_momentum_flux.py`, entirely as post-processing of an existing run's
-  `radiation_field.dat` — no C++ code computes or exports it. Restricted to `rectangular`/`circular` detectors
+  evaluated from the physical total field (`E_total`/`B_total`, summed over whichever of `long_range`/
+  `short_range`/`boundary` the run's `radiation_formula` produced — `boundary` is identically zero for
+  `radiation_formula="direct"`, so the same unconditional sum is correct either way; see the boundary-term bullet
+  below). An earlier version of `py_scripts/plot_angular_momentum_flux.py` instead expanded the flux formula into
+  its long/short cross-terms (`(ll)`, `(ls)`, `(sl)`, `(ss)`) before summing — mathematically equivalent for a
+  2-term field, but it would have needed generalizing to 9 cross-terms once a third (boundary) term existed, so
+  the script was simplified to sum the fields first and evaluate the (bilinear-in-`E,B`) flux formula once,
+  instead. Implemented in Python only, in `py_scripts/plot_angular_momentum_flux.py`, entirely as post-processing
+  of an existing run's `radiation_field.dat` — no C++ code computes or exports it. Restricted to
+  `rectangular`/`circular` detectors
   (the formula assumes one flat transverse plane with a shared normal, which a `spherical` detector's points don't
   generally satisfy) and generalizes "`Oz`" to the detector's own local normal (`detector_direction_theta/phi`),
   reusing `Core::MathUtils::rotation_matrix_from_direction`'s exact three-case logic (reimplemented in Python) to
@@ -496,3 +563,47 @@ still plots against raw `tau`, not `tau/T`.
   documented `1/R^2` near-field scaling. Fixed in both files; per the regime tested so far the short-range term
   doesn't contribute either way, so this fix alone does not resolve the OPEN VALIDATION GAP above — that
   remains open, and is now suspected to sit in the long-range term instead.
+- **`compute_radiation`'s simplified formula now computes a third term, the boundary term `F_b`** (theory doc's
+  "Form 2's boundary term F_b" section), alongside `F_l`/`F_s` — a plausible fix for (part of) the OPEN VALIDATION
+  GAP above, since the original "simplified" derivation drops `F_b` on the grounds that it's negligible as
+  `omega->0`, which only holds for an integral over all of `tau` in `(-infinity, infinity)`; `compute_radiation`
+  integrates each electron over its actual **finite** recorded trajectory, so `F_b` is generally significant and
+  was previously missing entirely. Unlike `F_l`/`F_s` (summed over every trajectory point), `F_b` is a pure
+  boundary evaluation — nonzero only at the first/last recorded trajectory point (`i_tau == 0` /
+  `i_tau == N_tau - 1`), zero at every interior tau, with the two endpoint contributions taking opposite sign
+  (`radiation.cpp`'s `boundary_prefactor`/`boundary_weight`/`add_boundary_term`) — and canceling exactly when
+  `N_tau == 1`, the correct zero-width-interval limit, with no special-casing needed. Only meaningful for
+  `radiation_formula=simplified`; identically zero for `radiation_formula=direct` (confirmed: a 50-electron
+  `direct`-formula run's exported `BR_*` columns are exactly `0.0` for every row), since the direct form was
+  derived without integration by parts and needs no such term. **Threaded through the full pipeline**: `boundary`
+  fields added to `Simulation::PackedFaraday`/`Faraday` alongside `long_range`/`short_range` (summed across
+  threads, `unpack_bivector`'d, canonical-frame-rotated, and `general_factor`-scaled identically to the other
+  two — harmless for `direct` since it's already zero there); `radiation_field.dat` gained matching `BR_F<mu><nu>`
+  columns; `debug/debug_radiation.cpp`'s `export_radiation_integrand` (simplified-formula-only, per "Debug mode"
+  above) gained matching `BR_F<alpha><beta>` columns, with the same "zero except at the two endpoint rows"
+  structure as the production accumulator, keeping the documented tau-sum cross-check valid; `plot_point_spectrum.py`/
+  `plot_debug_integrand.py`/`plot_radiation_field.py`/`plot_spherical_field_components.py` all accept `boundary` as
+  a third `range_type` (`'boundary': 'BR'` alongside `'long'`/`'short'`) — `plot_debug_integrand.py`'s boundary
+  plot will show two spikes rather than a smooth tau-curve, by construction.
+  **Sanity-checked** (not yet the full Thomson-dipole benchmark) against `config/coherent_thomson_debug.cfg`
+  (single electron at rest, on-axis backward-pointing detector, matching the theory doc's on-axis special case):
+  `F^{03}`'s total magnitude (`|F_l+F_s+F_b|`) came out roughly 8x smaller than `|F_l|` alone would be without
+  `F_b` — consistent with, though not full confirmation of, the predicted near-cancellation.
+  **`plot_angular_momentum_flux.py`'s `compute_angular_momentum_flux` was subsequently simplified** rather than
+  extended to a 3-way (l/s/b) cross-term split: instead of decomposing the flux into (ll)/(ls)/(sl)/(ss)-style
+  cross-terms (which would have grown to 9 terms with `boundary` added, and needs no new derivation either way
+  since the flux formula is already bilinear in `E`/`B`), it now sums `extract_rotated_faraday_fields`'s `_l`/`_s`/
+  `_b` fields into a single physical total (`E_total`/`B_total`) and evaluates `angular_momentum_flux_density`
+  once — correct for both `radiation_formula` values without branching, since `_b` is identically zero for
+  `"direct"`. `result`'s columns dropped `flux_ll`/`flux_ls`/`flux_sl`/`flux_ss` accordingly, down to a single
+  `flux_total`; `plot_angular_momentum_flux`'s plots (both the single-screen-point line plot and the multi-point
+  heatmap) now show that one quantity instead of a 4-panel breakdown.
+  **`py_scripts/plot_radiation_field.py`'s `plot_radiation_component` also gained a `'total'` `range_type`**
+  (`<long|short|boundary|total>`), computed as `LR+SR+BR` summed column-wise from `radiation_field.dat` rather
+  than read from a stored column (there is no `TR_F<mu><nu>` export — it's cheaper to sum the three already-
+  exported tensors in Python than to add a fourth C++ export path). Treats missing `BR_*` columns as zero rather
+  than erroring, so `'total'` degrades gracefully to `LR+SR` on a `radiation_field.dat` from before the boundary
+  term existed. `plot_point_spectrum.py`/`plot_debug_integrand.py`/`plot_spherical_field_components.py` were not
+  given a `'total'` option (not asked for; would follow the same pattern if wanted).
+  **Still open**: full validation against the single-electron Thomson-dipole benchmark (still not attempted) —
+  the boundary term is expected to help but has not been confirmed to resolve the OPEN VALIDATION GAP outright.

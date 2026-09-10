@@ -42,32 +42,51 @@ int main(int argc, char* argv[]) {
       std::string heatmap_axes_unit = "lambda";
       auto heatmap_axes_scale = IoUtils::convert_unit_to_number(heatmap_axes_unit, simulation_config);
 
-      // A plane wave has no transverse profile at all (the heat map is uniform regardless of window
-      // size), so its window stays fixed at the field_heatmap_x/y_min/max config values below. A
-      // Laguerre-Gauss mode's actual transverse scale is set by its own waist w0, not by those fixed
-      // values, so size the window to it instead (+-2*w0, generous enough to show the mode's rings/
-      // lobes for the small p/l indices this is meant to be used with).
-      std::string laser_type = IoUtils::get_required(simulation_config, "laser_type");
+      // Size the window to the electron beam's own transverse extent (+-beam_cylinder_radius)
+      // instead of a laser-type-specific heuristic -- the point of this heatmap is to see the field
+      // where the beam actually sits, and the beam's radius is a laser-type-independent quantity
+      // already available straight from the config (no need to wait for generate_cylinder_beam,
+      // which hasn't run yet at this point in main -- IoUtils::parse_cylinder_beam_params reads the
+      // same beam_cylinder_radius key it would use). Deliberately ignores beam_center_x/y: those are
+      // applied in the beam's own local frame, before the mean-momentum rotation
+      // generate_cylinder_beam performs, which generally does *not* land back on this heatmap's
+      // canonical (laser-along-Oz) frame unless the beam's mean momentum has zero transverse
+      // component -- centering the window would need reproducing that rotation here, so the window
+      // stays beam-radius-sized but always centered on the axis.
+      // Falls back to the previous windowing (fixed field_heatmap_x/y_min/max for plane_wave,
+      // +-2*w0 for laguerre_gauss, whose actual transverse scale is set by its own waist rather than
+      // any beam property) only when the beam has no meaningful transverse extent to size off of
+      // (radius == 0, e.g. the single on-axis point beam in config/coherent_thomson_debug.cfg) --
+      // a zero-radius window would otherwise collapse the heatmap to a single point.
+      IoUtils::CylinderBeamParams beam_params = IoUtils::parse_cylinder_beam_params(simulation_config);
       double x_min, x_max, y_min, y_max;
-      if (laser_type == "laguerre_gauss") {
-        double lg_w0 = std::get<2>(IoUtils::get_laser_lg_params(simulation_config));
-        x_min = -2.0 * lg_w0;
-        x_max = 2.0 * lg_w0;
-        y_min = -2.0 * lg_w0;
-        y_max = 2.0 * lg_w0;
+      if (beam_params.radius > 0.0) {
+        x_min = -beam_params.radius;
+        x_max = beam_params.radius;
+        y_min = -beam_params.radius;
+        y_max = beam_params.radius;
       } else {
-        auto [x_min_val, x_min_unit] =
-            IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_x_min"));
-        x_min = x_min_val * IoUtils::convert_unit_to_number(x_min_unit, simulation_config);
-        auto [x_max_val, x_max_unit] =
-            IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_x_max"));
-        x_max = x_max_val * IoUtils::convert_unit_to_number(x_max_unit, simulation_config);
-        auto [y_min_val, y_min_unit] =
-            IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_y_min"));
-        y_min = y_min_val * IoUtils::convert_unit_to_number(y_min_unit, simulation_config);
-        auto [y_max_val, y_max_unit] =
-            IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_y_max"));
-        y_max = y_max_val * IoUtils::convert_unit_to_number(y_max_unit, simulation_config);
+        std::string laser_type = IoUtils::get_required(simulation_config, "laser_type");
+        if (laser_type == "laguerre_gauss") {
+          double lg_w0 = std::get<2>(IoUtils::get_laser_lg_params(simulation_config));
+          x_min = -2.0 * lg_w0;
+          x_max = 2.0 * lg_w0;
+          y_min = -2.0 * lg_w0;
+          y_max = 2.0 * lg_w0;
+        } else {
+          auto [x_min_val, x_min_unit] =
+              IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_x_min"));
+          x_min = x_min_val * IoUtils::convert_unit_to_number(x_min_unit, simulation_config);
+          auto [x_max_val, x_max_unit] =
+              IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_x_max"));
+          x_max = x_max_val * IoUtils::convert_unit_to_number(x_max_unit, simulation_config);
+          auto [y_min_val, y_min_unit] =
+              IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_y_min"));
+          y_min = y_min_val * IoUtils::convert_unit_to_number(y_min_unit, simulation_config);
+          auto [y_max_val, y_max_unit] =
+              IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "field_heatmap_y_max"));
+          y_max = y_max_val * IoUtils::convert_unit_to_number(y_max_unit, simulation_config);
+        }
       }
       size_t heatmap_Nx = std::stoull(IoUtils::get_required(simulation_config, "field_heatmap_Nx"));
       size_t heatmap_Ny = std::stoull(IoUtils::get_required(simulation_config, "field_heatmap_Ny"));
@@ -163,6 +182,10 @@ int main(int argc, char* argv[]) {
     std::cout << "Number of particles:  " << electron_beam.size() << "\n";
     std::cout << "Number of screen pts: " << detector->get_total_points() << "\n";
     std::cout << "Number of threads:    " << num_threads << "\n";
+    // Simulation::run_simulation itself already printed a per-thread timing breakdown, plus the
+    // aggregate "Time per electron"/"Time per screen pt" (summed across every thread's own elapsed
+    // time, not derived from this wall-clock simulation_elapsed -- see run_simulation's doc comment
+    // on why wall-clock time alone would understate the true per-unit cost by roughly num_threads).
 
     Radiation::plot_radiation_field(radiation_field, sim_par.frequencies, sim_par.fundamental_frequency,
                                     run_output_dir + "/radiation_field.dat");

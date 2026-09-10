@@ -2,6 +2,7 @@
 #include "../include/simulation/simulation.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <thread>
@@ -150,14 +151,25 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   // Split the beam into num_threads contiguous chunks of electrons, one chunk per thread.
   size_t chunk_size = (num_electrons + num_threads - 1) / num_threads;
 
+  // Per-thread wall-clock time for its own chunk, filled by each thread at its own index (no
+  // synchronization needed -- disjoint writes) and only ever read back after every thread has
+  // joined, to report per-thread/per-electron/per-screen-point timing breakdowns below. Threads
+  // never print this themselves (unlike thread 0's progress indicator, which is allowed to since
+  // it's the only thread writing to std::cout while others are still running) -- printing from
+  // multiple concurrently-running threads would interleave/garble output.
+  std::vector<std::chrono::duration<double>> thread_elapsed(num_threads);
+  std::vector<size_t> thread_electron_count(num_threads, 0);
+
   std::vector<std::thread> threads;
   threads.reserve(num_threads);
   for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx) {
     size_t begin = thread_idx * chunk_size;
     size_t end = std::min(begin + chunk_size, num_electrons);
     if (begin >= end) continue;
+    thread_electron_count[thread_idx] = end - begin;
 
     threads.emplace_back([&, begin, end, thread_idx]() {
+      auto thread_start = std::chrono::steady_clock::now();
       PackedRadiationField& local_field = thread_fields[thread_idx];
       for (size_t p = begin; p < end; ++p) {
         Particle::Electron& electron = electron_beam[p];
@@ -172,10 +184,43 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       if (thread_idx == 0) {
         std::cout << "\n";
       }
+      thread_elapsed[thread_idx] = std::chrono::steady_clock::now() - thread_start;
     });
   }
   for (auto& thread : threads) {
     thread.join();
+  }
+
+  // Per-thread timing breakdown: wall-clock time for each thread's own chunk (surfaces load
+  // imbalance -- e.g. the last chunk is smaller than the others whenever num_electrons isn't evenly
+  // divisible by num_threads), and the derived per-electron/per-screen-point averages within that
+  // chunk (N_screen is the same for every electron/thread, so this is just thread_elapsed divided
+  // through by electron count and then by N_screen).
+  double total_cpu_seconds = 0.0;
+  for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx) {
+    if (thread_electron_count[thread_idx] == 0) continue;
+    double elapsed_s = thread_elapsed[thread_idx].count();
+    total_cpu_seconds += elapsed_s;
+    double per_electron_s = elapsed_s / static_cast<double>(thread_electron_count[thread_idx]);
+    double per_screen_point_s = N_screen > 0 ? per_electron_s / static_cast<double>(N_screen) : 0.0;
+    std::cout << "Thread " << thread_idx << ": " << thread_electron_count[thread_idx] << " electrons in " << elapsed_s
+              << " s (" << per_electron_s << " s/electron, " << per_screen_point_s << " s/screen pt)\n";
+  }
+
+  // Aggregate per-electron/per-screen-point cost, summed across every thread's own elapsed time
+  // (total_cpu_seconds) rather than derived from wall-clock time alone -- wall-clock time divided by
+  // electron/screen-point count would understate the true per-unit cost by roughly num_threads,
+  // since electrons are processed in parallel, not sequentially. Summing the actual per-thread
+  // times (already measured above) is exact, unlike approximating with wall_time * num_threads,
+  // which implicitly assumes every thread ran equally long -- not true here, since the last chunk is
+  // smaller than the others whenever num_electrons isn't evenly divisible by num_threads.
+  if (num_electrons > 0) {
+    double time_per_electron = total_cpu_seconds / static_cast<double>(num_electrons);
+    std::cout << "Time per electron:    " << time_per_electron << " s\n";
+    if (N_screen > 0) {
+      std::cout << "Total CPU-seconds per Electron per Screen Point: "
+                << time_per_electron / static_cast<double>(N_screen) << " s\n";
+    }
   }
 
   // Reduce: sum the thread-local packed fields (amplitudes add linearly, so order doesn't matter)
@@ -187,6 +232,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {
         packed_result.field[i_omega][i_screen].long_range += local_field.field[i_omega][i_screen].long_range;
         packed_result.field[i_omega][i_screen].short_range += local_field.field[i_omega][i_screen].short_range;
+        packed_result.field[i_omega][i_screen].boundary += local_field.field[i_omega][i_screen].boundary;
       }
     }
   }
@@ -212,12 +258,15 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       const PackedFaraday& packed = packed_result.field[i_omega][i_screen];
       MathUtils::ComplexFourTensor long_range = MathUtils::unpack_bivector(packed.long_range);
       MathUtils::ComplexFourTensor short_range = MathUtils::unpack_bivector(packed.short_range);
+      MathUtils::ComplexFourTensor boundary = MathUtils::unpack_bivector(packed.boundary);
       if (print_field_in_canonical_frame) {
         long_range = MathUtils::rotate_tensor(inverse_rotation, long_range);
         short_range = MathUtils::rotate_tensor(inverse_rotation, short_range);
+        boundary = MathUtils::rotate_tensor(inverse_rotation, boundary);
       }
       result.field[i_omega][i_screen].long_range = long_range;
       result.field[i_omega][i_screen].short_range = short_range;
+      result.field[i_omega][i_screen].boundary = boundary;
     }
   }
 
@@ -235,6 +284,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {
       result.field[i_omega][i_screen].long_range *= general_factor;
       result.field[i_omega][i_screen].short_range *= general_factor;
+      result.field[i_omega][i_screen].boundary *= general_factor;
     }
   }
 

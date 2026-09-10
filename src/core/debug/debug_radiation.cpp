@@ -44,13 +44,17 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
   file << "# per-tau contribution to the packed Faraday bivector, (n_R0^alpha u^beta - n_R0^beta u^alpha) * "
           "amp_{long,short}(tau) -- the raw terms Radiation::compute_radiation sums over tau to build the final "
           "field\n";
-  file << "# LR/SR = long_range/short_range, printed as 're im' pairs, in the fixed (01,02,03,12,13,23) bivector "
-          "order\n";
+  file << "# LR/SR/BR = long_range/short_range/boundary, printed as 're im' pairs, in the fixed "
+          "(01,02,03,12,13,23) bivector order -- BR is a per-tau *row* value in this file (zero for every "
+          "interior tau, nonzero only at i_tau==0/i_tau==N_tau-1), even though it is not itself a sum over tau; "
+          "see theory/FT_Faraday_tensor-direct_and_simplified_forms.md's \"Form 2's boundary term F_b\" section\n";
   file << "i_tau tau";
   for (auto [alpha, beta] : kBivectorIndex)
     file << " LR_F" << alpha << beta << "_re LR_F" << alpha << beta << "_im";
   for (auto [alpha, beta] : kBivectorIndex)
     file << " SR_F" << alpha << beta << "_re SR_F" << alpha << beta << "_im";
+  for (auto [alpha, beta] : kBivectorIndex)
+    file << " BR_F" << alpha << beta << "_re BR_F" << alpha << beta << "_im";
   file << "\n";
 
   for (size_t i_tau = 0; i_tau < trajectory.size(); ++i_tau) {
@@ -72,6 +76,14 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     MathUtils::Complex amp_long = MathUtils::Complex{0.0, -k / R} * cexp;
     MathUtils::Complex amp_short = amp_short_0 * cexp;
 
+    // Mirrors compute_radiation's boundary_weight construction (radiation.cpp): -1/(R*n_R0.u) at
+    // tau_min (i_tau == 0), +1/(R*n_R0.u) at tau_max (i_tau == N_tau - 1), both applied (and
+    // cancelling exactly) when N_tau == 1. Zero for every interior tau.
+    double boundary_weight = 0.0;
+    if (i_tau == 0) boundary_weight -= 1.0 / (R * n_R0_contract_u);
+    if (i_tau == trajectory.size() - 1) boundary_weight += 1.0 / (R * n_R0_contract_u);
+    MathUtils::Complex amp_boundary = boundary_weight * cexp;
+
     file << i_tau << " " << trajectory[i_tau].tau;
     for (auto [alpha, beta] : kBivectorIndex) {
       MathUtils::Complex long_term = amp_long * bivector_element(n_R0, u, alpha, beta);
@@ -80,6 +92,10 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     for (auto [alpha, beta] : kBivectorIndex) {
       MathUtils::Complex short_term = amp_short * bivector_element(n_R0, u, alpha, beta);
       file << " " << short_term.real() << " " << short_term.imag();
+    }
+    for (auto [alpha, beta] : kBivectorIndex) {
+      MathUtils::Complex boundary_term = amp_boundary * bivector_element(n_R0, u, alpha, beta);
+      file << " " << boundary_term.real() << " " << boundary_term.imag();
     }
     file << "\n";
   }
@@ -104,7 +120,7 @@ void export_radiation_phase(const Particle::Electron& electron, const MathUtils:
   file << "# debug radiation phase: one row per trajectory point (tau), for a single electron/screen "
           "point/wavenumber k (= omega/c)\n";
   file << "# phase = (x[0] + R) * k, unwrapped (not reduced mod 2*pi); exp_re/exp_im = cos(phase)/sin(phase) -- "
-          "the exp(i*phase) factor common to every long-range/short-range bivector component in "
+          "the exp(i*phase) factor common to every long-range/short-range/boundary bivector component in "
           "debug_integrand.dat\n";
   file << "i_tau tau phase exp_re exp_im\n";
 

@@ -265,8 +265,15 @@ def get_detector_geometry_label(detector_type, config_path):
 def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
-    F^{mu nu} of the requested (long_range/short_range) Faraday tensor over
+    F^{mu nu} of the requested (long_range/short_range/boundary/total) Faraday tensor over
     the detector screen, one figure per configured frequency.
+
+    'boundary' is identically zero when the run used radiation_formula="direct" -- see
+    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
+    'total' is the physical field, LR+SR+BR -- correct for both radiation_formula values without
+    branching, since BR is identically zero for "direct"; BR columns are treated as zero (rather
+    than erroring) if radiation_field.dat predates the boundary term, so 'total' degrades gracefully
+    to LR+SR on an old run.
 
     All three detector types are rendered as a true heatmap (pcolormesh over the detector's native
     (Nx, Ny)/(N_theta, N_phi)/(N_R, N_phi) grid) rather than a scatter -- a scatter has no notion of
@@ -275,19 +282,33 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     azimuthal continuity (phi=0 and phi=2*pi are the same physical direction) that any helical/vortex
     structure in the field needs to actually look like a spiral around the vertex.
     """
-    prefix = {'long': 'LR', 'short': 'SR'}[range_type]
-    re_col = f'{prefix}_F{mu}{nu}_re'
-    im_col = f'{prefix}_F{mu}{nu}_im'
-
     try:
         data = pd.read_csv(radiation_filepath, sep=' ', comment='#')
     except Exception as e:
         print(f"Error reading file '{radiation_filepath}': {e}")
         sys.exit(1)
 
-    if not {re_col, im_col}.issubset(data.columns):
-        print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
-        sys.exit(1)
+    if range_type == 'total':
+        required = {f'LR_F{mu}{nu}_re', f'LR_F{mu}{nu}_im', f'SR_F{mu}{nu}_re', f'SR_F{mu}{nu}_im'}
+        if not required.issubset(data.columns):
+            print(f"Error: File must contain columns {sorted(required)}")
+            sys.exit(1)
+        re_series = data[f'LR_F{mu}{nu}_re'] + data[f'SR_F{mu}{nu}_re']
+        im_series = data[f'LR_F{mu}{nu}_im'] + data[f'SR_F{mu}{nu}_im']
+        boundary_re, boundary_im = f'BR_F{mu}{nu}_re', f'BR_F{mu}{nu}_im'
+        if {boundary_re, boundary_im}.issubset(data.columns):
+            re_series = re_series + data[boundary_re]
+            im_series = im_series + data[boundary_im]
+        data = data.copy()
+        data['TOTAL_re'], data['TOTAL_im'] = re_series, im_series
+        re_col, im_col = 'TOTAL_re', 'TOTAL_im'
+    else:
+        prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
+        re_col = f'{prefix}_F{mu}{nu}_re'
+        im_col = f'{prefix}_F{mu}{nu}_im'
+        if not {re_col, im_col}.issubset(data.columns):
+            print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
+            sys.exit(1)
 
     # Read back the config Core::IoUtils::copy_config_to_run_directory saved alongside this
     # specific run's .dat files, rather than config/coherent_thomson.cfg -- the project's live
@@ -370,12 +391,12 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short> <mu> <nu> [path_to_radiation_field.dat]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary|total> <mu> <nu> [path_to_radiation_field.dat]")
         sys.exit(1)
 
     range_type = sys.argv[1]
-    if range_type not in ('long', 'short'):
-        print("Error: first argument must be 'long' or 'short'")
+    if range_type not in ('long', 'short', 'boundary', 'total'):
+        print("Error: first argument must be 'long', 'short', 'boundary', or 'total'")
         sys.exit(1)
 
     try:
