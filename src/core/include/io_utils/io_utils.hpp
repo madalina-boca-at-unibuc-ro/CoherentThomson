@@ -96,6 +96,13 @@ inline double convert_unit_to_number(std::string unit_name, const ConfigMap& con
     return std::stod(get_required(config, "laser_frequency"));
   } else if (to_lower(unit_name) == "a.u.") {
     return 1.0;
+  } else if (to_lower(unit_name) == "w0") {
+    // Read directly rather than via get_laser_lg_params (defined later in this file) to avoid a
+    // forward reference -- same pattern the "omega_laser" branch above uses. w0 itself is still
+    // expressed in the config in an already-supported unit (typically "lambda"), not independently,
+    // so this recurses through convert_unit_to_number rather than assuming atomic units directly.
+    auto [w0_val, w0_unit] = split_value_and_unit(get_required(config, "laser_lg_w0"));
+    return w0_val * convert_unit_to_number(w0_unit, config);
   } else {
     std::cerr << "Warning: Unknown unit " << unit_name << ". Assuming 1.0." << std::endl;
     return 1.0;

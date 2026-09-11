@@ -179,9 +179,13 @@ artifact of the integration by parts, and they cancel each other almost complete
 no integration by parts) never produces this artifact: its long-range term is driven by the four-acceleration $w$,
 and the corresponding on-axis combination $w^z\mp w^0$ vanishes identically. This is consistent with the two forms'
 totals agreeing (per the "Cross-check target" below) while their individual $F_l$ pieces do not, and it means any
-implementation of Form 2 that drops $F_b$ — as `compute_radiation` currently does for `radiation_formula=simplified`
-(`radiation.cpp`, `long_range_prefactor`/`short_range_prefactor`) — will see a large, spurious $F^{03}$ contribution
-near the beam axis that a correct (direct, or boundary-term-complete simplified) implementation would not.
+implementation of Form 2 that drops $F_b$ would see a large, spurious $F^{03}$ contribution near the beam axis that
+a correct (direct, or boundary-term-complete simplified) implementation would not. **This is no longer the case
+here**: `compute_radiation` (`radiation.cpp`) now computes $F_b$ unconditionally for `radiation_formula=simplified`
+(`boundary_prefactor`/`add_boundary_term`, accumulated into `local_boundary` and summed alongside `local_long`/
+`local_short`) — see CLAUDE.md's "boundary term $F_b$" note for the fix history and its sanity check against this
+exact on-axis prediction (`config/coherent_thomson_debug.cfg`'s on-axis backward detector: `|F_l+F_s+F_b|` came out
+~8x smaller than `|F_l|` alone, consistent with the near-cancellation predicted above).
 
 ---
 

@@ -50,16 +50,25 @@ LaserField::LaserField(double omega_in, double a0_in, double flat_duration_in, d
       std::round((phi_max - phi_min) / d_phi));  // Number of phi points to cover the full range with NT points per
 }
 
-// returns only the explonent of the envelope, to be used in the calculation of the complex amplitude
+// returns only the explonent of the envelope, to be used in the calculation of the complex amplitude.
+//
+// exp(-(delta_phi/wing_sigma)^2), i.e. no factor of 2 in the denominator -- matches the independent
+// Python cross-check's TemporalFactor.envelope (~/Dropbox/work/bin/python/Superradiant_Thomson,
+// laser.py), which uses exp(-(distance/sigma_l)^2) for the same physical wing_sigma/sigma_l value (both
+// given in periods). An earlier version of this function used the statistical-Gaussian convention
+// exp(-delta_phi^2/(2*wing_sigma^2)) instead (wing_sigma as a standard deviation) -- a real, confirmed
+// discrepancy against the Python reference found while cross-validating the two solvers, since for this
+// project's default pulse (flat_duration=10 cycles, wing_sigma_cutoff=5, wing_sigma=2 cycles) the wings
+// make up two-thirds of the total pulse duration, so the envelope shape there is not a negligible detail.
 double LaserField::envelope(double phi) const {
   if (phi < delay) {
     // Leading Gaussian wing
     double delta_phi = phi - delay;
-    return (-(delta_phi * delta_phi) / (2.0 * wing_sigma * wing_sigma));
+    return (-(delta_phi * delta_phi) / (wing_sigma * wing_sigma));
   } else if (phi > flat_duration + delay) {
     // Trailing Gaussian wing
     double delta_phi = phi - (flat_duration + delay);
-    return (-(delta_phi * delta_phi) / (2.0 * wing_sigma * wing_sigma));
+    return (-(delta_phi * delta_phi) / (wing_sigma * wing_sigma));
   } else {
     // Constant flat-top plateau
     return 0.0;

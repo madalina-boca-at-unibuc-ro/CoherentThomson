@@ -48,6 +48,7 @@ from plot_radiation_field import (
     get_circular_cell_edges,
     get_detector_geometry_label,
 )
+from w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 # Core::PhysUtils::AtomicUnits (phys_utils.hpp): c and epsilon_0 in the solver's own atomic units.
 C_LIGHT = 137.036
@@ -311,14 +312,19 @@ def plot_angular_momentum_flux(radiation_filepath):
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
         grid_shape = (Nx, Ny)
         x_edges, y_edges = get_rectangular_cell_edges(config_path)
+        axes_unit = read_config_value('rectangular_detector_x_min', config_path)[1]
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
         grid_shape = (N_R, N_phi)
         x_edges, y_edges = get_circular_cell_edges(config_path)
+        axes_unit = read_config_value('circular_detector_R_min', config_path)[1]
 
     _, _, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
     detector_geometry_label = get_detector_geometry_label(detector_type, config_path)
+    # w0-multiple secondary axes (laguerre_gauss runs only, unit-matched to axes_unit) -- see
+    # get_laser_lg_w0_in_axes_units.
+    w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit)
 
     for i_omega, subset in result.groupby('i_omega'):
         subset = subset.sort_values('i_screen')
@@ -332,7 +338,10 @@ def plot_angular_momentum_flux(radiation_filepath):
         ax.set_aspect('equal', adjustable='box')
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
-        fig.colorbar(sc, ax=ax, label="$d\\mathcal{F}_{J_z}/d\\omega$ (a.u.)")
+        # pad=0.15 (rather than matplotlib's default ~0.05) leaves room for the secondary right
+        # y/w0 axis added below -- otherwise the colorbar crowds it into invisibility.
+        fig.colorbar(sc, ax=ax, label="$d\\mathcal{F}_{J_z}/d\\omega$ (a.u.)", pad=0.15)
+        add_w0_secondary_axes(ax, w0)
 
         fig.suptitle(f"$d\\mathcal{{F}}_{{J_z}}/d\\omega$ (total field), $\\omega$ index {i_omega} "
                      f"($\\omega/\\omega_1$={omega_value:.4g}), {detector_type} detector, "

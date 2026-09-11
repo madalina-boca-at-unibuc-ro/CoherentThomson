@@ -73,12 +73,26 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 
-  // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 xi^2 / (2 k1.p) * k1,
-  // giving the mass-shell shift m_eff^2 = m^2(1+xi^2/2). The (mc)^2 factor is essential: xi is
+  // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 <a^2> / (2 k1.p) * k1,
+  // giving the mass-shell shift m_eff^2 = m^2(1+<a^2>). The (mc)^2 factor is essential: xi is
   // dimensionless, so without it the correction term has the wrong units and (since mc = 137.036 in
   // atomic units) ends up ~(mc)^2 too small to have any visible effect.
+  //
+  // <a^2> is the cycle-averaged normalized-amplitude-squared, NOT xi^2 = a0^2 (the peak amplitude)
+  // directly -- q is the electron's *drift* momentum (its trajectory averaged over one laser cycle),
+  // so it must be built from the cycle-averaged field, not its instantaneous peak. For the on-axis
+  // carrier A_x=A0*a*cos(phi-alpha), A_y=A0*b*cos(phi-beta) (zeta_1=a*e^{i*alpha}, zeta_2=b*e^{i*beta},
+  // a^2+b^2=1 after create_laser's normalization), <|A|^2> = A0^2*(a^2*<cos^2>+b^2*<cos^2>) = A0^2/2
+  // exactly, for ANY a,b with a^2+b^2=1 -- i.e. <a^2> = xi^2/2 regardless of polarization state
+  // (linear, circular, or elliptical), since the cross term between the two orthogonal components
+  // never appears in |A|^2=A_x^2+A_y^2 and each squared cosine averages to 1/2 independently. This
+  // was previously computed as xi^2/(2*k1.p) (i.e. using the peak xi^2 in place of <a^2>), which
+  // (matched against the independent Python cross-check, ~/Dropbox/work/bin/python/
+  // Superradiant_Thomson's ScreenGeometry.from_parameters) gives m_eff^2=m^2(1+xi^2), not the
+  // documented m^2(1+xi^2/2) target above -- fixed by using <a^2>=xi^2/2, i.e. a 4, not 2, denominator.
   double xi = laser.get_a0();
-  MathUtils::FourVector q = p + mc * mc * xi * xi / (2.0 * MathUtils::contract(p, k1)) * k1;
+  double a_sq_avg = xi * xi / 2.0;
+  MathUtils::FourVector q = p + mc * mc * a_sq_avg / (2.0 * MathUtils::contract(p, k1)) * k1;
 
   // The fundamental's frequency, computed the same way regardless of dense_spectrum -- used only to
   // let Radiation::plot_radiation_field normalize its exported "omega" column into units of the

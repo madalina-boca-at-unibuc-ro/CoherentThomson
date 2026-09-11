@@ -63,12 +63,6 @@ Run `clang-format -i` on touched files before committing (`.clang-format` at rep
 
 There is no test suite yet.
 
-Sync the repo to a remote build/run server (excludes `build/`, `src/build/`, `bin/`, `.venv/`, `.cache/`,
-`.claude/`, `.vscode/`, and the local `.code-workspace` file — `py_scripts/` itself *is* synced):
-```
-./sync_to_remote.sh user@remote:/path/to/CoherentThomson/
-```
-
 ## Architecture
 
 ### Directory / module strategy
@@ -116,12 +110,18 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 `config/coherent_thomson.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
 frequency/envelope/direction/polarization, beam particle count/geometry, initial momentum distribution, radiation
 spectrum range, and a trajectory-print-frequency knob. Numeric values may carry a unit suffix (`lambda`, `pi`,
-`mc`, `cycles_adim`, `omega_laser`, `a.u.`, ...) resolved by `IoUtils::convert_unit_to_number` against the laser's
-own wavelength/frequency — check that function before adding a new unit keyword; an unrecognized suffix falls
-through to a `std::cerr` warning and an assumed value of `1.0` rather than throwing, so a typo'd unit fails silently
-(only visible as a startup warning) instead of erroring out. A key with a blank value (nothing but a trailing
-comment) is dropped entirely by the parser rather than stored empty, so `config.at(...)` throws
+`mc`, `cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...) resolved by `IoUtils::convert_unit_to_number` against the
+laser's own wavelength/frequency — check that function before adding a new unit keyword; an unrecognized suffix
+falls through to a `std::cerr` warning and an assumed value of `1.0` rather than throwing, so a typo'd unit fails
+silently (only visible as a startup warning) instead of erroring out. A key with a blank value (nothing but a
+trailing comment) is dropped entirely by the parser rather than stored empty, so `config.at(...)` throws
 `std::out_of_range` for it — always give every key a real value, even a placeholder.
+
+**`w0` unit** (e.g. `circular_detector_R_max  3.0  w0`) is only valid for `laser_type=laguerre_gauss` configs — it
+reads `laser_lg_w0` (itself given in an already-supported unit, conventionally `lambda`) and recurses through
+`convert_unit_to_number` on that unit, rather than assuming atomic units directly, so `w0` is still ultimately
+expressed in `lambda`, not an independent length scale. Throws (via `get_required`) if `laser_lg_w0` isn't present
+in the config, i.e. for any other `laser_type`.
 
 One exception to the single-number-plus-unit convention: the laser's polarization coefficients are complex
 (`Core::MathUtils::Complex`), so each is split into two plain-number keys instead of one `key value [unit]` line —
@@ -243,6 +243,30 @@ still plots against raw `tau`, not `tau/T`.
   `frequencies_are_evenly_spaced` check, falling back to per-frequency `std::polar` otherwise) — keep this in sync
   with the `omega_min`/`omega_max` gap below if you touch either.
   Measured ~2.6x wall-clock speedup from these two changes together on a fine-detector-grid config.
+  **OPEN PERFORMANCE QUESTION (for later discussion, not yet profiled/confirmed): this C++ solver has been
+  observed running ~3x *slower* than the independent Python reference
+  (`~/Dropbox/work/bin/python/Superradiant_Thomson`) for matched parameters, with most of the time attributed to
+  this same trapezoidal-sum/FT loop** — surprising, since a compiled `-O3 -march=native` loop should generally
+  beat Python/numpy on the same arithmetic. Leading hypothesis: the `i_freq` loop's phase-recurrence optimization
+  just described (`cexp *= cexp_step` each iteration) is a **serial dependency chain** — each frequency's phase
+  needs the previous frequency's phase — which a compiler cannot auto-vectorize (SIMD), no matter how aggressive
+  the flags. A numpy-based Python implementation that instead builds the whole frequency axis as an array and
+  evaluates `exp(i*omega_array*phase)` in one vectorized call has no such dependency (every frequency is
+  independent), so it can process several frequencies per SIMD instruction — the "naive" full evaluation doing
+  *more* raw transcendental-function work can still win in wall-clock terms over the "clever" O(1)-per-step
+  recurrence, because the recurrence's serial chain is the actual bottleneck, not FLOP count. Compounding
+  candidate: `MathUtils::Complex` is `std::complex<double>`, and this repo's `CMakeLists.txt` Release flags
+  (`-O3 -march=native -mtune=native`) include no `-ffast-math`/`-fcx-limited-range`, so `std::complex`
+  multiply/divide keeps its full IEEE/C99-Annex-G-mandated NaN/Inf edge-case handling — a well-known blocker for
+  GCC/Clang auto-vectorizing loops of `std::complex<double>` arithmetic, whereas numpy's complex128 elementwise
+  kernels don't carry the same correctness overhead. Two more candidates worth ruling out cheaply before
+  trusting either hypothesis above: confirm the timed C++ binary was actually built `Release` (an accidental
+  `Debug`/`RelWithDebInfo` build alone would produce a multi-x slowdown unrelated to any of this); and note that
+  `run_simulation` parallelizes across *electrons* (`num_threads`), so for a modest `beam_particle_count` its
+  effective parallel/SIMD utilization per electron may be lower than a numpy implementation that vectorizes
+  across the full `(tau, screen, freq)` array regardless of electron count. **Nothing here has been profiled or
+  fixed yet** — this bullet exists so the hypothesis (and the reasoning behind it) survives to the next session
+  rather than needing to be rediscovered.
 - **`tau_0_traj` is hardcoded to `0.0`** in `Simulation::init_simulation_parameters` rather than derived from the
   pulse's actual physical start — every electron starts its proper-time grid at `tau=0` regardless of the pulse's
   leading Gaussian wing / `laser_delay` shift. Flagged in-code with `// hardcoded, to be modified`.
@@ -264,15 +288,23 @@ still plots against raw `tau`, not `tau/T`.
   `config/coherent_thomson_debug.cfg`, where a zero-radius window would otherwise collapse the heatmap to a single
   point): `plane_wave` (no transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss`
   ignores those and uses `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
-  **`py_scripts/plot_field_heatmap_z0.py` also adds secondary top/right axes in units of `w0`** (`x/w0`, `y/w0`)
-  alongside the primary bottom/left axes (still in `axes_unit`, i.e. `lambda`) — both shown at once via
-  matplotlib's `ax.secondary_xaxis`/`secondary_yaxis` with a `lambda(x) = x/w0` forward transform, rather than
-  replacing one labeling with the other. `get_laser_lg_w0_in_axes_units` (same file) reads the run's own
-  `config.cfg` snapshot and returns `None` — skipping the secondary axes entirely, not mislabeling them — whenever
-  `laser_type != laguerre_gauss` (no `w0` to label with) or `laser_lg_w0`'s own config unit doesn't match the
-  `.dat` file's `axes_unit` header (both are always `lambda` by this project's convention, so this defensive check
-  should never actually trigger, but a real unit conversion was deliberately not implemented for a case that
-  shouldn't occur in practice).
+  **Every heatmap-producing script adds secondary top/right axes in units of `w0`** (`x/w0`, `y/w0`) alongside the
+  primary bottom/left axes (still in `axes_unit`, i.e. `lambda`) — both shown at once via matplotlib's
+  `ax.secondary_xaxis`/`secondary_yaxis` with a `lambda(x) = x/w0` forward transform, rather than replacing one
+  labeling with the other. `get_laser_lg_w0_in_axes_units`/`add_w0_secondary_axes` live in their own leaf module,
+  **`py_scripts/w0_axes_utils.py`** (no imports of `plot_radiation_field`, so every caller — including
+  `plot_radiation_field.py` itself — can import it without a circular-import issue; it duplicates, rather than
+  imports, `plot_radiation_field.read_config_value`'s small `key value [unit]` line reader for this reason), used
+  by `plot_field_heatmap_z0.py` (originally the only consumer, before this module existed),
+  `plot_radiation_field.py`, `plot_angular_momentum_flux.py`, and `plot_spherical_field_components.py`.
+  `get_laser_lg_w0_in_axes_units` reads the run's own `config.cfg` snapshot and returns `None` — skipping the
+  secondary axes entirely, not mislabeling them — whenever `laser_type != laguerre_gauss` (no `w0` to label with)
+  or `laser_lg_w0`'s own config unit doesn't match the `.dat` file's `axes_unit` header (both are always `lambda`
+  by this project's convention, so this defensive check should never actually trigger, but a real unit conversion
+  was deliberately not implemented for a case that shouldn't occur in practice) — also `None` for
+  `plot_radiation_field.py`/`plot_spherical_field_components.py`'s spherical-detector angular `(theta, phi)`
+  fallback grid (see the stereographic-projection bullet below), which has no length scale for `w0` to
+  supplement. `add_w0_secondary_axes` is a no-op when passed `None` or a non-positive `w0`.
 - All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
   `compute_radiation`); `main.cpp` additionally runs it once more directly on the first `min(10,
   electron_beam.size())` electrons (indices `0..N-1`) purely to export their trajectories to `electron.dat`.
@@ -389,16 +421,38 @@ still plots against raw `tau`, not `tau/T`.
   `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — building `k1` from
   `laser.get_unity_n()` or `n2` from `average_px/py/pz` directly would mix frames and give wrong frequencies
   whenever the laser's configured direction isn't along `Oz`. **`q` is a ponderomotively-dressed momentum**, `q =
-  p + (mc)^2*xi^2/(2*contract(p, k1)) * k1` with `xi = laser.get_a0()`, `mc = m_0*c` — used both to compute
+  p + (mc)^2*<a^2>/(2*contract(p, k1)) * k1` with `mc = m_0*c` — used both to compute
   `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`)
   and, as of the "changed/corrected the dressed momentum" commits, for the per-harmonic `frequencies_list`
   entries in the default (non-dense) mode too (previously those used bare `p`, which made the
   `frequencies_list[i]/fundamental_frequency` normalization only approximate for `a0 != 0` — see the
   `radiation_field.dat`'s exported `omega` column bullet above).
-  The `(mc)^2` prefactor is required for unit consistency (`xi` is dimensionless, and `mc = 137.036` in these
-  atomic units, so omitting it would make the correction term negligibly small regardless of `a0`). **RESOLVED**:
-  the `2` denominator (`<a^2> = xi^2/2`) is confirmed correct — it fixed the backward-detector spectral-peak
-  mismatch this formula was debugged against, and no longer needs re-deriving.
+  The `(mc)^2` prefactor is required for unit consistency (`<a^2>` is dimensionless, and `mc = 137.036` in these
+  atomic units, so omitting it would make the correction term negligibly small regardless of `a0`).
+  **FIXED: `<a^2>` was computed as `xi^2` (`xi = laser.get_a0()`, the peak normalized amplitude) instead of the
+  cycle-averaged `<a^2> = xi^2/2`.** `q` is the electron's *drift* momentum (its trajectory averaged over one
+  laser cycle), so it must be built from the cycle-averaged field, not the instantaneous peak. Found via the same
+  cross-check against the independent Python reference (`~/Dropbox/work/bin/python/Superradiant_Thomson`,
+  `ScreenGeometry.from_parameters`), prompted by a direct question about whether the polarization-dependence this
+  bug was first mistaken for (see below) actually survives the project's own `zeta_1`/`zeta_2` normalization
+  convention (`|zeta_1|^2+|zeta_2|^2=1`, `laser_factory.cpp`) -- it doesn't: for the on-axis carrier
+  `A_x=A0*a*cos(phi-alpha)`, `A_y=A0*b*cos(phi-beta)` (`zeta_1=a*e^{i*alpha}`, `zeta_2=b*e^{i*beta}`,
+  `a^2+b^2=1`), `<|A|^2> = A0^2*(a^2+b^2)*<cos^2> = A0^2/2` exactly for *any* `a,b` with `a^2+b^2=1` — i.e.
+  `<a^2>=xi^2/2` regardless of polarization state (linear, circular, or elliptical), since `|A|^2=A_x^2+A_y^2`
+  has no cross term between the two orthogonal components and each squared cosine averages to `1/2`
+  independently. The old `xi^2` (not `xi^2/2`) formula gave mass-shell shift `m_eff^2=m^2(1+xi^2)`, not the
+  `m^2(1+xi^2/2)` this section's own code comment already (correctly) documented as the target — i.e. the bug
+  predates this note and its own comment had the right intent, just not the matching denominator. Fixed by
+  computing `a_sq_avg = xi*xi/2.0` and using it (instead of bare `xi*xi`) in `q`'s numerator, in both this file
+  and the Python reference (with matching fixes to Python's own test, `tests/test_screen.py`'s
+  `test_nonlinear_thomson_frequency_formula`, which had encoded the old, now-superseded coefficient). Verified:
+  the two codebases' dressed fundamental frequencies for an on-axis-backward, at-rest-electron debug config now
+  agree to 8 significant figures (previously already agreed to ~9 figures pre-fix too, since that check only
+  confirms self-consistency of whichever formula is implemented, not its correctness against the true physics —
+  see the "**Also fixed while investigating this**" note directly below for how the actual bug was found instead).
+  **Also fixed while investigating this**: an intermediate, since-superseded hypothesis (that the fixed coefficient
+  should instead depend on polarization — `xi^2` for circular, `xi^2/2` for linear) was tested and found wrong
+  by the `<|A|^2>` derivation above; flagged here so it isn't independently rediscovered and "fixed" backwards.
 - **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
   laser's, but shares the laser's rotation.** `create_detector` passes both the laser's 4x4 `rotation_matrix` and
   the detector's own local direction into `Detector_2D`, which builds a 3x3 `local_rotation` orthogonal to that
@@ -649,6 +703,44 @@ still plots against raw `tau`, not `tau/T`.
   given a `'total'` option (not asked for; would follow the same pattern if wanted).
   **Still open**: full validation against the single-electron Thomson-dipole benchmark (still not attempted) —
   the boundary term is expected to help but has not been confirmed to resolve the OPEN VALIDATION GAP outright.
+- **`plot_radiation_field.py`'s `plot_radiation_component` and `plot_spherical_field_components.py`'s heatmap
+  branch render each Faraday/field component as a 2x2 Real/Imaginary/Modulus/Phase grid, styled to match the
+  independent Python reference's own plots** (`~/Dropbox/work/bin/python/Superradiant_Thomson`,
+  `plotting/screen.py`). Re/Im share the Modulus panel's own `[0, abs_max]` scale, symmetrized to
+  `[-abs_max, abs_max]` (diverging `RdBu_r`), rather than each auto-scaling independently — a real part that
+  looks just as saturated as the modulus, even though `|Re| <= |F|`, would misleadingly suggest Re alone
+  accounts for all of the magnitude; sharing one scale keeps the three panels directly comparable at a glance,
+  even though Re/Im then generally look paler than the modulus. The phase panel's `twilight` colorbar gets
+  explicit ticks at `-pi, -pi/2, 0, pi/2, pi` with matching LaTeX labels, instead of raw decimal radian ticks.
+  Each panel's colorbar uses `shrink=0.85` (not full axis height) and carries no `cbar.set_label` — the panel
+  title above already names the quantity, and a second, redundant vertical label competed with the right
+  column's colorbar for width, contributing to the misalignment described next.
+  **Non-obvious `matplotlib` gotcha, found and fixed while matching this style: `layout='constrained'` does
+  not reliably column-align per-axes colorbars added via `fig.colorbar(sc, ax=ax, shrink=...)`.** With four
+  panels arranged 2x2 (Re/Im on top, Modulus/Phase below), the two right-column colorbars (Im, Phase) can end
+  up at different x-positions even though they share a grid column — confirmed by direct pixel measurement to
+  be invisible on a rectangular-detector run but off by up to ~380px on a circular/stereographic-projection
+  run, i.e. the size of the misalignment is data-shape-dependent, not a fixed bug you'd catch by eyeballing one
+  config. Root cause: the constrained-layout solver allocates space per axes based on that axes' own tick/offset
+  decorations, and the Re/Im colorbars carry a "`1e-N`" scientific-offset label (drawn above the colorbar) while
+  the phase colorbar instead has explicit `$\pi$`-fraction tick labels (drawn to the right) — different content,
+  different space negotiated, and the solver doesn't force the two rows of one column to agree. Two more traps
+  along the way, both real and both worth remembering for any future colorbar work in this repo:
+  1. `bbox_inches='tight'` on `savefig` interacts badly with a still-active `constrained_layout`: it re-renders
+     at a re-derived figure size, which can trigger a *second*, different constrained-layout solve that silently
+     changes the very positions you were trying to preserve.
+  2. A colorbar created via `fig.colorbar(sc, ax=ax, ...)` carries an automatic locator on its own Axes that
+     recomputes its position relative to the parent Axes on every draw — including the one `savefig` triggers —
+     so a manual `cbar.ax.set_position(...)` silently gets overwritten again unless `cbar.ax.set_axes_locator(None)`
+     is called first.
+  **Fix, in both scripts**: after building all four panels, force one layout pass (`fig.canvas.draw()`), freeze
+  it (`fig.set_layout_engine(None)`), clear each colorbar's locator, then snap each column's bottom colorbar
+  (Modulus, Phase) to the top colorbar's (Re, Im) `x0` via `set_position`. `bbox_inches='tight'` was then added
+  back on the final `savefig` (safe now that the layout is frozen and every position set by hand — it only crops
+  outer whitespace, since there's no active layout engine left to re-solve) to stop the phase colorbar's own
+  tick labels (pushed rightward by the snap, since the Re/Im column is normally the wider one) from hanging past
+  the figure's original right edge. Verified via pixel measurement on both a rectangular and a circular/
+  stereographic run: all four colorbars land at identical x-positions in both, with no clipped tick labels.
 - **FIXED: `compute_radiation`'s tau-sum was missing the trapezoidal quadrature weight entirely**, found by
   cross-checking this repo's solver against an independent Python reimplementation of the same physics
   (`~/Dropbox/work/bin/python/Superradiant_Thomson`, `superradiant_thomson/screen.py`'s
@@ -699,3 +791,27 @@ still plots against raw `tau`, not `tau/T`.
   exported Faraday-tensor component, and would show up as a uniform sign mismatch on any component-by-component
   comparison against another correctly-signed reference (such as the Python code above). Fixed by changing
   `simulation.cpp`'s `general_factor` to multiply by `q_0` instead of `e_0`.
+- **FIXED: `LaserField::envelope`'s Gaussian wings used the statistical convention
+  `exp(-delta_phi^2/(2*wing_sigma^2))` (`wing_sigma` as a standard deviation) instead of
+  `exp(-delta_phi^2/wing_sigma^2)`** -- found via the same cross-check against the independent Python
+  reference (`~/Dropbox/work/bin/python/Superradiant_Thomson`, `laser.py`'s `TemporalFactor.envelope`,
+  `exp(-(distance/sigma_l)^2)`), for the *same* physical `wing_sigma`/`sigma_l` value (both given in
+  periods -- confirmed by converting `config.cfg`'s `wing_sigma=2.0 cycles_adim` and the Python side's
+  `sigma_l={value:2,unit:"T"}` to the same units). Not a config/units mismatch: an actual factor-of-2
+  difference in the exponent between the two implementations. This is not a negligible edge effect for
+  this project's typical pulses: for `config/config.cfg`'s (`flat_duration=10` cycles,
+  `wing_sigma_cutoff=5`, `wing_sigma=2` cycles) the two Gaussian wings make up two-thirds of the total
+  30-cycle pulse duration, and the old formula's envelope was substantially fatter there (e.g. `0.607`
+  vs the corrected `0.368` one wing_sigma out from the flat-top edge) -- large enough to materially
+  shift the effective pulse energy/a0 seen by the beam, and a plausible (partial, not yet fully
+  quantified) explanation for the two solvers' outputs disagreeing by a modest but consistent amount on
+  otherwise-matched configs. Verified analytically (ratio between the old and Python's formula computed
+  directly, not just eyeballed) before applying the fix; **not yet re-verified end-to-end** against a
+  fresh full-config run of both solvers post-fix -- do that before treating any remaining cross-code
+  gap as evidence of a *different* bug. An earlier, since-reverted attempt fixed this equivalently from
+  the config side alone instead (rescaling `config/config.cfg`'s `wing_sigma`/`wing_sigma_cutoff` by
+  `1/sqrt(2)`/`sqrt(2)`, which does reproduce the same envelope shape *and* total duration for that one
+  config) -- reverted in favor of fixing `envelope` itself, since a per-config rescaling has to be
+  redone by hand for every other config using `laser_wing_sigma`/`laser_wing_sigma_cutoff`
+  (`config/coherent_thomson.cfg`, `config/coherent_thomson_debug.cfg`, ...), whereas fixing the formula
+  once fixes all of them.

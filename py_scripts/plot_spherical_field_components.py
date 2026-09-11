@@ -29,6 +29,7 @@ from plot_angular_momentum_flux import (
     get_field_to_canonical_rotation,
     extract_rotated_faraday_fields,
 )
+from w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 
 def get_spherical_local_angles(config_path):
@@ -204,6 +205,12 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
     grid_shape = (N_theta, N_phi)
     x_edges, y_edges, x_label, y_label, aspect = get_spherical_plot_grid(config_path)
     detector_geometry_label = get_detector_geometry_label('spherical', config_path)
+    # Only the stereographic-projection grid (aspect == 'equal') is in length units; the
+    # (theta, phi) angular fallback has no length scale for a w0-multiple axis to supplement.
+    w0 = None
+    if aspect == 'equal':
+        axes_unit = read_config_value('spherical_detector_radius', config_path)[1]
+        w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit)
 
     for i_omega, subset in result.groupby('i_omega'):
         subset = subset.sort_values('i_screen')
@@ -214,27 +221,65 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
         abs_values = np.hypot(re_values, im_values)
         phase_values = np.arctan2(im_values, re_values)
 
+        # Re/Im share the modulus panel's own [0, abs_max] scale, symmetrized to [-abs_max, abs_max],
+        # rather than each auto-scaling to its own range -- see plot_radiation_field.py's
+        # plot_radiation_component for the same convention and its rationale.
+        abs_max = abs_values.max() if abs_values.size else None
         panels = [
-            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', None, None),
-            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', None, None),
-            (abs_values, f"$|{component_label}|$", 'viridis', 0, None),
+            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', -abs_max, abs_max),
+            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', -abs_max, abs_max),
+            (abs_values, f"$|{component_label}|$", 'viridis', 0, abs_max),
             (phase_values, f"$\\arg({component_label})$", 'twilight', -np.pi, np.pi),
         ]
 
-        fig, axes = plt.subplots(2, 2, figsize=(12, 11))
+        fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), layout='constrained')
+        cbars = []
         for ax, (values, title, cmap, vmin, vmax) in zip(axes.flat, panels):
             sc = ax.pcolormesh(x_edges, y_edges, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_title(title)
-            fig.colorbar(sc, ax=ax)
+            ax.grid(True, alpha=0.25)
+            # shrink=0.85 (matching the Superradiant_Thomson reference plots' style) keeps the
+            # colorbar from spanning the full axis height, which otherwise crowds the secondary
+            # right y/w0 axis added below. No cbar.set_label: the panel title above already names
+            # the quantity, and a second, redundant vertical label ate into the width available to
+            # the right column's colorbar, misaligning it against the left column's.
+            cbar = fig.colorbar(sc, ax=ax, shrink=0.85)
+            if cmap == 'twilight':
+                cbar.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
+                cbar.ax.set_yticklabels(['$-\\pi$', '$-\\pi/2$', '$0$', '$\\pi/2$', '$\\pi$'])
+            add_w0_secondary_axes(ax, w0)
+            cbars.append(cbar)
 
         fig.suptitle(f"${component_label}$, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
-                     f"spherical detector, {detector_geometry_label}", fontsize=12, fontweight='bold')
-        plt.tight_layout()
+                     f"spherical detector, {detector_geometry_label}", fontsize=12)
+
+        # constrained layout doesn't reliably column-align per-axes colorbars -- see
+        # plot_radiation_field.py's plot_radiation_component for the full explanation (a "1e-N"
+        # scientific offset label above the Re/Im colorbars vs. the twilight phase colorbar's plain
+        # '$\pi$' tick label throws off the solver's per-column spacing). Force one layout pass,
+        # freeze it, then snap each column's two colorbars to a shared x0.
+        fig.canvas.draw()
+        fig.set_layout_engine(None)
+        for cbar in cbars:
+            # fig.colorbar(ax=...) attaches an automatic locator to the colorbar axes that
+            # recomputes its position relative to the parent ax on every draw -- including the one
+            # savefig triggers -- which would silently undo the set_position() calls below unless
+            # cleared first.
+            cbar.ax.set_axes_locator(None)
+        for top_cbar, bottom_cbar in zip(cbars[:2], cbars[2:]):
+            top_pos = top_cbar.ax.get_position()
+            bottom_pos = bottom_cbar.ax.get_position()
+            bottom_cbar.ax.set_position([top_pos.x0, bottom_pos.y0, bottom_pos.width, bottom_pos.height])
 
         output_img = os.path.join(png_dir, f"spherical_field_{range_type}_{field}{component}_omega{i_omega}.png")
+        # bbox_inches='tight' is safe here -- see plot_radiation_field.py's plot_radiation_component
+        # for why: the layout is already frozen and every axes position fixed by hand, so 'tight'
+        # only crops the outer margin and can no longer re-trigger a layout pass that un-aligns the
+        # colorbars. It's needed again to keep the phase colorbar's own tick labels (pushed out to
+        # the wider x0 set by the "1e-N" offset above Re/Im) from hanging past the figure's edge.
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)

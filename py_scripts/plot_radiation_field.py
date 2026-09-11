@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from run_output_utils import find_latest_output_file, DEFAULT_CONFIG_PATH
+from w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 def read_config_value(key, config_path=DEFAULT_CONFIG_PATH):
     """
@@ -330,21 +331,35 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     # get_rectangular_cell_edges/get_spherical_cell_edges/get_circular_cell_edges) instead of the
     # per-point centers get_screen_coordinates returns.
     aspect = 'equal'
+    axes_unit = None
     if detector_type == 'rectangular':
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
         grid_shape = (Nx, Ny)
         x, y = get_rectangular_cell_edges(config_path)
+        axes_unit = read_config_value('rectangular_detector_x_min', config_path)[1]
     elif detector_type == 'spherical':
         N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
         N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
         grid_shape = (N_theta, N_phi)
         x, y, x_label, y_label, aspect = get_spherical_plot_grid(config_path)
+        # Only the stereographic-projection grid (aspect == 'equal') is in length units; the
+        # (theta, phi) angular fallback has no length scale for w0 to supplement.
+        if aspect == 'equal':
+            axes_unit = read_config_value('spherical_detector_radius', config_path)[1]
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
         grid_shape = (N_R, N_phi)
         x, y = get_circular_cell_edges(config_path)
+        axes_unit = read_config_value('circular_detector_R_min', config_path)[1]
+
+    # w0 (laguerre_gauss runs only, unit-matched to axes_unit -- see
+    # get_laser_lg_w0_in_axes_units) drives a supplementary top/right w0-multiple axis on every
+    # panel below, alongside the primary bottom/left axes already in axes_unit; None for a
+    # non-length (angular fallback) grid or a non-laguerre_gauss run, in which case
+    # add_w0_secondary_axes below is a no-op.
+    w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
 
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder")
     os.makedirs(png_dir, exist_ok=True)
@@ -360,31 +375,73 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         abs_values = np.hypot(re_values, im_values)
         phase_values = np.arctan2(im_values, re_values)
 
-        # Re/Im are signed (diverging cmap, auto-scaled per panel); magnitude is
-        # non-negative (sequential cmap, floored at 0); phase wraps at +-pi (cyclic cmap).
+        # Re/Im share the modulus panel's own [0, abs_max] scale, symmetrized to [-abs_max, abs_max]
+        # (diverging cmap), rather than each auto-scaling to its own range -- a real part that looks
+        # just as saturated as the modulus, even though |Re| <= |F|, would misleadingly suggest Re
+        # alone accounts for all of the magnitude. Sharing one scale keeps the three panels directly
+        # comparable at a glance, even though Re/Im then generally look paler than the modulus.
+        # Magnitude is non-negative (sequential cmap, floored at 0); phase wraps at +-pi (cyclic cmap).
+        abs_max = abs_values.max() if abs_values.size else None
         panels = [
-            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', None, None),
-            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', None, None),
-            (abs_values, f"$|{component_label}|$", 'viridis', 0, None),
+            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', -abs_max, abs_max),
+            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', -abs_max, abs_max),
+            (abs_values, f"$|{component_label}|$", 'viridis', 0, abs_max),
             (phase_values, f"$\\arg({component_label})$", 'twilight', -np.pi, np.pi),
         ]
 
-        fig, axes = plt.subplots(2, 2, figsize=(12, 11))
+        fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), layout='constrained')
+        cbars = []
         for ax, (values, title, cmap, vmin, vmax) in zip(axes.flat, panels):
             sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_title(title)
-            fig.colorbar(sc, ax=ax)
+            ax.grid(True, alpha=0.25)
+            # shrink=0.85 (matching the Superradiant_Thomson reference plots' style) keeps the
+            # colorbar from spanning the full axis height, which otherwise crowds the secondary
+            # right y/w0 axis added below. No cbar.set_label: the panel title above already names
+            # the quantity, and a second, redundant vertical label ate into the width available to
+            # the right column's colorbar, misaligning it against the left column's.
+            cbar = fig.colorbar(sc, ax=ax, shrink=0.85)
+            if cmap == 'twilight':
+                cbar.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
+                cbar.ax.set_yticklabels(['$-\\pi$', '$-\\pi/2$', '$0$', '$\\pi/2$', '$\\pi$'])
+            add_w0_secondary_axes(ax, w0)
+            cbars.append(cbar)
 
         fig.suptitle(f"Radiated field, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
                      f"{detector_type} detector, {detector_geometry_label}",
-                     fontsize=13, fontweight='bold')
-        plt.tight_layout()
+                     fontsize=12)
+
+        # constrained layout doesn't reliably column-align per-axes colorbars: a "1e-N" scientific
+        # offset label above the Re/Im colorbars takes up different space than the twilight phase
+        # colorbar's plain '$\pi$' tick label, and the layout solver resolves that mismatch
+        # differently depending on the data's aspect ratio (confirmed misaligned by up to ~380px on
+        # a circular-detector run despite lining up on a rectangular one). Force one layout pass,
+        # freeze it, then snap each column's two colorbars to a shared x0 so this can't drift again.
+        fig.canvas.draw()
+        fig.set_layout_engine(None)
+        for cbar in cbars:
+            # fig.colorbar(ax=...) attaches an automatic locator to the colorbar axes that
+            # recomputes its position relative to the parent ax on every draw -- including the one
+            # savefig triggers -- which would silently undo the set_position() calls below unless
+            # cleared first.
+            cbar.ax.set_axes_locator(None)
+        for top_cbar, bottom_cbar in zip(cbars[:2], cbars[2:]):
+            top_pos = top_cbar.ax.get_position()
+            bottom_pos = bottom_cbar.ax.get_position()
+            bottom_cbar.ax.set_position([top_pos.x0, bottom_pos.y0, bottom_pos.width, bottom_pos.height])
 
         output_name = f"radiation_field_{range_type}_F{mu}{nu}_omega{i_omega}.png"
         output_img = os.path.join(png_dir, output_name)
+        # bbox_inches='tight' is safe here (unlike before the alignment fix above): the layout is
+        # already frozen and every axes position fixed by hand, so 'tight' only crops the outer
+        # whitespace/margin from the rendered result -- it can no longer trigger a second,
+        # different layout-engine pass that silently re-derives (and un-aligns) colorbar positions.
+        # It's needed again now because snapping the right column's colorbars to the wider-spaced
+        # x0 (set by the "1e-N" scientific offset above Re/Im) leaves the phase colorbar's own tick
+        # labels (e.g. '$-\\pi/2$') hanging past the figure's original right edge.
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
