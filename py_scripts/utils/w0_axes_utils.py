@@ -2,12 +2,12 @@
 Shared helper for adding a supplementary Laguerre-Gauss beam-waist (w0) length scale to a
 heatmap's axes, alongside its primary axes (already in the run's own length unit, conventionally
 'lambda') -- used by every script here that renders a spatial (not angular) length-unit heatmap:
-plot_field_heatmap_z0.py, plot_radiation_field.py, plot_spherical_field_components.py,
-plot_angular_momentum_flux.py.
+laser/plot_heatmap_z0.py, radiation/plot_field.py, radiation/plot_spherical_components.py,
+radiation/plot_angular_momentum_flux.py.
 
 Kept as its own leaf module (no import of plot_radiation_field.read_config_value) so every one of
-those scripts can import it without a circular-import issue: plot_field_heatmap_z0.py already
-imports from plot_radiation_field.py, and plot_radiation_field.py is itself one of this module's
+those scripts can import it without a circular-import issue: laser/plot_heatmap_z0.py already
+imports from radiation/plot_field.py, and radiation/plot_field.py is itself one of this module's
 callers -- if this module imported plot_radiation_field.read_config_value at its own top level (or
 vice versa), that pair would import each other. _read_config_value below is therefore a small
 standalone duplicate of that same 'key value [unit]' line reader, not a re-export.

@@ -22,6 +22,12 @@ struct simulation_parameters {
   // Radiation::plot_radiation_field to normalize the exported "omega" column into units of the fundamental
   // (so a value of 3.0 means "third harmonic"), rather than raw atomic-unit omega.
   double fundamental_frequency;
+
+  // The ponderomotively-dressed electron momentum (PhysUtils::dressed_momentum), i.e. the beam's
+  // average momentum plus the drift correction from the laser's cycle-averaged intensity -- exposed
+  // here so any consumer that needs it (e.g. Logging::write_run_log) reads the same value
+  // fundamental_frequency/frequencies were built from, rather than recomputing it separately.
+  MathUtils::RealFourVector q;
 };
 
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser);

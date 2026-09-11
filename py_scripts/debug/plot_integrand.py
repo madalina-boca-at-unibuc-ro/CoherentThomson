@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file
 
 def plot_debug_integrand(range_type, mu, nu, debug_filepath):
     """
@@ -13,7 +14,7 @@ def plot_debug_integrand(range_type, mu, nu, debug_filepath):
     debug_integrand.dat (Core::Debug::export_radiation_integrand, only written when the config's
     'debug' key is true) -- the raw per-trajectory-point terms Radiation::compute_radiation sums
     over tau to build the coherent field, for the single electron/screen point/wavenumber k (= omega/c)
-    that debug mode requires. The "point spectrum" counterpart (plot_point_spectrum.py) instead plots
+    that debug mode requires. The "point spectrum" counterpart (radiation/plot_point_spectrum.py) instead plots
     the already-summed field vs. omega; this plots the unsummed tau-integrand at one k.
 
     'boundary' is nonzero only at the first/last tau (everywhere else it's exactly zero by

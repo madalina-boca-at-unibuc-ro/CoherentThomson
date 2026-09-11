@@ -3,7 +3,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file, get_laser_period
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file, get_laser_period
 
 def plot_debug_exponent(filepath):
     """
@@ -11,7 +12,7 @@ def plot_debug_exponent(filepath):
     period, read from the run's own config.cfg), read from debug_exponent.dat
     (Core::Debug::export_radiation_phase, only written when the config's 'debug' key is true) -- the
     one oscillatory factor common to every long-range/short-range bivector component in
-    debug_integrand.dat (plot_debug_integrand.py), factored out into its own file since it's
+    debug_integrand.dat (debug/plot_integrand.py), factored out into its own file since it's
     identical across all 6 components x 2 (long/short).
 
     Top panel: the raw (unwrapped) phase in radians vs. tau/T -- its local slope is the instantaneous

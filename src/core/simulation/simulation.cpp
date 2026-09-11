@@ -73,26 +73,9 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 
-  // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 <a^2> / (2 k1.p) * k1,
-  // giving the mass-shell shift m_eff^2 = m^2(1+<a^2>). The (mc)^2 factor is essential: xi is
-  // dimensionless, so without it the correction term has the wrong units and (since mc = 137.036 in
-  // atomic units) ends up ~(mc)^2 too small to have any visible effect.
-  //
-  // <a^2> is the cycle-averaged normalized-amplitude-squared, NOT xi^2 = a0^2 (the peak amplitude)
-  // directly -- q is the electron's *drift* momentum (its trajectory averaged over one laser cycle),
-  // so it must be built from the cycle-averaged field, not its instantaneous peak. For the on-axis
-  // carrier A_x=A0*a*cos(phi-alpha), A_y=A0*b*cos(phi-beta) (zeta_1=a*e^{i*alpha}, zeta_2=b*e^{i*beta},
-  // a^2+b^2=1 after create_laser's normalization), <|A|^2> = A0^2*(a^2*<cos^2>+b^2*<cos^2>) = A0^2/2
-  // exactly, for ANY a,b with a^2+b^2=1 -- i.e. <a^2> = xi^2/2 regardless of polarization state
-  // (linear, circular, or elliptical), since the cross term between the two orthogonal components
-  // never appears in |A|^2=A_x^2+A_y^2 and each squared cosine averages to 1/2 independently. This
-  // was previously computed as xi^2/(2*k1.p) (i.e. using the peak xi^2 in place of <a^2>), which
-  // (matched against the independent Python cross-check, ~/Dropbox/work/bin/python/
-  // Superradiant_Thomson's ScreenGeometry.from_parameters) gives m_eff^2=m^2(1+xi^2), not the
-  // documented m^2(1+xi^2/2) target above -- fixed by using <a^2>=xi^2/2, i.e. a 4, not 2, denominator.
-  double xi = laser.get_a0();
-  double a_sq_avg = xi * xi / 2.0;
-  MathUtils::FourVector q = p + mc * mc * a_sq_avg / (2.0 * MathUtils::contract(p, k1)) * k1;
+  // q is the dressed (ponderomotive drift) electron momentum -- see PhysUtils::dressed_momentum
+  // (phys_utils.hpp) for the full derivation of <a^2> and why it's not simply xi^2.
+  MathUtils::RealFourVector q = PhysUtils::dressed_momentum(p, k1, laser.get_a0());
 
   // The fundamental's frequency, computed the same way regardless of dense_spectrum -- used only to
   // let Radiation::plot_radiation_field normalize its exported "omega" column into units of the
@@ -107,12 +90,21 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   // a single point (N_total_points == 1, see main.cpp's warning below), to resolve a Thomson
   // line's width rather than just locate the harmonic peaks.
   if (dense_spectrum) {
-    // the scaling factor has the role of adjusting the frequency interval position
-    // in the case when the emitted frequency is not multiple of omega_laser (this includes also non linear effects)
+    // The scaling factor re-centers a "first_harmonic_frequency"-unit bound from the incident laser
+    // frequency onto the actual emitted fundamental (which can be far from any simple multiple of
+    // omega_laser once the beam is relativistic/nonlinear effects matter) -- only applied to whichever
+    // of omega_min/omega_max was actually given in that unit; an "omega_laser"-unit bound is used as-is,
+    // unscaled (see IoUtils::get_omega_range).
     double frequency_scaling_factor = fundamental_frequency * PhysUtils::AtomicUnits::c / laser.get_omega();
-    auto [omega_min, omega_max] = IoUtils::get_omega_range(config);
-    omega_min *= frequency_scaling_factor;
-    omega_max *= frequency_scaling_factor;
+    IoUtils::OmegaRange omega_range = IoUtils::get_omega_range(config);
+    double omega_min = omega_range.omega_min;
+    double omega_max = omega_range.omega_max;
+    if (omega_range.min_unit == IoUtils::OmegaRangeUnit::FirstHarmonicFrequency) {
+      omega_min *= frequency_scaling_factor;
+    }
+    if (omega_range.max_unit == IoUtils::OmegaRangeUnit::FirstHarmonicFrequency) {
+      omega_max *= frequency_scaling_factor;
+    }
     std::cout << "frequency_scaling_factor " << frequency_scaling_factor << std::endl;
     for (size_t i = 0; i < N_frequencies; i++) {
       double omega = (N_frequencies > 1) ? omega_min + static_cast<double>(i) * (omega_max - omega_min) /
@@ -127,7 +119,7 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
     }
   }
 
-  return simulation_parameters{tau_0_traj, d_tau_traj, simulation_length, frequencies_list, fundamental_frequency};
+  return simulation_parameters{tau_0_traj, d_tau_traj, simulation_length, frequencies_list, fundamental_frequency, q};
 };
 
 RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& laser,

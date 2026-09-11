@@ -13,6 +13,7 @@
 #include "../core/include/io_utils/io_utils.hpp"
 #include "../core/include/laser/laser_factory.hpp"
 #include "../core/include/laser/laser_plotter.hpp"
+#include "../core/include/logging/run_log.hpp"
 #include "../core/include/particle/electron_factory.hpp"
 #include "../core/include/particle/electron_plotter.hpp"
 #include "../core/include/radiation/radiation_plotter.hpp"
@@ -189,6 +190,10 @@ int main(int argc, char* argv[]) {
 
     Radiation::plot_radiation_field(radiation_field, sim_par.frequencies, sim_par.fundamental_frequency,
                                     run_output_dir + "/radiation_field.dat");
+
+    Logging::write_run_log(simulation_config, *laser, *detector, electron_beam.size(), sim_par, num_threads,
+                           simulation_elapsed.count(), run_output_dir + "/run_log.txt");
+    std::cout << "Successfully exported run log to " << run_output_dir << "/run_log.txt\n";
 
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << "\n";

@@ -4,14 +4,15 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file
 
 def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
     F^{mu nu} of the requested (long_range/short_range/boundary) Faraday tensor as a
     function of omega, read from radiation_field.dat -- the "fine spectrum at
-    a point" counterpart of plot_radiation_field.py's plot_radiation_component,
+    a point" counterpart of radiation/plot_field.py's plot_radiation_component,
     which instead renders one 2D field-map PNG per frequency (the wrong shape
     of plot when frequency, not screen position, is the interesting axis; see
     the dense_frequency_spectrum config key).

@@ -40,15 +40,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file
-from plot_radiation_field import (
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file
+from plot_field import (
     read_config_value,
     get_screen_coordinates,
     get_rectangular_cell_edges,
     get_circular_cell_edges,
     get_detector_geometry_label,
 )
-from w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
+from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 # Core::PhysUtils::AtomicUnits (phys_utils.hpp): c and epsilon_0 in the solver's own atomic units.
 C_LIGHT = 137.036
@@ -202,7 +203,7 @@ def extract_rotated_faraday_fields(data, R):
     long-range, '_s' for short-range, '_b' for boundary), read out of radiation_field.dat's
     F^{mu nu} columns and rotated by R into whatever target frame the caller needs (this script's
     callers pass get_canonical_to_local_rotation's result to land in the detector's own local frame;
-    plot_spherical_field_components.py instead passes get_field_to_canonical_rotation's result to
+    radiation/plot_spherical_components.py instead passes get_field_to_canonical_rotation's result to
     land in the canonical frame). '_b' is identically zero when the run used
     radiation_formula="direct" -- see
     theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section --
@@ -280,11 +281,11 @@ def plot_angular_momentum_flux(radiation_filepath):
     """
     Plots the single total-field flux density computed by compute_angular_momentum_flux, in one of
     two shapes depending on the detector's point count, mirroring the two shapes
-    plot_radiation_field.py/plot_point_spectrum.py already use for the Faraday tensor itself:
+    radiation/plot_field.py/radiation/plot_point_spectrum.py already use for the Faraday tensor itself:
     - a single screen point (a 1x1 rectangular/circular detector, the dense_frequency_spectrum
       workflow): one line plot vs. omega.
     - multiple screen points: one heatmap PNG per frequency, rendered on the detector's own native
-      grid like plot_radiation_field.py's pcolormesh panels.
+      grid like radiation/plot_field.py's pcolormesh panels.
     """
     result, detector_type, config_path = compute_angular_momentum_flux(radiation_filepath)
 

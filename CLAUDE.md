@@ -37,20 +37,20 @@ rather than editing `config/coherent_thomson.cfg` in place, unless the task is s
 changing the default config.
 
 Visualize `.dat` outputs (no arguments — each locates the most recent `<output_folder>/YYYYMMDD_HHMMSS` run via
-`py_scripts/run_output_utils.py`, so plotting always targets the last solver run):
+`py_scripts/utils/run_output_utils.py`, so plotting always targets the last solver run):
 ```
-python3 py_scripts/plot_laser_field.py
-python3 py_scripts/plot_detector_stereographic.py
-python3 py_scripts/plot_electron_trajectory.py
-python3 py_scripts/plot_radiation_field.py
-python3 py_scripts/plot_detector_scatter.py       # only has output if plot_detector_scatter=true in the config
-python3 py_scripts/plot_electron_beam_scatter.py  # only has output if plot_beam_scatter=true in the config
-python3 py_scripts/plot_field_heatmap_z0.py       # only has output if plot_field_heatmap=true in the config
-python3 py_scripts/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
-python3 py_scripts/plot_debug_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
-python3 py_scripts/plot_debug_exponent.py                        # meaningful output only if debug=true
-python3 py_scripts/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
-python3 py_scripts/plot_spherical_field_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
+python3 py_scripts/laser/plot_field.py
+python3 py_scripts/detector/plot_stereographic.py
+python3 py_scripts/particle/plot_trajectory.py
+python3 py_scripts/radiation/plot_field.py
+python3 py_scripts/detector/plot_scatter.py       # only has output if plot_detector_scatter=true in the config
+python3 py_scripts/particle/plot_beam_scatter.py  # only has output if plot_beam_scatter=true in the config
+python3 py_scripts/laser/plot_heatmap_z0.py       # only has output if plot_field_heatmap=true in the config
+python3 py_scripts/radiation/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
+python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
+python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
+python3 py_scripts/radiation/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -87,6 +87,15 @@ There is no test suite yet.
 - Adding a new physics component: follow the class + `.cpp` + `create_<thing>(const ConfigMap&)` factory pattern
   above, add the new `.cpp` to `add_library(...)` in `src/core/CMakeLists.txt`, and wire the factory call into
   `main.cpp`.
+- `py_scripts/` mirrors this same module layout in its own subfolders (`laser/`, `detector/`, `particle/`,
+  `radiation/`, `debug/`), one plotting script per `.dat` file that module's C++ side exports; `utils/` holds the
+  two shared helpers (`run_output_utils.py`, `w0_axes_utils.py`) every plotting script needs regardless of module.
+  `compile_and_run.py` stays at `py_scripts/` root — it's the build/run driver, not a plotter. Each moved script
+  still runs directly as `python3 py_scripts/<module>/<script>.py` (not as a package): it inserts its own parent
+  directory (`py_scripts/`) onto `sys.path` before importing from `utils.*`, so `utils/` resolves as an implicit
+  namespace package (no `__init__.py` needed) without requiring `python -m`. Sibling scripts within the same
+  module folder (e.g. `radiation/plot_spherical_components.py` importing from `radiation/plot_angular_momentum_flux.py`
+  or `radiation/plot_field.py`) import each other directly by filename with no shim, same as before the move.
 
 ### Namespace structure
 
@@ -104,6 +113,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
 | `radiation/` | `Core::Radiation` | `compute_radiation` — one electron's contribution to `Simulation::PackedRadiationField` (packed antisymmetric Faraday bivector, long/short-range amplitudes, summed over trajectory points/screen points/frequencies); `plot_radiation_field` exporter |
 | `debug/` | `Core::Debug` | `export_radiation_integrand`/`export_radiation_phase` — diagnostic-only, deliberately duplicated (not shared) reimplementation of `compute_radiation`'s per-tau math; see "Debug mode" below |
+| `logging/` | `Core::Logging` | `write_run_log` — writes `run_log.txt`, a human-readable parameter/derived-quantity summary of the run; see "Run log" below |
 
 ### Config file format
 
@@ -150,17 +160,43 @@ once `general_factor` and any canonical-frame rotation are accounted for).
 Two output files, both one row per trajectory point (`tau`), for the single electron/screen point:
 - `debug_integrand.dat` (`export_radiation_integrand`): the 6 independent upper-triangle Faraday bivector
   components' long-range/short-range contribution at that tau — the raw terms `compute_radiation` sums over tau,
-  before the final reduction. Visualize with `py_scripts/plot_debug_integrand.py <long|short> <mu> <nu>` (`mu >
+  before the final reduction. Visualize with `py_scripts/debug/plot_integrand.py <long|short> <mu> <nu>` (`mu >
   nu` resolved via `F^{nu mu} = -F^{mu nu}`; `mu == nu` rejected, since the diagonal is identically zero).
 - `debug_exponent.dat` (`export_radiation_phase`): the phase factor `exp(i*(x[0]+R)*k)` common to every component
   in `debug_integrand.dat` (all 6 x long/short) — factored out into its own file rather than repeated 12x per row.
-  Visualize with `py_scripts/plot_debug_exponent.py`.
+  Visualize with `py_scripts/debug/plot_exponent.py`.
 
-Both of those plotting scripts, and `plot_electron_trajectory.py`, plot against `tau/T` rather than raw `tau` (`T
-= 2*pi/omega`, the laser period) — `run_output_utils.get_laser_period(run_dir)` reads `laser_frequency` back out
+Both of those plotting scripts, and `particle/plot_trajectory.py`, plot against `tau/T` rather than raw `tau` (`T
+= 2*pi/omega`, the laser period) — `utils.run_output_utils.get_laser_period(run_dir)` reads `laser_frequency` back out
 of that specific run's own `config.cfg` (written by `IoUtils::copy_config_to_run_directory`), not the live repo
-config, so the axis stays correct even if `config/coherent_thomson.cfg` has since changed. `plot_debug_integrand.py`
+config, so the axis stays correct even if `config/coherent_thomson.cfg` has since changed. `debug/plot_integrand.py`
 still plots against raw `tau`, not `tau/T`.
+
+### Run log
+
+`main.cpp` writes `run_log.txt` into every run directory, right after `radiation_field.dat`
+(`Logging::write_run_log`, `logging/run_log.hpp`/`.cpp`) — a human-readable summary of the run's full parameter set
+and everything derived/computed from it, meant as a richer companion to the verbatim `config.cfg` snapshot
+`IoUtils::copy_config_to_run_directory` already writes: `config.cfg` has everything needed to *reproduce* a run,
+`run_log.txt` has everything needed to *understand what was actually computed* without re-deriving units/derived
+quantities by hand (laser/beam/detector geometry in both atomic units and `lambda`/`w0`, the resolved detector
+type and its type-specific extent, `dense_frequency_spectrum`/`N_harmonics` settings, the actual
+`fundamental_frequency` and its Doppler/nonlinear shift ratio against the bare incident `laser_omega`, the dressed
+momentum `q`, and the numeric `frequencies_list` values themselves — all of it, not just first/last, when there
+are 20 or fewer). Deliberately re-reads geometry/beam config keys the same way `detector_factory.cpp`/
+`electron_factory.cpp` already do (see `read_scaled` in `run_log.cpp`) rather than adding new getters to
+`Detector`/`Electron`, so this stays purely additive and cannot affect the physics classes it describes.
+`Simulation::simulation_parameters` gained a `q` field (`PhysUtils::dressed_momentum`'s result, previously computed
+in `init_simulation_parameters` but not returned) specifically so this log reads the same dressed momentum the run
+actually used rather than recomputing it separately — see the `k1`/`p`/`q`/`n2` bullet below for what `q` is.
+
+**TODO: `run_log.txt` only expresses physical quantities in atomic units and, where relevant, `lambda`/`w0`
+multiples — it has no SI-unit column (meters, seconds, Hz, Joules, Tesla, ...).** Atomic units are what the whole
+solver computes in internally, and `lambda`/`w0` are the natural units for laser-driven problems, but neither is
+immediately meaningful to a reader trying to place a run in real-world terms (e.g. "what wavelength/pulse
+duration/intensity is `laser_frequency=0.057`, `laser_a0=0.10` actually describing in nm/fs/W/cm^2?") without a
+separate unit-conversion step. Worth adding a per-quantity SI conversion (using `PhysUtils::AtomicUnits`' existing
+constants as the conversion basis) the next time this file is touched.
 
 ### Known gaps / TODOs worth knowing before touching related code
 
@@ -343,17 +379,18 @@ still plots against raw `tau`, not `tau/T`.
   primary bottom/left axes (still in `axes_unit`, i.e. `lambda`) — both shown at once via matplotlib's
   `ax.secondary_xaxis`/`secondary_yaxis` with a `lambda(x) = x/w0` forward transform, rather than replacing one
   labeling with the other. `get_laser_lg_w0_in_axes_units`/`add_w0_secondary_axes` live in their own leaf module,
-  **`py_scripts/w0_axes_utils.py`** (no imports of `plot_radiation_field`, so every caller — including
-  `plot_radiation_field.py` itself — can import it without a circular-import issue; it duplicates, rather than
-  imports, `plot_radiation_field.read_config_value`'s small `key value [unit]` line reader for this reason), used
-  by `plot_field_heatmap_z0.py` (originally the only consumer, before this module existed),
-  `plot_radiation_field.py`, `plot_angular_momentum_flux.py`, and `plot_spherical_field_components.py`.
+  **`py_scripts/utils/w0_axes_utils.py`** (no imports of `radiation/plot_field.py`'s `plot_field` module, so every
+  caller — including `radiation/plot_field.py` itself — can import it without a circular-import issue; it
+  duplicates, rather than imports, `plot_field.read_config_value`'s small `key value [unit]` line reader for this
+  reason), used
+  by `laser/plot_heatmap_z0.py` (originally the only consumer, before this module existed),
+  `radiation/plot_field.py`, `radiation/plot_angular_momentum_flux.py`, and `radiation/plot_spherical_components.py`.
   `get_laser_lg_w0_in_axes_units` reads the run's own `config.cfg` snapshot and returns `None` — skipping the
   secondary axes entirely, not mislabeling them — whenever `laser_type != laguerre_gauss` (no `w0` to label with)
   or `laser_lg_w0`'s own config unit doesn't match the `.dat` file's `axes_unit` header (both are always `lambda`
   by this project's convention, so this defensive check should never actually trigger, but a real unit conversion
   was deliberately not implemented for a case that shouldn't occur in practice) — also `None` for
-  `plot_radiation_field.py`/`plot_spherical_field_components.py`'s spherical-detector angular `(theta, phi)`
+  `radiation/plot_field.py`/`radiation/plot_spherical_components.py`'s spherical-detector angular `(theta, phi)`
   fallback grid (see the stereographic-projection bullet below), which has no length scale for `w0` to
   supplement. `add_w0_secondary_axes` is a no-op when passed `None` or a non-positive `w0`.
 - All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
@@ -361,7 +398,7 @@ still plots against raw `tau`, not `tau/T`.
   electron_beam.size())` electrons (indices `0..N-1`) purely to export their trajectories to `electron.dat`.
   `Particle::plot_particle_trajectory` now takes `(electron_beam, electron_indices, filepath)` and writes every
   selected electron's rows into one file tagged with a leading `electron_id` column (blank-line-separated blocks;
-  `pandas.read_csv` skips blank lines automatically). `plot_electron_trajectory.py` groups by `electron_id` and
+  `pandas.read_csv` skips blank lines automatically). `particle/plot_trajectory.py` groups by `electron_id` and
   encodes electron identity by color (fixed `tab10` order, never cycled past its 10 slots — matching the `main.cpp`
   cap). Renders **two separate figures** (`<basename>_position_profile.png`/`_momentum_profile.png`, via the
   shared `_plot_four_vector_figure` helper), one for the position four-vector (`x0..x3`) and one for the momentum
@@ -384,7 +421,7 @@ still plots against raw `tau`, not `tau/T`.
   for both figures rather than hardcoding the conversion twice.
 - **Each recorded `Electron::State` also carries the electron's exact 4-acceleration** (`du^mu/dtau =
   (q_0/m_0) F^{mu nu} u_nu`), exported as `electron.dat`'s trailing `a0 a1 a2 a3` columns (not currently
-  plotted by `plot_electron_trajectory.py`). `Electron::update_state`'s RK4 stage `k1` is already the exact
+  plotted by `particle/plot_trajectory.py`). `Electron::update_state`'s RK4 stage `k1` is already the exact
   derivative at the state being stepped away from (`trajectory.back()` on entry), so it's reused to fill in
   that state's acceleration at no extra `Faraday`-tensor-evaluation cost; the very last state in a trajectory
   has no following `update_state()` call to supply its `k1`, so `Electron::compute_trajectory` fills it with
@@ -422,11 +459,21 @@ still plots against raw `tau`, not `tau/T`.
   `N_omega` are deliberately separate config keys (`IoUtils::get_number_of_harmonics`/`get_number_of_frequencies`)
   so switching `dense_frequency_spectrum` doesn't silently reinterpret whichever count was already configured for
   the other mode. This mode is meant for probing the *shape* of a single Thomson line (its width, not just its
-  peak position) at one screen point. It does indirectly depend on `fundamental_frequency` (see the `k1`/`q`/`n2`
-  bullet below): `omega_min`/`omega_max` are each multiplied by `frequency_scaling_factor = fundamental_frequency *
-  c / laser.get_omega()` before building the linear scan, so the configured range re-centers on the actual
-  (possibly nonlinearly-shifted) fundamental instead of assuming the emitted frequency is an exact multiple of
-  `laser_omega` — no new `Detector` type or plotting
+  peak position) at one screen point. **`omega_min`/`omega_max` accept exactly two units, each with different
+  handling** (`IoUtils::OmegaRangeUnit`, `IoUtils::get_omega_range`/`get_omega_bound`, `io_utils.hpp`; enforced via
+  `convert_unit_to_number`'s `allowed_units` parameter, so any other unit throws rather than silently falling
+  through): `"omega_laser"` means the value is a raw multiple of the *incident* laser frequency and is used as-is,
+  unscaled; `"first_harmonic_frequency"` means the value is a multiple of the *emitted*, possibly
+  nonlinearly-Doppler-shifted N=1 fundamental (see the `k1`/`q`/`n2` bullet below) and gets multiplied by
+  `frequency_scaling_factor = fundamental_frequency * c / laser.get_omega()` in
+  `Simulation::init_simulation_parameters` before building the linear scan — the useful choice for a relativistic
+  beam where the emitted frequency isn't close to any simple multiple of `omega_laser`, since it re-centers the
+  configured range on the actual fundamental instead of the incident one. Each of `omega_min`/`omega_max` is
+  scaled independently based on its own unit (mixing units between the two, while unusual, is not rejected).
+  Both units parse to the identical raw numeric value inside `convert_unit_to_number` — the rescaling can't happen
+  there since it needs `fundamental_frequency`, which depends on the dressed momentum `q` and isn't available from
+  a bare `ConfigMap`; `get_omega_range` instead reports which unit was used, and `init_simulation_parameters`
+  applies the extra factor conditionally, per bound — no new `Detector` type or plotting
   machinery: `Radiation::compute_radiation`/`Simulation::run_simulation`/`Radiation::plot_radiation_field` are
   already fully generic over both the frequency list's spacing and the detector's point count (every `Detector_2D`
   subclass already guards `N==1` and collapses to one exact point when its grid counts are set to `1`), so getting
@@ -441,8 +488,8 @@ still plots against raw `tau`, not `tau/T`.
   overwrites. The detector geometry plots (`plot_detector`/`plot_detector_scatter`, called earlier in `main.cpp`)
   still reflect the full originally-configured grid, since the restriction happens only right before the actual
   (expensive) simulation. Visualize the result with
-  `py_scripts/plot_point_spectrum.py` (`<long|short> <mu> <nu>`) — a line plot of `radiation_field.dat`'s
-  `F^{mu nu}` vs. `omega`, the 1D counterpart of `plot_radiation_field.py`'s per-frequency 2D field-map PNGs (the
+  `py_scripts/radiation/plot_point_spectrum.py` (`<long|short> <mu> <nu>`) — a line plot of `radiation_field.dat`'s
+  `F^{mu nu}` vs. `omega`, the 1D counterpart of `radiation/plot_field.py`'s per-frequency 2D field-map PNGs (the
   wrong plot shape once frequency, not screen position, is the interesting axis).
 - **`radiation_field.dat`'s exported `omega` column is in units of the fundamental, not raw atomic-unit omega.**
   `Radiation::plot_radiation_field` divides every `frequencies_list` entry by
@@ -461,7 +508,7 @@ still plots against raw `tau`, not `tau/T`.
   *actual*, possibly Doppler-shifted fundamental for the configured observation direction/electron momentum, not
   the bare `laser_frequency` — the two coincide only when the beam's average momentum is zero and `a0` is
   negligible, so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam, an off-axis detector
-  direction, or a strong pulse. Both `plot_radiation_field.py` and `plot_point_spectrum.py` label this axis
+  direction, or a strong pulse. Both `radiation/plot_field.py` and `radiation/plot_point_spectrum.py` label this axis
   `$\omega/\omega_1$` accordingly.
 - **`k1`, `p`/`q`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame**
   (laser along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
@@ -471,8 +518,11 @@ still plots against raw `tau`, not `tau/T`.
   `laser.get_omega() / c`; `n2` is the detector's own canonical-frame direction via
   `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — building `k1` from
   `laser.get_unity_n()` or `n2` from `average_px/py/pz` directly would mix frames and give wrong frequencies
-  whenever the laser's configured direction isn't along `Oz`. **`q` is a ponderomotively-dressed momentum**, `q =
-  p + (mc)^2*<a^2>/(2*contract(p, k1)) * k1` with `mc = m_0*c` — used both to compute
+  whenever the laser's configured direction isn't along `Oz`. **`q` is a ponderomotively-dressed momentum**,
+  computed by `PhysUtils::dressed_momentum(p, k1, xi)` (`phys_utils.hpp` — moved there from an inline computation
+  in `init_simulation_parameters` so there is exactly one place `q` is built; the full derivation comment below
+  lives with the function, not here), `q = p + (mc)^2*<a^2>/(2*contract(p, k1)) * k1` with `mc = m_0*c` — used both
+  to compute
   `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`)
   and, as of the "changed/corrected the dressed momentum" commits, for the per-harmonic `frequencies_list`
   entries in the default (non-dense) mode too (previously those used bare `p`, which made the
@@ -504,6 +554,17 @@ still plots against raw `tau`, not `tau/T`.
   **Also fixed while investigating this**: an intermediate, since-superseded hypothesis (that the fixed coefficient
   should instead depend on polarization — `xi^2` for circular, `xi^2/2` for linear) was tested and found wrong
   by the `<|A|^2>` derivation above; flagged here so it isn't independently rediscovered and "fixed" backwards.
+  **Independently re-confirmed** via a `dense_frequency_spectrum=true` scan (see the `omega_min`/`omega_max` unit
+  bullet above): the theoretical fundamental sits at `omega/omega_1 = 1` by construction (`fundamental_frequency`
+  is exactly `non_linear_Thomson_formula(k1, q, n2, 1)`, so this is circular for locating the *label*, but not for
+  where the actual radiated spectrum peaks relative to it), and with `<a^2> = xi^2/2` the observed spectral peak
+  sits close to `omega/omega_1 = 1`, offset only by the amount expected from the pulse's finite duration
+  (a transform-limited spectral width, not a bug). Re-running the same scan with `<a^2> = xi^2` (`a_sq_avg = xi *
+  xi / 1.0` in `PhysUtils::dressed_momentum`, `phys_utils.hpp`) shifts the observed peak further off `omega/omega_1
+  = 1` than the `xi^2/2` case — i.e. the wrong coefficient makes the mismatch between the labeled fundamental and
+  the actual peak worse, not better/unchanged, which is independent evidence (on top of the `<|A|^2>` derivation
+  and the Python cross-check above) that `xi^2/2` is the correct cycle-averaged `<a^2>`, not `xi^2`. `<a^2> =
+  xi^2/2` is the setting to keep going forward.
 - **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
   laser's, but shares the laser's rotation.** `create_detector` passes both the laser's 4x4 `rotation_matrix` and
   the detector's own local direction into `Detector_2D`, which builds a 3x3 `local_rotation` orthogonal to that
@@ -514,7 +575,7 @@ still plots against raw `tau`, not `tau/T`.
   i*(R_max^2-R_min^2)/(N_R-1))`, so each ring encloses the same annular area despite fixed `N_phi` per ring —
   linear `r` spacing would make point density diverge as `1/r` near the center and collapse all `N_phi` points at
   `i=0` onto the origin when `R_min=0`. Anything reading `radiation_field.dat`'s circular-detector coordinates must
-  reconstruct `r` from `i` via this formula, not assume linear spacing. `plot_radiation_field.py` mirrors it
+  reconstruct `r` from `i` via this formula, not assume linear spacing. `radiation/plot_field.py` mirrors it
   exactly and renders all three detector types as a `pcolormesh` over their native grid rather than a scatter —
   for `CircularDetector`/`SphericalDetector` this keeps the `phi=0`/`phi=2*pi` seam continuous for helical/vortex
   patterns; for `RectangularDetector` (grid already Cartesian-monotonic, so continuity isn't the issue) it instead
@@ -557,11 +618,11 @@ still plots against raw `tau`, not `tau/T`.
   evaluated from the physical total field (`E_total`/`B_total`, summed over whichever of `long_range`/
   `short_range`/`boundary` the run's `radiation_formula` produced — `boundary` is identically zero for
   `radiation_formula="direct"`, so the same unconditional sum is correct either way; see the boundary-term bullet
-  below). An earlier version of `py_scripts/plot_angular_momentum_flux.py` instead expanded the flux formula into
+  below). An earlier version of `py_scripts/radiation/plot_angular_momentum_flux.py` instead expanded the flux formula into
   its long/short cross-terms (`(ll)`, `(ls)`, `(sl)`, `(ss)`) before summing — mathematically equivalent for a
   2-term field, but it would have needed generalizing to 9 cross-terms once a third (boundary) term existed, so
   the script was simplified to sum the fields first and evaluate the (bilinear-in-`E,B`) flux formula once,
-  instead. Implemented in Python only, in `py_scripts/plot_angular_momentum_flux.py`, entirely as post-processing
+  instead. Implemented in Python only, in `py_scripts/radiation/plot_angular_momentum_flux.py`, entirely as post-processing
   of an existing run's `radiation_field.dat` — no C++ code computes or exports it. Restricted to
   `rectangular`/`circular` detectors
   (the formula assumes one flat transverse plane with a shared normal, which a `spherical` detector's points don't
@@ -569,19 +630,19 @@ still plots against raw `tau`, not `tau/T`.
   reusing `Core::MathUtils::rotation_matrix_from_direction`'s exact three-case logic (reimplemented in Python) to
   rotate the exported Faraday tensor from the canonical/lab frame back into the detector's own local frame before
   applying the formula — see the script's module docstring for the full reasoning and its scope limits.
-- **`py_scripts/plot_spherical_field_components.py` projects the exported Faraday tensor onto canonical-frame
+- **`py_scripts/radiation/plot_spherical_components.py` projects the exported Faraday tensor onto canonical-frame
   spherical components** (`E_r`/`E_theta`/`E_phi`/`B_r`/`B_theta`/`B_phi`), for `spherical`-detector runs only —
   again Python-only post-processing of `radiation_field.dat`, no C++ output involved. Unlike
-  `plot_angular_momentum_flux.py`'s flat-screen restriction, a spherical detector is the natural fit here: every
+  `radiation/plot_angular_momentum_flux.py`'s flat-screen restriction, a spherical detector is the natural fit here: every
   screen point already has its own observation direction, obtained by rotating its local (`theta`, `phi`) —
   `Core::Detector::SphericalDetector`'s own cone-point construction, generally relative to the detector's own axis
   via `detector_direction_theta/phi`, not necessarily canonical `Oz` — into the canonical frame via
   `get_detector_local_rotation`, then building the standard orthonormal `(r_hat, theta_hat, phi_hat)` basis at that
   direction and dotting it into the (already-canonical, or canonical-ized from lab frame via
   `get_field_to_canonical_rotation`) Cartesian `E`/`B`. Both new scripts share this rotation machinery, defined
-  once in `plot_angular_momentum_flux.py` (`get_detector_local_rotation`, `get_laser_lab_rotation`,
+  once in `radiation/plot_angular_momentum_flux.py` (`get_detector_local_rotation`, `get_laser_lab_rotation`,
   `get_field_to_canonical_rotation`, `extract_rotated_faraday_fields`) and imported by
-  `plot_spherical_field_components.py` rather than duplicated.
+  `radiation/plot_spherical_components.py` rather than duplicated.
   **Non-obvious physics sanity check surfaced while validating this script**: `compute_radiation`'s per-`(tau,
   screen point)` bivector term is built once from `n0`/`u` and shared, unscaled, between the long-range and
   short-range complex amplitude prefactors (`radiation.cpp`'s `add_bivector_term`) — so for a single contribution,
@@ -593,25 +654,25 @@ still plots against raw `tau`, not `tau/T`.
   formula, not a bug) — a useful regression check if this script (or `compute_radiation` itself) is ever modified:
   `B_r` should stay pinned near zero; `E_r` should not.
 - **A spherical detector covering (close to) the full 4*pi sphere breaks a naive stereographic-projection
-  heatmap plot** — a real bug, found and fixed while validating `plot_spherical_field_components.py` against a
+  heatmap plot** — a real bug, found and fixed while validating `radiation/plot_spherical_components.py` against a
   `spherical_detector_theta_max=1.0 pi` config. The stereographic formula both
   `Core::Detector::SphericalDetector::get_stereographic_projection` (`detector.cpp`, feeding
   `detector_stereographic.dat`) and its Python mirror `get_spherical_cell_edges`
-  (`py_scripts/plot_radiation_field.py`) use — `rho = R*sin(theta)/(1+cos(theta))` — maps `theta=pi` (the pole
+  (`py_scripts/radiation/plot_field.py`) use — `rho = R*sin(theta)/(1+cos(theta))` — maps `theta=pi` (the pole
   antipodal to the projection's own reference pole) to `0/0`; this is an inherent property of stereographic
   projection (no single finite 2D chart can cover an entire sphere), not a rounding-error bug, so
   `detector_stereographic.dat` correctly (if silently) contains `nan` rows for any grid ring that reaches `theta=pi`
-  — expected, not itself a defect. The actual bug was downstream: `plot_radiation_field.py`'s
+  — expected, not itself a defect. The actual bug was downstream: `radiation/plot_field.py`'s
   `plot_radiation_component` fed those `nan`-containing edges straight into `pcolormesh`, which raises
   (`x and y arguments to pcolormesh cannot have non-finite values`) instead of degrading gracefully. Fixed via two
-  new functions in `plot_radiation_field.py`: `spherical_projection_is_well_defined` (checks whether
+  new functions in `radiation/plot_field.py`: `spherical_projection_is_well_defined` (checks whether
   `spherical_detector_theta_max` comes within a small tolerance of `pi`) and `get_spherical_plot_grid`, which uses
   the stereographic projection when that holds and otherwise falls back to a plain `(theta, phi)` rectangular map
   (own explicit cell corners, `aspect='auto'` since the axes are angles, not a shared length scale) — the standard
   way to visualize near-full-sphere angular data, since it has no polar singularity. Both
-  `plot_radiation_component` (`plot_radiation_field.py`) and the heatmap branch of
-  `plot_spherical_field_components.py` now call `get_spherical_plot_grid` instead of `get_spherical_cell_edges`
-  directly, so both degrade gracefully together. `plot_detector_stereographic.py` was not touched — it renders
+  `plot_radiation_component` (`radiation/plot_field.py`) and the heatmap branch of
+  `radiation/plot_spherical_components.py` now call `get_spherical_plot_grid` instead of `get_spherical_cell_edges`
+  directly, so both degrade gracefully together. `detector/plot_stereographic.py` was not touched — it renders
   with `plt.scatter`, which already drops `nan` points silently rather than crashing (so a full-sphere config just
   shows a scatter plot missing the exact-pole ring, not an error).
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
@@ -728,15 +789,15 @@ still plots against raw `tau`, not `tau/T`.
   two — harmless for `direct` since it's already zero there); `radiation_field.dat` gained matching `BR_F<mu><nu>`
   columns; `debug/debug_radiation.cpp`'s `export_radiation_integrand` (simplified-formula-only, per "Debug mode"
   above) gained matching `BR_F<alpha><beta>` columns, with the same "zero except at the two endpoint rows"
-  structure as the production accumulator, keeping the documented tau-sum cross-check valid; `plot_point_spectrum.py`/
-  `plot_debug_integrand.py`/`plot_radiation_field.py`/`plot_spherical_field_components.py` all accept `boundary` as
-  a third `range_type` (`'boundary': 'BR'` alongside `'long'`/`'short'`) — `plot_debug_integrand.py`'s boundary
+  structure as the production accumulator, keeping the documented tau-sum cross-check valid; `radiation/plot_point_spectrum.py`/
+  `debug/plot_integrand.py`/`radiation/plot_field.py`/`radiation/plot_spherical_components.py` all accept `boundary` as
+  a third `range_type` (`'boundary': 'BR'` alongside `'long'`/`'short'`) — `debug/plot_integrand.py`'s boundary
   plot will show two spikes rather than a smooth tau-curve, by construction.
   **Sanity-checked** (not yet the full Thomson-dipole benchmark) against `config/coherent_thomson_debug.cfg`
   (single electron at rest, on-axis backward-pointing detector, matching the theory doc's on-axis special case):
   `F^{03}`'s total magnitude (`|F_l+F_s+F_b|`) came out roughly 8x smaller than `|F_l|` alone would be without
   `F_b` — consistent with, though not full confirmation of, the predicted near-cancellation.
-  **`plot_angular_momentum_flux.py`'s `compute_angular_momentum_flux` was subsequently simplified** rather than
+  **`radiation/plot_angular_momentum_flux.py`'s `compute_angular_momentum_flux` was subsequently simplified** rather than
   extended to a 3-way (l/s/b) cross-term split: instead of decomposing the flux into (ll)/(ls)/(sl)/(ss)-style
   cross-terms (which would have grown to 9 terms with `boundary` added, and needs no new derivation either way
   since the flux formula is already bilinear in `E`/`B`), it now sums `extract_rotated_faraday_fields`'s `_l`/`_s`/
@@ -745,12 +806,12 @@ still plots against raw `tau`, not `tau/T`.
   `"direct"`. `result`'s columns dropped `flux_ll`/`flux_ls`/`flux_sl`/`flux_ss` accordingly, down to a single
   `flux_total`; `plot_angular_momentum_flux`'s plots (both the single-screen-point line plot and the multi-point
   heatmap) now show that one quantity instead of a 4-panel breakdown.
-  **`py_scripts/plot_radiation_field.py`'s `plot_radiation_component` also gained a `'total'` `range_type`**
+  **`py_scripts/radiation/plot_field.py`'s `plot_radiation_component` also gained a `'total'` `range_type`**
   (`<long|short|boundary|total>`), computed as `LR+SR+BR` summed column-wise from `radiation_field.dat` rather
   than read from a stored column (there is no `TR_F<mu><nu>` export — it's cheaper to sum the three already-
   exported tensors in Python than to add a fourth C++ export path). Treats missing `BR_*` columns as zero rather
   than erroring, so `'total'` degrades gracefully to `LR+SR` on a `radiation_field.dat` from before the boundary
-  term existed. `plot_point_spectrum.py`/`plot_debug_integrand.py`/`plot_spherical_field_components.py` were not
+  term existed. `radiation/plot_point_spectrum.py`/`debug/plot_integrand.py`/`radiation/plot_spherical_components.py` were not
   given a `'total'` option (not asked for; would follow the same pattern if wanted).
   **Still open**: full validation against the single-electron Thomson-dipole benchmark (still not attempted) —
   the boundary term is expected to help but has not been confirmed to resolve the OPEN VALIDATION GAP outright.
@@ -769,7 +830,7 @@ still plots against raw `tau`, not `tau/T`.
   full `F_total = F_l+F_s+F_b` sum, never `F_l` alone, exactly matching this repo's own `radiation_formula` design
   (`F_l`/`F_s`/`F_b` accumulated separately, summed only at plot/analysis time — see the `'total'` `range_type`
   bullets above).
-- **`plot_radiation_field.py`'s `plot_radiation_component` and `plot_spherical_field_components.py`'s heatmap
+- **`radiation/plot_field.py`'s `plot_radiation_component` and `radiation/plot_spherical_components.py`'s heatmap
   branch render each Faraday/field component as a 2x2 Real/Imaginary/Modulus/Phase grid, styled to match the
   independent Python reference's own plots** (`~/Dropbox/work/bin/python/Superradiant_Thomson`,
   `plotting/screen.py`). Re/Im share the Modulus panel's own `[0, abs_max]` scale, symmetrized to

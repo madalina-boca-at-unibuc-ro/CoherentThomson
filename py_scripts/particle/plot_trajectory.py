@@ -3,7 +3,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file, get_laser_period
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file, get_laser_period
 
 # Core::PhysUtils::AtomicUnits (phys_utils.hpp): c in the solver's own atomic units, and m_0 = 1.0
 # there -- so mc (the momentum unit) is just C_LIGHT itself, no separate mass factor needed.

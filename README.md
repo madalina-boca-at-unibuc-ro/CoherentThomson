@@ -36,13 +36,13 @@ Each plotting script takes no arguments — it locates the most recent `<output_
 automatically, so plotting always targets the last solver run:
 
 ```
-python3 py_scripts/plot_laser_field.py
-python3 py_scripts/plot_detector_stereographic.py
-python3 py_scripts/plot_electron_trajectory.py
-python3 py_scripts/plot_radiation_field.py
-python3 py_scripts/plot_detector_scatter.py       # only if plot_detector_scatter=true in the config
-python3 py_scripts/plot_electron_beam_scatter.py  # only if plot_beam_scatter=true in the config
-python3 py_scripts/plot_field_heatmap_z0.py       # only if plot_field_heatmap=true in the config
+python3 py_scripts/laser/plot_field.py
+python3 py_scripts/detector/plot_stereographic.py
+python3 py_scripts/particle/plot_trajectory.py
+python3 py_scripts/radiation/plot_field.py
+python3 py_scripts/detector/plot_scatter.py       # only if plot_detector_scatter=true in the config
+python3 py_scripts/particle/plot_beam_scatter.py  # only if plot_beam_scatter=true in the config
+python3 py_scripts/laser/plot_heatmap_z0.py       # only if plot_field_heatmap=true in the config
 ```
 
 ## Configuration

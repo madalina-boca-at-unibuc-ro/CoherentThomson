@@ -2,11 +2,11 @@
 Computes the canonical-frame (laser along Oz) spherical components of the coherently summed
 Faraday tensor -- E_r, E_theta, E_phi, B_r, B_theta, B_phi -- for a spherical-detector run's
 radiation_field.dat. Python-only post-processing, no new C++ output needed: reuses the rotation
-machinery plot_angular_momentum_flux.py already built (detector/laser direction reconstruction,
+machinery radiation/plot_angular_momentum_flux.py already built (detector/laser direction reconstruction,
 Faraday-tensor <-> Cartesian E/B column mapping).
 
 A spherical detector is the natural fit for this (unlike the flat rectangular/circular detectors
-plot_angular_momentum_flux.py is restricted to): every screen point already has its own natural
+radiation/plot_angular_momentum_flux.py is restricted to): every screen point already has its own natural
 observation direction (theta, phi), so there's no shared-plane assumption to violate. Each point's
 own local (theta_local, phi_local) -- Core::Detector::SphericalDetector's own cone-point
 construction, generally relative to the detector's own axis, not necessarily canonical Oz -- is
@@ -21,15 +21,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file
-from plot_radiation_field import read_config_value, get_spherical_plot_grid, get_detector_geometry_label
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file
+from plot_field import read_config_value, get_spherical_plot_grid, get_detector_geometry_label
 from plot_angular_momentum_flux import (
     convert_unit_to_number,
     get_detector_local_rotation,
     get_field_to_canonical_rotation,
     extract_rotated_faraday_fields,
 )
-from w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
+from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 
 def get_spherical_local_angles(config_path):
@@ -100,7 +101,7 @@ def compute_spherical_field_components(radiation_filepath):
     (i_omega, omega, i_screen), plus six complex columns per range -- 'LR_Er'/'LR_Etheta'/
     'LR_Ephi'/'LR_Br'/'LR_Btheta'/'LR_Bphi' and the 'SR_'/'BR_' equivalents -- the canonical-frame
     spherical components of the long-range/short-range/boundary Faraday tensor. Unlike
-    plot_angular_momentum_flux.py's compute_angular_momentum_flux, this function makes no
+    radiation/plot_angular_momentum_flux.py's compute_angular_momentum_flux, this function makes no
     long+short 'total' assumption that boundary would invalidate -- it just projects each range's
     tensor independently, so adding 'BR' here is a plain three-way extension of the existing
     two-way loop below.
@@ -146,15 +147,15 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of the requested
     canonical-frame spherical field component (field in {'E', 'B'}, component in
     {'r', 'theta', 'phi'}, long-range, short-range, or boundary) -- the spherical-component
-    counterpart of plot_radiation_field.py's plot_radiation_component / plot_point_spectrum.py's
+    counterpart of radiation/plot_field.py's plot_radiation_component / radiation/plot_point_spectrum.py's
     plot_point_spectrum (which instead read Cartesian F^{mu nu} components directly).
 
     'boundary' is identically zero when the run used radiation_formula="direct" -- see
     theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
 
     Renders as a heatmap per frequency (on the spherical detector's own stereographic-projection
-    grid, like plot_radiation_field.py) if there's more than one screen point, or a line plot vs.
-    omega (like plot_point_spectrum.py) for a single-point (dense_frequency_spectrum-style) run.
+    grid, like radiation/plot_field.py) if there's more than one screen point, or a line plot vs.
+    omega (like radiation/plot_point_spectrum.py) for a single-point (dense_frequency_spectrum-style) run.
     """
     prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
     col = f'{prefix}_{field}{component}'
@@ -222,7 +223,7 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
         phase_values = np.arctan2(im_values, re_values)
 
         # Re/Im share the modulus panel's own [0, abs_max] scale, symmetrized to [-abs_max, abs_max],
-        # rather than each auto-scaling to its own range -- see plot_radiation_field.py's
+        # rather than each auto-scaling to its own range -- see radiation/plot_field.py's
         # plot_radiation_component for the same convention and its rationale.
         abs_max = abs_values.max() if abs_values.size else None
         panels = [
@@ -257,7 +258,7 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
                      f"spherical detector, {detector_geometry_label}", fontsize=12)
 
         # constrained layout doesn't reliably column-align per-axes colorbars -- see
-        # plot_radiation_field.py's plot_radiation_component for the full explanation (a "1e-N"
+        # radiation/plot_field.py's plot_radiation_component for the full explanation (a "1e-N"
         # scientific offset label above the Re/Im colorbars vs. the twilight phase colorbar's plain
         # '$\pi$' tick label throws off the solver's per-column spacing). Force one layout pass,
         # freeze it, then snap each column's two colorbars to a shared x0.
@@ -275,7 +276,7 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
             bottom_cbar.ax.set_position([top_pos.x0, bottom_pos.y0, bottom_pos.width, bottom_pos.height])
 
         output_img = os.path.join(png_dir, f"spherical_field_{range_type}_{field}{component}_omega{i_omega}.png")
-        # bbox_inches='tight' is safe here -- see plot_radiation_field.py's plot_radiation_component
+        # bbox_inches='tight' is safe here -- see radiation/plot_field.py's plot_radiation_component
         # for why: the layout is already frozen and every axes position fixed by hand, so 'tight'
         # only crops the outer margin and can no longer re-trigger a layout pass that un-aligns the
         # colorbars. It's needed again to keep the phase colorbar's own tick labels (pushed out to

@@ -12,7 +12,7 @@ import os
 import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 DEFAULT_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", "coherent_thomson.cfg")
 
 RUN_DIR_PATTERN = re.compile(r"^\d{8}_\d{6}$")

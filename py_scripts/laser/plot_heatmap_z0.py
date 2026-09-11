@@ -3,8 +3,9 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from run_output_utils import find_latest_output_file
-from w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.run_output_utils import find_latest_output_file
+from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 def read_header_comments(filepath):
     """

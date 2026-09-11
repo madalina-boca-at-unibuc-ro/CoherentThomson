@@ -90,9 +90,16 @@ inline double convert_unit_to_number(std::string unit_name, const ConfigMap& con
     return PhysUtils::AtomicUnits::m_0 * PhysUtils::AtomicUnits::c;
   } else if (to_lower(unit_name) == "cycles_adim") {
     return 2 * MathUtils::pi;
-  } else if (to_lower(unit_name) == "omega_laser") {
+  } else if (to_lower(unit_name) == "omega_laser" || to_lower(unit_name) == "first_harmonic_frequency") {
     // Read directly rather than via get_laser_frequency (defined later in this file) to avoid a
     // forward reference -- same pattern the "lambda" branch above already uses.
+    //
+    // Both units parse to the same raw a.u. value here: the difference between "value * incident
+    // laser omega" and "value * emitted (possibly Doppler-shifted) N=1 fundamental" can't be
+    // resolved at config-parse time, since the fundamental depends on the dressed momentum q (built
+    // from the laser and beam objects, not yet constructed when a ConfigMap alone is being parsed).
+    // get_omega_range (below) is the only caller that needs this distinction; it reports which of
+    // the two units was used so Simulation::init_simulation_parameters can rescale accordingly.
     return std::stod(get_required(config, "laser_frequency"));
   } else if (to_lower(unit_name) == "a.u.") {
     return 1.0;
@@ -181,15 +188,39 @@ inline std::pair<double, double> get_detector_direction_angles(const ConfigMap& 
   return {theta, phi};
 }
 
+// Which frequency omega_min/omega_max's unit anchors to -- see get_omega_range below.
+enum class OmegaRangeUnit { OmegaLaser, FirstHarmonicFrequency };
+
 // omega_min/omega_max, in raw omega (not omega/c) -- only consulted when dense_frequency_spectrum
 // is true (Simulation::init_simulation_parameters), to build a fine linear frequency scan instead
-// of the default first-N_omega-harmonics list.
-inline std::pair<double, double> get_omega_range(const ConfigMap& config) {
-  auto [min_val, min_unit] = split_value_and_unit(get_required(config, "omega_min"));
-  double omega_min = min_val * convert_unit_to_number(min_unit, config);
-  auto [max_val, max_unit] = split_value_and_unit(get_required(config, "omega_max"));
-  double omega_max = max_val * convert_unit_to_number(max_unit, config);
-  return {omega_min, omega_max};
+// of the default first-N_omega-harmonics list. Restricted to exactly two units, each with different
+// downstream handling: "omega_laser" means the value is a raw multiple of the *incident* laser
+// frequency and Simulation::init_simulation_parameters uses it as-is; "first_harmonic_frequency"
+// means the value is a multiple of the *emitted*, possibly Doppler-shifted N=1 fundamental
+// (simulation_parameters::fundamental_frequency) and needs to be rescaled by
+// fundamental_frequency/laser_frequency there -- the useful choice when the beam is relativistic
+// enough that the emitted frequency is far from any simple multiple of the incident one. Both units
+// parse to the same numeric value here (see convert_unit_to_number); min_unit/max_unit report which
+// one was actually written in the config so the caller can decide whether to rescale.
+inline std::pair<double, OmegaRangeUnit> get_omega_bound(const ConfigMap& config, const std::string& key) {
+  auto [val, unit] = split_value_and_unit(get_required(config, key.c_str()));
+  double omega = val * convert_unit_to_number(unit, config, {"omega_laser", "first_harmonic_frequency"});
+  OmegaRangeUnit unit_kind =
+      to_lower(unit) == "first_harmonic_frequency" ? OmegaRangeUnit::FirstHarmonicFrequency : OmegaRangeUnit::OmegaLaser;
+  return {omega, unit_kind};
+}
+
+struct OmegaRange {
+  double omega_min;
+  double omega_max;
+  OmegaRangeUnit min_unit;
+  OmegaRangeUnit max_unit;
+};
+
+inline OmegaRange get_omega_range(const ConfigMap& config) {
+  auto [omega_min, min_unit] = get_omega_bound(config, "omega_min");
+  auto [omega_max, max_unit] = get_omega_bound(config, "omega_max");
+  return {omega_min, omega_max, min_unit, max_unit};
 }
 
 inline size_t get_laser_NT(const ConfigMap& config) { return std::stoul(get_required(config, "laser_NT")); }
