@@ -264,9 +264,60 @@ still plots against raw `tau`, not `tau/T`.
   `Debug`/`RelWithDebInfo` build alone would produce a multi-x slowdown unrelated to any of this); and note that
   `run_simulation` parallelizes across *electrons* (`num_threads`), so for a modest `beam_particle_count` its
   effective parallel/SIMD utilization per electron may be lower than a numpy implementation that vectorizes
-  across the full `(tau, screen, freq)` array regardless of electron count. **Nothing here has been profiled or
-  fixed yet** — this bullet exists so the hypothesis (and the reasoning behind it) survives to the next session
-  rather than needing to be rediscovered.
+  across the full `(tau, screen, freq)` array regardless of electron count.
+  **UPDATE: the first "cheap to rule out" candidate above was checked and found true.** This repo's own `build/`
+  directory (the one `py_scripts/compile_and_run.py` reconfigures/reuses on every run, since it never passes
+  `-DCMAKE_BUILD_TYPE`) had its CMake cache stuck at `CMAKE_BUILD_TYPE=Debug` (flags `-g -Wall -Wextra -Wpedantic`,
+  no `-O` at all — effectively `-O0`), not `Release` — plausibly from VS Code's CMake Tools extension, which
+  defaults new configurations to `Debug`; `cmake -S . -B build` without an explicit `-DCMAKE_BUILD_TYPE` keeps
+  whatever build type is already cached rather than resetting to the `CMakeLists.txt` default, so this goes
+  unnoticed indefinitely once it happens once. Measured directly: same reduced-`beam_particle_count=100` copy of
+  `config/coherent_thomson.cfg`, same machine, 24 hardware threads, `num_threads=0` (all of them) — Debug gave
+  `Simulation time: 54.7 s` (`9.95 s`/electron, `0.00972` CPU-s/electron/screen-pt); a `Release`
+  (`-O3 -march=native -mtune=native -DNDEBUG`) rebuild of the identical source and config gave `Simulation time:
+  4.53 s` (`0.77 s`/electron, `0.00075` CPU-s/electron/screen-pt) — **~12-13x**, dwarfing the ~3x gap against the
+  Python reference this whole bullet is about. `build/` has since been reconfigured to `Release`
+  (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`) and rebuilt, so this specific trap is fixed for this repo's
+  own `build/` going forward — but it does **not** by itself confirm or rule out either hypothesis above: it is
+  not yet established whether the original "~3x slower than Python" comparison was itself run against a Debug
+  build (plausible, given how easily this cache gets stuck, but unverified) or a genuinely `Release` one. **Nothing
+  here has been profiled yet, and the Python-vs-C++ comparison itself has not been re-run** — before spending more
+  effort on the phase-recurrence/`std::complex`-vectorization hypotheses above, first re-run the original
+  Python-vs-C++ comparison with `build/`'s cache now confirmed `Release` (and `cmake --build build --clean-first`
+  or a fresh `build/` if in doubt) to see how much of the ~3x gap survives; if a Debug build was the whole
+  explanation, that gap may already be gone. **General footgun worth remembering beyond this one repo**: after
+  any complaint of unexpectedly slow C++ performance, checking the actual build type in use (e.g.
+  `grep CMAKE_BUILD_TYPE build/CMakeCache.txt`, or the compiler flags a build system actually invoked with) is
+  close to free and should be the very first thing ruled out, before reaching for a profiler or reasoning about
+  vectorization/algorithmic hypotheses.
+  **RESOLVED: the Debug-build cache was in fact the whole explanation.** Re-ran the actual C++-vs-Python
+  comparison with `build/` confirmed `Release`, using `config/config.cfg` — the config already parameter-matched
+  to `~/Dropbox/work/bin/python/Superradiant_Thomson/main.py`'s own `INPUTS` defaults (confirmed field-by-field:
+  `laser.omega`/`laser_frequency=0.057`, `laser.a_0`/`laser_a0=0.10`, `p=0`/`laser_lg_p=0`, `m=1`/`laser_lg_l=1`,
+  `w_0`/`laser_lg_w0=75 lambda`, `R_beam=1.5*w_0`/`beam_cylinder_radius=112.5 lambda`, `pz_beam=-1.0*c`/
+  `average_pz=-1.0 mc`, `sigma_l=2T`/`laser_wing_sigma=2 cycles_adim`, `flat_top_periods=10`/
+  `laser_flat_duration=10 cycles_adim`, `wing_factor=5`/`laser_wing_sigma_cutoff=5`, `NT=100`/`trajectory_NT=100`,
+  `zeta_x=1,zeta_y=i`/circular polarization, `screen.z_screen=-144000 lambda`/`rectangular_detector_distance=
+  144000 lambda` with `detector_direction_theta=1.0 pi` (backward), `screen.width/height=400 lambda`/
+  `rectangular_detector_x/y_min/max=-200/+200 lambda`, `Nx=Ny=64`, `N_min=1,N_max=3`/`N_harmonics=3` — this is why
+  `config/config.cfg`, not `config/coherent_thomson.cfg`, is the correct config for any future cross-check against
+  the Python reference). Both sides' only change from their tracked defaults was reducing the electron count to
+  100 (`beam_particle_count=100` in a scratch copy of `config/config.cfg`; `'electron.N': 100` edited directly in
+  `main.py`'s `INPUTS` and reverted immediately after the run — no other code or parameter touched on either
+  side), run back-to-back on the same 24-core machine, same 4096-point rectangular screen, 3 harmonics:
+  | | C++ (`Release`) | Python reference |
+  |---|---|---|
+  | Wall-clock (`Simulation time` / `Computation wall-clock time`) | 8.21 s | 34.42 s |
+  | CPU-seconds / electron / screen point | 0.000361 s | 0.002017 s |
+
+  **The C++ solver is ~4.2x *faster* than Python end-to-end (wall-clock) and ~5.6x more CPU-efficient per unit of
+  work (electron x screen point) — the opposite sign from the old "~3x slower" claim.** This confirms the Debug
+  build was the entire explanation for the old result; the phase-recurrence serial-dependency-chain and
+  `std::complex`-vectorization hypotheses above were never actually tested against real evidence and can be set
+  aside unless a *future*, confirmed-`Release` comparison reopens the question. **Practical takeaway**: always
+  double check `build/`'s cached `CMAKE_BUILD_TYPE` before trusting any timing measurement in this repo, since
+  `compile_and_run.py` silently preserves whatever type is already cached rather than resetting to the
+  `CMakeLists.txt` default.
 - **`tau_0_traj` is hardcoded to `0.0`** in `Simulation::init_simulation_parameters` rather than derived from the
   pulse's actual physical start — every electron starts its proper-time grid at `tau=0` regardless of the pulse's
   leading Gaussian wing / `laser_delay` shift. Flagged in-code with `// hardcoded, to be modified`.
@@ -703,6 +754,21 @@ still plots against raw `tau`, not `tau/T`.
   given a `'total'` option (not asked for; would follow the same pattern if wanted).
   **Still open**: full validation against the single-electron Thomson-dipole benchmark (still not attempted) —
   the boundary term is expected to help but has not been confirmed to resolve the OPEN VALIDATION GAP outright.
+- **`theory/FT_Faraday_tensor-direct_and_simplified_forms.md`'s "On-axis `F^{03}` cancellation (worked special
+  case)" section proves the on-axis `F^{03}`/`F_b^{03}` behavior analytically** (originally written up as its own
+  standalone `theory/09-longitudinal_field_cancellation.md` against the Python reference's
+  `superradiant_thomson/plotting/screen.py`; merged into this doc since, so that file has been deleted — this is
+  the section to link to now, not a separate file). Directly relevant to the `F03`/`F30` discrepancy investigation
+  above: on the central `z`-axis the shared tensor
+  factor `T^{03} = (n_R0^alpha u^beta - n_R0^beta u^alpha)/(u . n_R0)` reduces to an exact constant (`-1` looking
+  forward, `+1` looking backward, for *any* tau/velocity), which makes `F_l^{03}` and `F_b^{03}` individually large
+  but exactly cancel via integration by parts (`F_l^{03}+F_b^{03} ~ 0`) — i.e. their bigness is an IBP artifact of
+  the simplified/Form-2 derivation, not a real signal, and the "direct"/Form-1 long-range term has no such artifact
+  since its `F03` is driven by on-axis acceleration components that vanish identically there. Confirms (rather than
+  merely hypothesizes, as the discrepancy bullets above do) that the physically meaningful quantity is always the
+  full `F_total = F_l+F_s+F_b` sum, never `F_l` alone, exactly matching this repo's own `radiation_formula` design
+  (`F_l`/`F_s`/`F_b` accumulated separately, summed only at plot/analysis time — see the `'total'` `range_type`
+  bullets above).
 - **`plot_radiation_field.py`'s `plot_radiation_component` and `plot_spherical_field_components.py`'s heatmap
   branch render each Faraday/field component as a 2x2 Real/Imaginary/Modulus/Phase grid, styled to match the
   independent Python reference's own plots** (`~/Dropbox/work/bin/python/Superradiant_Thomson`,
