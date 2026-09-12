@@ -23,9 +23,18 @@ double read_scaled(const ConfigMap& config, const std::string& key) {
   return val * IoUtils::convert_unit_to_number(unit, config);
 }
 
+// SI-unit conversions (PhysUtils::AtomicUnits::bohr_radius_m/atomic_time_unit_s -- see that file for
+// the CODATA basis), used by write_kv's mm column below and directly for the handful of quantities
+// (wavelength in nm, period/pulse duration in fs) that need a different SI unit than the generic
+// length-in-mm one write_kv provides -- see CLAUDE.md's "Run log" TODO for why the SI column exists.
+double length_au_to_mm(double value_au) { return value_au * PhysUtils::AtomicUnits::bohr_radius_m * 1.0e3; }
+double length_au_to_nm(double value_au) { return value_au * PhysUtils::AtomicUnits::bohr_radius_m * 1.0e9; }
+double time_au_to_fs(double value_au) { return value_au * PhysUtils::AtomicUnits::atomic_time_unit_s * 1.0e15; }
+
 void write_kv(std::ofstream& file, const std::string& label, double value_au, double lambda_au) {
   file << "  " << std::left << std::setw(28) << label << std::right << std::scientific << std::setprecision(6)
-       << std::setw(15) << value_au << " a.u.   " << std::setw(15) << (value_au / lambda_au) << " lambda\n";
+       << std::setw(15) << value_au << " a.u.   " << std::setw(15) << (value_au / lambda_au) << " lambda   "
+       << std::setw(15) << length_au_to_mm(value_au) << " mm\n";
 }
 
 void write_kv_au(std::ofstream& file, const std::string& label, double value_au) {
@@ -41,7 +50,7 @@ void write_section(std::ofstream& file, const std::string& title) {
 
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
                    size_t num_electrons, const Simulation::simulation_parameters& sim_par, size_t num_threads,
-                   double simulation_elapsed_seconds, const std::string& filepath) {
+                   double simulation_elapsed_seconds, double total_cpu_seconds, const std::string& filepath) {
   std::ofstream file(filepath);
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file for run log export: " + filepath);
@@ -67,11 +76,13 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  type                        " << laser_type << "\n";
   write_kv_au(file, "omega", laser.get_omega());
   write_kv_au(file, "lambda", lambda_au);
+  file << "  lambda (nm)                 " << length_au_to_nm(lambda_au) << " nm\n";
+  double period_T_au = IoUtils::get_laser_period(config);
+  write_kv_au(file, "period T", period_T_au);
+  file << "  period T (fs)               " << time_au_to_fs(period_T_au) << " fs\n";
   file << "  a0                          " << laser.get_a0() << "\n";
-  file << "  zeta_1                      (" << laser.get_zeta_1().real() << ", " << laser.get_zeta_1().imag()
-       << ")\n";
-  file << "  zeta_2                      (" << laser.get_zeta_2().real() << ", " << laser.get_zeta_2().imag()
-       << ")\n";
+  file << "  zeta_1                      (" << laser.get_zeta_1().real() << ", " << laser.get_zeta_1().imag() << ")\n";
+  file << "  zeta_2                      (" << laser.get_zeta_2().real() << ", " << laser.get_zeta_2().imag() << ")\n";
   MathUtils::RealFourVector laser_dir = IoUtils::get_laser_direction(config);
   file << "  direction (nx,ny,nz)        (" << laser_dir[1] << ", " << laser_dir[2] << ", " << laser_dir[3]
        << ")  [raw, pre-normalization]\n";
@@ -79,6 +90,14 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  flat_duration (cycles)      " << laser.get_flat_duration() / (2.0 * MathUtils::pi) << "\n";
   write_kv_au(file, "wing_sigma (phase)", IoUtils::get_laser_wing_sigma(config));
   file << "  wing_sigma_cutoff           " << laser.get_wing_sigma_cutoff() << "\n";
+  // Total pulse duration (flat-top + both wings, sim_par.total_cycles -- the same quantity used to
+  // size the electron trajectory grid in Simulation::init_simulation_parameters and, further
+  // normalized, the "CPU time /electron/screen pt/cycle" figure below), unlike flat_duration above
+  // which only covers the flat-top part.
+  double pulse_duration_au = sim_par.total_cycles * period_T_au;
+  file << "  pulse duration (cycles)     " << sim_par.total_cycles << "\n";
+  write_kv_au(file, "pulse duration", pulse_duration_au);
+  file << "  pulse duration (fs)         " << time_au_to_fs(pulse_duration_au) << " fs\n";
   if (is_laguerre_gauss) {
     auto [lg_p, lg_l, lg_w0] = IoUtils::get_laser_lg_params(config);
     file << "  LG p, l                     " << lg_p << ", " << lg_l << "\n";
@@ -113,10 +132,8 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     write_kv(file, "y_min", read_scaled(config, "rectangular_detector_y_min"), lambda_au);
     write_kv(file, "y_max", read_scaled(config, "rectangular_detector_y_max"), lambda_au);
     if (is_laguerre_gauss) {
-      file << "  x_max / w0                  " << read_scaled(config, "rectangular_detector_x_max") / lg_w0_au
-           << "\n";
-      file << "  y_max / w0                  " << read_scaled(config, "rectangular_detector_y_max") / lg_w0_au
-           << "\n";
+      file << "  x_max / w0                  " << read_scaled(config, "rectangular_detector_x_max") / lg_w0_au << "\n";
+      file << "  y_max / w0                  " << read_scaled(config, "rectangular_detector_y_max") / lg_w0_au << "\n";
     }
   } else if (detector_type == "SphericalDetector") {
     write_kv(file, "radius", read_scaled(config, "spherical_detector_radius"), lambda_au);
@@ -152,7 +169,7 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     file << "  N_harmonics                 " << IoUtils::get_number_of_harmonics(config) << "\n";
     file << "  N_harmonics_min             " << IoUtils::get_number_of_harmonics_min(config) << "\n";
   }
-  write_kv_au(file, "fundamental_frequency*c", sim_par.fundamental_frequency * c);
+  write_kv_au(file, "fundamental_frequency", sim_par.fundamental_frequency * c);
   file << "  fundamental / laser omega   " << sim_par.fundamental_frequency * c / laser.get_omega()
        << "  [Doppler/nonlinear shift ratio]\n";
   file << "  dressed momentum q          (" << sim_par.q[0] << ", " << sim_par.q[1] << ", " << sim_par.q[2] << ", "
@@ -162,13 +179,14 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
        << "normalized by fundamental_frequency to match radiation_field.dat's own omega column):\n";
   if (sim_par.frequencies.size() <= 20) {
     for (size_t i = 0; i < sim_par.frequencies.size(); ++i) {
-      file << "    [" << i << "] " << sim_par.frequencies[i] << "  (" << sim_par.frequencies[i] / sim_par.fundamental_frequency
-           << " omega_1)\n";
+      file << "    [" << i << "] " << sim_par.frequencies[i] << "  ("
+           << sim_par.frequencies[i] / sim_par.fundamental_frequency << " omega_1)\n";
     }
   } else {
     double first = sim_par.frequencies.front();
     double last = sim_par.frequencies.back();
-    double step = (sim_par.frequencies.size() > 1) ? (last - first) / static_cast<double>(sim_par.frequencies.size() - 1) : 0.0;
+    double step =
+        (sim_par.frequencies.size() > 1) ? (last - first) / static_cast<double>(sim_par.frequencies.size() - 1) : 0.0;
     file << "    first = " << first << "  (" << first / sim_par.fundamental_frequency << " omega_1)\n";
     file << "    last  = " << last << "  (" << last / sim_par.fundamental_frequency << " omega_1)\n";
     file << "    step  = " << step << "  (evenly spaced)\n";
@@ -182,6 +200,23 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  debug                       " << IoUtils::get_required(config, "debug") << "\n";
   file << "  screen points               " << detector.get_total_points() << "\n";
   file << "  simulation wall time (s)    " << simulation_elapsed_seconds << "\n";
+
+  // Per-unit-of-work CPU cost, further normalized by the pulse's own total duration in laser cycles
+  // (sim_par.total_cycles) on top of the electron/screen-point normalization run_simulation already
+  // prints to stdout -- lets a run's cost be extrapolated to a longer/shorter pulse (more/fewer
+  // cycles) directly, rather than just electron count/screen resolution. Built from total_cpu_seconds
+  // (summed across every thread's own elapsed time), not simulation_elapsed_seconds -- see this
+  // function's doc comment for why. Expressed in microseconds (not seconds) since dividing all the
+  // way down to a single electron/screen-point/cycle makes the seconds figure inconveniently small.
+  size_t N_screen = detector.get_total_points();
+  double time_per_electron_screen_pt_cycle_us = 0.0;
+  if (num_electrons > 0 && N_screen > 0 && sim_par.total_cycles > 0.0) {
+    double time_per_electron_screen_pt_s =
+        total_cpu_seconds / static_cast<double>(num_electrons) / static_cast<double>(N_screen);
+    time_per_electron_screen_pt_cycle_us = time_per_electron_screen_pt_s / sim_par.total_cycles * 1.0e6;
+  }
+  file << "  CPU time /electron/screen pt/cycle   " << time_per_electron_screen_pt_cycle_us << " usec\n";
+  file << "  number of frequencies                " << sim_par.frequencies.size() << "\n";
 }
 
 }  // namespace Core::Logging

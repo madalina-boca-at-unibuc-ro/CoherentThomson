@@ -51,8 +51,10 @@ from plot_field import (
 )
 from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
-# Core::PhysUtils::AtomicUnits (phys_utils.hpp): c and epsilon_0 in the solver's own atomic units.
-C_LIGHT = 137.036
+# Core::PhysUtils::AtomicUnits (phys_utils.hpp): c and epsilon_0 in the solver's own atomic units --
+# c is 1/alpha (2018 CODATA). Mirrors phys_utils.hpp's own value independently (no shared constants
+# module between C++ and Python) -- keep in sync if that one changes.
+C_LIGHT = 137.035999084
 EPSILON_0 = 1.0 / (4.0 * np.pi)
 
 

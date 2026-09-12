@@ -19,9 +19,14 @@ namespace Core::Logging {
 // electron_factory.cpp already do) rather than adding new getters to Detector/Electron, so this stays
 // purely additive and does not touch the physics classes themselves. `num_threads` should be the
 // value Simulation::run_simulation resolved (not the raw, possibly-zero-meaning-"all" config value),
-// and `simulation_elapsed_seconds` the wall-clock time that run took.
+// `simulation_elapsed_seconds` the wall-clock time that run took, and `total_cpu_seconds` the same
+// summed-across-threads CPU-seconds figure Simulation::run_simulation resolved (its own out-param) --
+// used here (not simulation_elapsed_seconds) to derive the per-electron/per-screen-point/per-cycle
+// timing figure, for the same reason run_simulation itself prefers it over wall-clock time: dividing
+// wall-clock time by electron/screen-point count would understate the true per-unit cost by roughly
+// num_threads, since electrons are processed in parallel, not sequentially.
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
                    size_t num_electrons, const Simulation::simulation_parameters& sim_par, size_t num_threads,
-                   double simulation_elapsed_seconds, const std::string& filepath);
+                   double simulation_elapsed_seconds, double total_cpu_seconds, const std::string& filepath);
 
 }  // namespace Core::Logging

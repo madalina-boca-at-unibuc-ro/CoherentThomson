@@ -6,9 +6,11 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file, get_laser_period
 
-# Core::PhysUtils::AtomicUnits (phys_utils.hpp): c in the solver's own atomic units, and m_0 = 1.0
-# there -- so mc (the momentum unit) is just C_LIGHT itself, no separate mass factor needed.
-C_LIGHT = 137.036
+# Core::PhysUtils::AtomicUnits (phys_utils.hpp): c in the solver's own atomic units (1/alpha, 2018
+# CODATA), and m_0 = 1.0 there -- so mc (the momentum unit) is just C_LIGHT itself, no separate mass
+# factor needed. Mirrors phys_utils.hpp's own value independently (no shared constants module between
+# C++ and Python) -- keep in sync if that one changes.
+C_LIGHT = 137.035999084
 
 def _plot_four_vector_figure(data, electron_ids, electron_colors, cols, panel_titles, suptitle, output_img,
                              scale, ylabel):

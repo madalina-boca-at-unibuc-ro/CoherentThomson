@@ -415,8 +415,8 @@ constants as the conversion basis) the next time this file is touched.
   since it's a length too) are divided by `lambda_au = T * C_LIGHT` (`T` is the same `get_laser_period` value
   already used for the x-axis — a time; multiplying by `c` converts it to the wavelength, a length, mirroring
   `Core::IoUtils::convert_unit_to_number`'s own `'lambda'` branch, `2*pi/omega*c`); momentum panels (`p0..p3`,
-  `p0=E/c` included since it's momentum-like too) are divided by `C_LIGHT` alone (`= 137.036`, the same constant
-  other Python scripts already hardcode from `Core::PhysUtils::AtomicUnits::c`), since `m_0 = 1.0` in these atomic
+  `p0=E/c` included since it's momentum-like too) are divided by `C_LIGHT` alone (`= 137.035999084`, the same
+  constant other Python scripts already hardcode from `Core::PhysUtils::AtomicUnits::c`), since `m_0 = 1.0` in these atomic
   units so `mc = c` exactly. `_plot_four_vector_figure`'s `scale`/`ylabel` parameters carry this through generically
   for both figures rather than hardcoding the conversion twice.
 - **Each recorded `Electron::State` also carries the electron's exact 4-acceleration** (`du^mu/dtau =
@@ -528,7 +528,7 @@ constants as the conversion basis) the next time this file is touched.
   entries in the default (non-dense) mode too (previously those used bare `p`, which made the
   `frequencies_list[i]/fundamental_frequency` normalization only approximate for `a0 != 0` — see the
   `radiation_field.dat`'s exported `omega` column bullet above).
-  The `(mc)^2` prefactor is required for unit consistency (`<a^2>` is dimensionless, and `mc = 137.036` in these
+  The `(mc)^2` prefactor is required for unit consistency (`<a^2>` is dimensionless, and `mc ~= 137.036` in these
   atomic units, so omitting it would make the correction term negligibly small regardless of `a0`).
   **FIXED: `<a^2>` was computed as `xi^2` (`xi = laser.get_a0()`, the peak normalized amplitude) instead of the
   cycle-averaged `<a^2> = xi^2/2`.** `q` is the electron's *drift* momentum (its trajectory averaged over one
@@ -942,3 +942,31 @@ constants as the conversion basis) the next time this file is touched.
   redone by hand for every other config using `laser_wing_sigma`/`laser_wing_sigma_cutoff`
   (`config/coherent_thomson.cfg`, `config/coherent_thomson_debug.cfg`, ...), whereas fixing the formula
   once fixes all of them.
+- **`PhysUtils::AtomicUnits::c` (`phys_utils.hpp`) raised from the truncated `137.036` to the 2018 CODATA
+  inverse fine-structure constant `137.035999084`** -- prompted by adding the SI-unit conversion constants
+  `bohr_radius_m`/`atomic_time_unit_s` to the same namespace (for `run_log.txt`'s new SI columns, see the
+  "Run log" section above) and noticing their ratio (the atomic unit of velocity) only reproduces `c_SI *
+  alpha` to full precision against the *precise* `1/alpha`, not the old truncated value -- fixed both
+  together rather than leaving the three mutually inconsistent at the 6th significant figure. This is not
+  cosmetic: `c` feeds `mc`, `epsilon_0`/`mu_0`, and every formula built from them across
+  `laser_field.cpp`/`electron.cpp`/`radiation.cpp`/`phys_utils.hpp` itself -- i.e. essentially the whole
+  physics pipeline, not just `run_log.txt`'s own display. The magnitude of the resulting change is tiny
+  (`137.035999084` vs `137.036` differ at the 6th significant figure, `~7e-9` relative), well below this
+  project's typical numerical-precision floor elsewhere (e.g. the debug-mode tau-sum cross-check agrees to
+  only ~0.2%) -- included for correctness/consistency, not because it was observed to explain any specific
+  discrepancy. `py_scripts/particle/plot_trajectory.py` and `py_scripts/radiation/plot_angular_momentum_flux.py`
+  each independently hardcode this same constant as `C_LIGHT` (no shared constants module between C++ and
+  Python -- see those bullets elsewhere in this file) and were updated to match; any other Python script
+  that starts needing `c` should do the same rather than reintroducing the old truncated value.
+  **Discovered mid-build-check that this repo's `build/` directory has a real stale-dependency bug**:
+  touching `phys_utils.hpp` alone rebuilt only the two files most recently touched in the same session
+  (`simulation.cpp`, `run_log.cpp`) via incremental `cmake --build`, silently leaving `electron.cpp`,
+  `laser_field.cpp`, `electron_factory.cpp`, `laser_factory.cpp`, and others that directly `#include
+  phys_utils.hpp` and use `PhysUtils::AtomicUnits::c` un-rebuilt with the *old* constant baked in --
+  confirmed by object-file mtimes staying untouched across an incremental rebuild that did touch the
+  header. Worked around here via `cmake --build build/ --clean-first`; root cause (stale/missing `.d`
+  dependency files under this Unix-Makefiles-generated `build/`, or something more specific to this one
+  `build/` directory) not investigated further. **Practical takeaway, alongside the existing
+  Debug-vs-Release build-type footgun documented above**: after editing a widely-`#include`d header in
+  this repo, prefer a `--clean-first` (or fresh `build/`) rebuild over trusting incremental `cmake --build`
+  to have picked up every affected translation unit, at least until this is root-caused.

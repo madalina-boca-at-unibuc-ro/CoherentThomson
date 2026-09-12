@@ -28,6 +28,12 @@ struct simulation_parameters {
   // here so any consumer that needs it (e.g. Logging::write_run_log) reads the same value
   // fundamental_frequency/frequencies were built from, rather than recomputing it separately.
   MathUtils::RealFourVector q;
+
+  // Total number of laser cycles spanned by the pulse (laser.get_phi_max() - laser.get_phi_min(),
+  // divided by 2*pi) -- the same total_cycles already used above to size simulation_length, exposed
+  // here so a consumer (e.g. Logging::write_run_log) can normalize a per-electron/per-screen-point
+  // timing figure down to a per-cycle cost without re-deriving it from the laser directly.
+  double total_cycles;
 };
 
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser);
@@ -84,8 +90,15 @@ struct PackedRadiationField {
 // hardware maximum, or larger than the electron beam size, is clamped back down. Pass an explicit
 // value (e.g. 1) to force a specific thread count. num_threads is taken by reference and overwritten
 // with the actual thread count used, so callers can report the real value rather than the requested one.
+// total_cpu_seconds is likewise taken by reference and overwritten with the sum of every thread's own
+// elapsed time (see the aggregate timing block in the .cpp), the same CPU-seconds measurement already
+// printed to stdout as "Time per electron"/"Total CPU-seconds per Electron per Screen Point" -- exposed
+// so a caller (e.g. main.cpp, feeding Logging::write_run_log) can derive further per-unit-of-work
+// figures (e.g. per screen point per laser cycle) from the same measurement, rather than the coarser
+// wall-clock time alone, which understates true cost by roughly num_threads (see that block's comment).
 RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& laser,
                               const Detector::Detector_2D& detector, std::vector<Particle::Electron>& electron_beam,
-                              const std::vector<double>& frequencies_list, size_t& num_threads);
+                              const std::vector<double>& frequencies_list, size_t& num_threads,
+                              double& total_cpu_seconds);
 
 }  // namespace Core::Simulation

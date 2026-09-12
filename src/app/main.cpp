@@ -174,9 +174,10 @@ int main(int argc, char* argv[]) {
     }
 
     size_t num_threads = IoUtils::get_num_threads(simulation_config);
+    double total_cpu_seconds = 0.0;
     auto simulation_start = std::chrono::steady_clock::now();
     Simulation::RadiationField radiation_field = Simulation::run_simulation(
-        simulation_config, *laser, *detector, electron_beam, sim_par.frequencies, num_threads);
+        simulation_config, *laser, *detector, electron_beam, sim_par.frequencies, num_threads, total_cpu_seconds);
     auto simulation_end = std::chrono::steady_clock::now();
     std::chrono::duration<double> simulation_elapsed = simulation_end - simulation_start;
     std::cout << "Simulation time:      " << simulation_elapsed.count() << " s\n";
@@ -192,7 +193,7 @@ int main(int argc, char* argv[]) {
                                     run_output_dir + "/radiation_field.dat");
 
     Logging::write_run_log(simulation_config, *laser, *detector, electron_beam.size(), sim_par, num_threads,
-                           simulation_elapsed.count(), run_output_dir + "/run_log.txt");
+                           simulation_elapsed.count(), total_cpu_seconds, run_output_dir + "/run_log.txt");
     std::cout << "Successfully exported run log to " << run_output_dir << "/run_log.txt\n";
 
   } catch (const std::exception& e) {

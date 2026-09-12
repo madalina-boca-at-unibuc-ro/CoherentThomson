@@ -7,10 +7,28 @@ namespace Core::PhysUtils::AtomicUnits {
 inline constexpr double m_0 = 1.0;
 inline constexpr double e_0 = 1.0;                                    // the electron charge in modulus
 inline constexpr double q_0 = -1.0;                                   // the electron charge
-inline constexpr double c = 137.036;                                  // the speed of light
+// The speed of light, i.e. the inverse fine-structure constant 1/alpha (2018 CODATA recommended
+// value, alpha^-1 = 137.035999084(21)) -- consistent with bohr_radius_m/atomic_time_unit_s below
+// (their ratio, the atomic unit of velocity, equals c_SI*alpha to the precision of both). Previously
+// hardcoded to the truncated 137.036; raising precision here changes every downstream physics
+// quantity built from c (mc, epsilon_0/mu_0 below, and every mc/epsilon_0-dependent formula in
+// laser_field.cpp/electron.cpp/radiation.cpp/phys_utils.hpp itself), not just this file's own SI
+// columns -- see py_scripts/particle/plot_trajectory.py and
+// py_scripts/radiation/plot_angular_momentum_flux.py's own C_LIGHT, which mirror this value
+// independently (no shared constants module between C++ and Python) and were updated to match.
+inline constexpr double c = 137.035999084;
 inline constexpr double hbar = 1.0;                                   // the reduced planck constant
 inline constexpr double epsilon_0 = 1.0 / (4 * Core::MathUtils::pi);  // the vacuum permittivity
 inline constexpr double mu_0 = 1.0 / (epsilon_0 * c * c);             // the vacuum permeability
+
+// SI equivalents of the atomic units of length and time above (2018 CODATA recommended values) -- the
+// conversion basis for expressing an atomic-unit length/time in real-world units (nm, mm, fs, ...)
+// wherever a reader wants to place a run in physical terms rather than atomic units alone (e.g.
+// Logging::write_run_log's SI columns -- see CLAUDE.md's "Run log" TODO). Only length and time are
+// provided since that's all today's consumer needs; extend with more (energy, field strength, ...) if
+// a future one does.
+inline constexpr double bohr_radius_m = 5.29177210903e-11;         // 1 a.u. of length, in meters
+inline constexpr double atomic_time_unit_s = 2.4188843265857e-17;  // 1 a.u. of time, in seconds
 
 }  // namespace Core::PhysUtils::AtomicUnits
 
@@ -28,7 +46,7 @@ inline double non_linear_Thomson_formula(const MathUtils::RealFourVector& k1, co
 
 // compute the dressed (ponderomotive drift) electron momentum q = p + (mc)^2 <a^2> / (2 k1.p) * k1,
 // giving the mass-shell shift m_eff^2 = m^2(1+<a^2>). The (mc)^2 factor is essential: xi is
-// dimensionless, so without it the correction term has the wrong units and (since mc = 137.036 in
+// dimensionless, so without it the correction term has the wrong units and (since mc ~= 137.036 in
 // atomic units) ends up ~(mc)^2 too small to have any visible effect.
 //
 // <a^2> is the cycle-averaged normalized-amplitude-squared, NOT xi^2 = a0^2 (the peak amplitude)
@@ -51,7 +69,7 @@ inline double non_linear_Thomson_formula(const MathUtils::RealFourVector& k1, co
 // p is the electron's (average) four-momentum, k1 the incident light-like four-vector (canonical-frame
 // omega_laser/c along Oz), xi the laser's peak normalized amplitude (laser.get_a0()).
 inline MathUtils::RealFourVector dressed_momentum(const MathUtils::RealFourVector& p,
-                                                   const MathUtils::RealFourVector& k1, double xi) {
+                                                  const MathUtils::RealFourVector& k1, double xi) {
   double mc = AtomicUnits::m_0 * AtomicUnits::c;
   double a_sq_avg = xi * xi / 2.0;
   return p + mc * mc * a_sq_avg / (2.0 * MathUtils::contract(p, k1)) * k1;

@@ -119,12 +119,14 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
     }
   }
 
-  return simulation_parameters{tau_0_traj, d_tau_traj, simulation_length, frequencies_list, fundamental_frequency, q};
+  return simulation_parameters{tau_0_traj, d_tau_traj,  simulation_length, frequencies_list, fundamental_frequency,
+                               q,          total_cycles};
 };
 
 RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& laser,
                               const Detector::Detector_2D& detector, std::vector<Particle::Electron>& electron_beam,
-                              const std::vector<double>& frequencies_list, size_t& num_threads) {
+                              const std::vector<double>& frequencies_list, size_t& num_threads,
+                              double& total_cpu_seconds) {
   size_t N_omega = frequencies_list.size();
   size_t N_screen = detector.get_total_points();
   size_t num_electrons = electron_beam.size();
@@ -202,7 +204,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   // divisible by num_threads), and the derived per-electron/per-screen-point averages within that
   // chunk (N_screen is the same for every electron/thread, so this is just thread_elapsed divided
   // through by electron count and then by N_screen).
-  double total_cpu_seconds = 0.0;
+  total_cpu_seconds = 0.0;
   for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx) {
     if (thread_electron_count[thread_idx] == 0) continue;
     double elapsed_s = thread_elapsed[thread_idx].count();
