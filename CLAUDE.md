@@ -53,6 +53,8 @@ python3 py_scripts/radiation/plot_point_spectrum.py <long|short> <mu> <nu>  # me
 python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
 python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
 python3 py_scripts/radiation/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_angular_momentum_flux_screen.py          # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_angular_momentum_density_screen.py       # rectangular/circular detectors only, see its module docstring
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 python3 py_scripts/radiation/plot_all_components.py  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
 ```
@@ -645,6 +647,147 @@ constants as the conversion basis) the next time this file is touched.
   reusing `Core::MathUtils::rotation_matrix_from_direction`'s exact three-case logic (reimplemented in Python) to
   rotate the exported Faraday tensor from the canonical/lab frame back into the detector's own local frame before
   applying the formula — see the script's module docstring for the full reasoning and its scope limits.
+- **`py_scripts/radiation/plot_angular_momentum_flux_screen.py` implements a second, independently-derived
+  screen-level angular-momentum flux density from `theory/angular_momentum_flux_screen_from_Faraday.md`**, split
+  into intrinsic/spin/orbital-intrinsic parts (`M33_int`/`M33_spin`/`M33_orb_int` — `M33_orb_int` is defined as the
+  residual `M33_int - M33_spin`, not an independently-derived formula) rather than
+  `plot_angular_momentum_flux.py`'s single un-split `flux_total`. **`M33_int` is NOT a differently-normalized
+  version of `flux_total`** — verified by substituting `Ei=c*Fi0`/`B1=-F23,B2=F13,B3=-F12` into both: `M33_int`
+  reduces to a genuinely different formula family built from same-field products (`Ex*Ez*`, `By*Bz*`, ... — a
+  Maxwell-stress-tensor moment, i.e. a true momentum-*flux* quantity), whereas `flux_total` reduces to
+  `x*(Ez*Bx*-Ex*Bz*) - y*(Ey*Bz*-Ez*By*)` (a Poynting-vector moment, i.e. a momentum-*density* quantity) — not
+  the same physics, not just a different constant. **`flux_total` instead matches
+  `plot_angular_momentum_density_screen.py`'s `L3_int` exactly**: substituting the same way, `L3_int` reduces to
+  the *identical* `x*(Ez*Bx*-Ex*Bz*) - y*(Ey*Bz*-Ez*By*)` bracket, differing from `flux_total` only by each
+  doc's own choice of overall prefactor (`4*pi*epsilon0` vs `epsilon0/pi`) — confirmed numerically on a real run:
+  `flux_total / L3_int` is constant to floating-point precision (`0.025330295910584447`, std dev `~4e-16`),
+  exactly `1/(4*pi^2)`. So: `plot_angular_momentum_flux.py` and `plot_angular_momentum_density_screen.py`'s
+  `L3_int` compute the *same* physical quantity from two independently-derived docs (a genuine, exact
+  cross-check, not a coincidence); `plot_angular_momentum_flux_screen.py`'s `M33_int` is legitimately a
+  different quantity (flux through the screen, not density on it) and correctly isn't expected to match either
+  one. Same
+  `rectangular`/`circular` flat-screen restriction and reasoning as `plot_angular_momentum_flux.py`, and reuses
+  that script's rotation machinery (`get_canonical_to_local_rotation`, `extract_rotated_faraday_fields`,
+  `get_screen_coordinates_local_au`) rather than duplicating it. The doc assumes the screen's energy-flux centroid
+  sits at the local origin (`X_c=Y_c=0`), so no centroid is computed. Both the doc's screen-level distribution
+  (Sections 1-4) and its Section 5 area integration into a total `J3(omega)` per quantity are implemented
+  (`integrate_angular_momentum_flux_screen`) — a rough trapezoidal quadrature, adapted to the run's actual flat
+  detector geometry: plain 2D trapezoidal in `(x, y)` for `rectangular`; trapezoidal in `(r^2, phi)` for
+  `circular`, matching `CircularDetector`'s own equal-area radial spacing (`dA = r dr dphi = (1/2) d(r^2) dphi`,
+  so a constant-`r^2`-step trapezoidal rule is exact-in-area for any `N_R`) and its `phi = linspace(0, 2*pi,
+  N_phi)` convention (`phi=0`/`phi=2*pi` are the same physical direction, duplicated as the first/last grid
+  points — ordinary trapezoidal half-weighting at both endpoints handles this correctly without double-counting
+  that shared wedge, rather than needing a bespoke periodic-quadrature rule). `get_screen_area_weights_au`'s
+  weights sum to the screen's exact area (`pi*(R_max^2-R_min^2)` for `circular`) regardless of grid resolution,
+  by construction — verified on a test run to agree with the analytic area to floating-point precision — though
+  that's a sanity check on the quadrature, not a guarantee a coarse grid resolves the flux density's actual
+  spatial variation well. **Running the script appends a `J3_int`/`J3_spin`/`J3_orb_int` summary table (one row
+  per frequency) directly into the run's own `run_log.txt`**, under a `plot_angular_momentum_flux_screen.py`
+  section header (`append_integration_to_run_log`) — re-running the script replaces only that script's own
+  previously-appended section (matched by its header) rather than piling up duplicates, and never touches
+  anything `Logging::write_run_log` itself wrote. Verified on a test run: the integrated residual identity
+  `J3_int == J3_spin + J3_orb_int` holds (limited only by the table's printed 6-significant-figure precision, not
+  the underlying computation, which is exact per the pointwise check below). The spin term's explicit `1/omega` factor needs the *raw*
+  angular frequency, not `radiation_field.dat`'s own `omega` column (normalized to `omega/omega_1`, per the
+  `radiation_field.dat`'s `omega`-column bullet above) — reconstructed by reading the run's own `run_log.txt` for
+  its logged `fundamental_frequency` (already raw a.u., see `Logging::write_run_log`) and multiplying by the
+  `omega/omega_1` ratio, exact rather than approximate since both share the same `k=omega/c` convention. Verified
+  on a test run: the residual identity `M33_int == M33_spin + M33_orb_int` holds to floating-point precision
+  (~1e-43 absolute) at every screen point/frequency. **Open caveat, not yet independently re-derived**: the theory
+  doc's boxed formulas assume its own stated Fourier normalization (`F(omega) = 1/(2*pi) * int dt e^{i*omega*t}
+  F(t)`, with the doc's `4*pi` prefactors already folding in the two-sided-to-one-sided factor of 2) — whether
+  `radiation_field.dat`'s actual exported normalization (`Simulation::run_simulation`'s `general_factor`) matches
+  that convention exactly hasn't been checked, so absolute magnitudes (not just the residual-identity/reality
+  sanity checks above) shouldn't yet be trusted against an external reference — see the FT sign-convention TODO
+  above, which is the same class of open question.
+  **Motivation**: the point of this script is to check angular-momentum *transfer* — whether a Laguerre-Gauss
+  beam's own angular momentum along its propagation direction shows up in the emitted field's `M33_*` flux along
+  that same axis (or the opposite one), which requires the plotted `x1`/`x2`/(implicit `x3`) axes to actually be
+  the laser's own transverse plane/propagation axis, not some arbitrary tilted screen.
+  **Frame caveat**: since this script reuses `plot_angular_momentum_flux.py`'s rotation machinery (see that
+  bullet above), the plotted `x1, x2` are the *detector's own local* transverse coordinates, which equal the
+  canonical (laser-along-`Oz`) transverse plane only when the detector is oriented **orthogonal to the laser**
+  (`detector_direction_theta = 0`, forward-facing, or `= 1.0 pi`, backward-facing — this repo's default — any
+  `phi`), the two degenerate cases `Core::MathUtils::rotation_matrix_from_direction` hardcodes. Even then the
+  mapping isn't quite the identity in the backward-facing case: that case's rotation is `diag(1, -1, -1)`, so
+  `x1 = x_canonical` but **`x2 = -y_canonical`** (and the implicit local `x3 = -z_canonical`, i.e. looking back
+  along the beam) — a known, deterministic sign flip, not an ambiguity, but easy to miss when comparing a
+  pointwise result against a hand-derived canonical-frame calculation. For any `detector_direction_theta` strictly
+  between `0` and `pi`, the screen is genuinely tilted relative to the laser axis and `x3` is the detector's own
+  tilted normal, not the beam's propagation direction — the angular-momentum-transfer question above isn't
+  meaningfully answered by such a config without first accounting for that tilt.
+- **`py_scripts/radiation/plot_angular_momentum_density_screen.py` implements a third, independently-derived
+  screen-level angular-momentum quantity from `theory/angular_momentum_density_screen_from_Faraday.md`** — a
+  spatial **density** on the screen (`L3_int`/`L3_spin`/`L3_orb_res`/`L3_orb_can`), not a flux *through* the
+  screen like `plot_angular_momentum_flux_screen.py`'s `M33_*` (that doc's own Section 6 says so explicitly: "these
+  are integrals of the angular-momentum density on the screen, not angular-momentum fluxes through the screen").
+  Despite the superficially similar `x1*Q2 - x2*Q1` structure and int/spin/orbital split, `L3_int`/`L3_spin` are
+  built from different Faraday-component combinations (`G1`/`G2`, using only `F10`/`F20`/`F30`/`F12`/`F13` — no
+  `F23*F12`-type cross term) than the flux script's `T13`/`T23`, and the two scripts' outputs are not expected to
+  numerically agree even on the same run. Same `rectangular`/`circular` restriction, `X_c=Y_c=0` centroid
+  assumption, raw-omega reconstruction via `run_log.txt`'s `fundamental_frequency`, and un-verified
+  FT-normalization caveat as `plot_angular_momentum_flux_screen.py`, whose rotation/screen-coordinate/quadrature
+  helpers (`get_canonical_to_local_rotation`, `get_screen_coordinates_local_au`,
+  `extract_rotated_faraday_fields`, `get_screen_area_weights_au`) it imports and reuses rather than duplicating.
+  **Two independently-defined orbital forms, deliberately not expected to agree pointwise** (the theory doc's own
+  Section 5): `L3_orb_res = L3_int - L3_spin` (an exact pointwise decomposition, verified on a test run to hold
+  to ~1e-32 absolute) vs. `L3_orb_can` (the *canonical* azimuthal-derivative density, differing from `orb_res` by
+  a spatial-divergence term the doc says only vanishes after integrating a *complete* screen with a vanishing
+  boundary term — not checked here). **`L3_orb_can` needs the azimuthal derivative of each of the six Faraday
+  components on the screen grid, per frequency** — unlike the purely algebraic other three quantities, this makes
+  it grid-resolution-dependent: for `circular`, computed as an exact periodic centered difference in `phi` at
+  fixed `r` (`_azimuthal_derivative_circular` — `CircularDetector`'s own `phi=linspace(0,2*pi,N_phi)` grid already
+  samples at fixed `r` along `phi`, so the doc's azimuthal derivative reduces directly to `d/dphi`, no
+  `x1`/`x2`-combination formula needed, unlike the doc's own Cartesian-grid section); for `rectangular`, built
+  from that Cartesian-grid identity (`dphi_F = -x2*dF/dx1 + x1*dF/dx2`) via `np.gradient` (one-sided at the screen
+  edges — the doc's own "check convergence under grid refinement" caveat is not attempted). **Observed on a real
+  LG (`p=2, l=2`) test run**: `L3_orb_res` and `L3_orb_can` came out with the same spatial pattern (a smooth,
+  axisymmetric ring structure) and comparable peak magnitude but opposite sign (`corrcoef ~ -0.97`) — the theory
+  doc permits them to disagree pointwise, but doesn't predict near-exact sign-flipped agreement either; flagged
+  here as a concrete, reproducible observation worth keeping in mind alongside this repo's other open sign-
+  convention checks, not yet root-caused as a bug vs. a genuine feature of this formula pair. Same
+  screen-integration (`integrate_angular_momentum_density_screen`, Section 6) and `run_log.txt`-append behavior
+  (`append_integration_to_run_log`, own distinct section header so it doesn't collide with the flux script's
+  section) as `plot_angular_momentum_flux_screen.py`.
+  **Investigated (not the explanation, but a related fact worth recording) while chasing the `orb_res`/`orb_can`
+  sign puzzle above**: does the backward-facing detector's frame flip (`diag(1,-1,-1)`, per the `M33` frame
+  caveat's `x2 = -y_canonical` bullet above) explain the sign discrepancy? **No** — verified both analytically
+  and numerically (recomputing with the field rotated into the canonical frame instead, redone *consistently* by
+  also transforming `x1`/`x2`/`phi` together, reproduces the identical `corrcoef ~ -0.9724707321332868`; an
+  inconsistent first attempt that rotated the field but left `x1`/`x2` in the local frame spuriously flipped the
+  sign to `+0.97`, which is what made this look promising at first). A rotation applied consistently to both the
+  fields and the coordinates that go into computing two quantities can only transform both together, never one
+  relative to the other — so a shared frame convention cannot produce a *relative* sign difference between
+  `L3_orb_res` and `L3_orb_can`, both built from the same rotated data.
+  **A related, independently true fact surfaced during that check, worth keeping for later**: for the
+  backward-facing case specifically (`x1` unchanged, `x2 -> -x2`), the induced local azimuthal angle satisfies
+  `phi_local = -phi_canonical` (since `cos phi_local = x1/rho` is unchanged but `sin phi_local = x2/rho` flips
+  sign) — i.e. **`d/dphi_local = -d/dphi_canonical`**, even though the full 3D frame change is a *proper*
+  rotation (determinant +1, from `x2` and `x3` flipping together): restricted to just the 2D `(x1, x2)`
+  transverse plane `phi` lives in, flipping only `x2` is itself a reflection, which is what reverses `phi`'s
+  sense despite the full 3D map preserving handedness. This doesn't affect `L3_orb_can` as computed *internally*
+  by this script (everything — `G1`, `G2`, `L3_int`, and the `dphi_F` derivative — consistently uses the same
+  local `phi` throughout, confirmed by the redo above reproducing an identical correlation), but it matters if
+  comparing this script's `L3_orb_can` sign against "the beam's own physical rotation sense" (canonical,
+  beam-axis-fixed) rather than purely internally — that comparison needs this `-1` applied explicitly for a
+  backward-facing detector.
+- **`py_scripts/radiation/plot_angular_momentum_flux.py`'s own standalone output (`flux_total`) is now redundant,
+  but the file itself cannot be deleted** — it is the shared utility module three other scripts import their
+  rotation/coordinate machinery from, not just a superseded standalone script:
+  `plot_angular_momentum_flux_screen.py` (`convert_unit_to_number`, `get_canonical_to_local_rotation`,
+  `get_screen_coordinates_local_au`, `extract_rotated_faraday_fields`), `plot_angular_momentum_density_screen.py`
+  (`get_canonical_to_local_rotation`, `get_screen_coordinates_local_au`, `extract_rotated_faraday_fields`), and
+  `plot_spherical_components.py` (`convert_unit_to_number`, `get_detector_local_rotation`,
+  `get_field_to_canonical_rotation`, `extract_rotated_faraday_fields`) — deleting the file outright would break
+  all three via `ImportError`. Only the file's *own* `angular_momentum_flux_density`/`compute_angular_momentum_flux`/
+  `plot_angular_momentum_flux`/`__main__` (i.e. what running the script directly produces) is superseded, per the
+  `flux_total`-vs-`L3_int` finding two bullets above. **Two ways to resolve this, neither done yet (deliberately
+  left as-is for now, at the user's request)**: (1) leave the file exactly as-is — the redundant `flux_total`
+  output costs nothing to keep, and the file already doubles as the shared module, zero risk/effort; or (2)
+  extract the shared rotation/coordinate functions into a proper dedicated utils module (e.g. a new
+  `angular_momentum_utils.py`, or fold into `py_scripts/utils/`), delete `plot_angular_momentum_flux.py`'s own
+  plotting function and `__main__` block, and update the three importing scripts' `from plot_angular_momentum_flux
+  import ...` lines accordingly — genuinely removes the redundant script, but touches four files instead of zero.
 - **`py_scripts/radiation/plot_spherical_components.py` projects the exported Faraday tensor onto canonical-frame
   spherical components** (`E_r`/`E_theta`/`E_phi`/`B_r`/`B_theta`/`B_phi`), for `spherical`-detector runs only —
   again Python-only post-processing of `radiation_field.dat`, no C++ output involved. Unlike
@@ -985,12 +1128,3 @@ constants as the conversion basis) the next time this file is touched.
   Debug-vs-Release build-type footgun documented above**: after editing a widely-`#include`d header in
   this repo, prefer a `--clean-first` (or fresh `build/`) rebuild over trusting incremental `cmake --build`
   to have picked up every affected translation unit, at least until this is root-caused.
-- **TODO: the sign of the `exp(ik...)` phase term in the *simplified* form (Form 2,
-  `radiation_phase_argument`/`short_range_prefactor`/`long_range_prefactor` in `radiation.cpp`, and the matching
-  derivation in `theory/FT_Faraday_tensor-direct_and_simplified_forms.md`) needs to be rechecked against an
-  external theoretical reference.** Confirmed (see the "FT sign convention" discussion) that the code currently
-  implements `exp(+i*omega*(x^0+R))` throughout (`radiation.cpp`, `debug_radiation.cpp`, and the theory doc all
-  agree with each other on this), but that only establishes internal self-consistency, not correctness against
-  the reference document being checked against. Flagged here at the user's request while that cross-check is in
-  progress; revisit this note once resolved (delete if confirmed correct, or update with the fix and a pointer to
-  what changed if not — following the pattern of the "Sign bug (fixed)" bullet above for the `F_s` term).
