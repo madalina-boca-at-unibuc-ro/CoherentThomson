@@ -128,6 +128,50 @@ FaradayTensor LaserField::get_faraday_tensor(const Core::MathUtils::RealFourVect
   return F;
 }
 
+// Sibling to get_faraday_tensor -- see its doc comment in laser_field.hpp. Identical E/B construction,
+// just without the real(...) that would collapse the phasor down to the real, instantaneous field.
+MathUtils::ComplexFourTensor LaserField::get_complex_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const {
+  const auto [amplitude, dx_amplitude, dy_amplitude] = complex_amplitude(x_mu);
+
+  double inv_k_wave = PhysUtils::AtomicUnits::c / omega;
+  MathUtils::Complex transverse_deriv_E = zeta_1 * dx_amplitude + zeta_2 * dy_amplitude;
+  MathUtils::Complex transverse_deriv_B = -zeta_2 * dx_amplitude + zeta_1 * dy_amplitude;
+
+  MathUtils::Complex Ex_c = amplitude * (epsilon_1[1] * zeta_1 + epsilon_2[1] * zeta_2) +
+                            MathUtils::I * inv_k_wave * unity_n[1] * transverse_deriv_E;
+  MathUtils::Complex Ey_c = amplitude * (epsilon_1[2] * zeta_1 + epsilon_2[2] * zeta_2) +
+                            MathUtils::I * inv_k_wave * unity_n[2] * transverse_deriv_E;
+  MathUtils::Complex Ez_c = amplitude * (epsilon_1[3] * zeta_1 + epsilon_2[3] * zeta_2) +
+                            MathUtils::I * inv_k_wave * unity_n[3] * transverse_deriv_E;
+
+  MathUtils::Complex Bx = amplitude * (-epsilon_1[1] * zeta_2 + epsilon_2[1] * zeta_1) +
+                          MathUtils::I * inv_k_wave * unity_n[1] * transverse_deriv_B;
+  MathUtils::Complex By = amplitude * (-epsilon_1[2] * zeta_2 + epsilon_2[2] * zeta_1) +
+                          MathUtils::I * inv_k_wave * unity_n[2] * transverse_deriv_B;
+  MathUtils::Complex Bz = amplitude * (-epsilon_1[3] * zeta_2 + epsilon_2[3] * zeta_1) +
+                          MathUtils::I * inv_k_wave * unity_n[3] * transverse_deriv_B;
+
+  MathUtils::ComplexFourTensor F;
+  F[0][0] = 0.0;
+  F[0][1] = -Ex_c;
+  F[0][2] = -Ey_c;
+  F[0][3] = -Ez_c;
+  F[1][0] = Ex_c;
+  F[1][1] = 0.0;
+  F[1][2] = -Bz;
+  F[1][3] = By;
+  F[2][0] = Ey_c;
+  F[2][1] = Bz;
+  F[2][2] = 0.0;
+  F[2][3] = -Bx;
+  F[3][0] = Ez_c;
+  F[3][1] = -By;
+  F[3][2] = Bx;
+  F[3][3] = 0.0;
+
+  return F;
+}
+
 // =========================================================================
 // PLANE WAVE LASER IMPLEMENTATION
 // =========================================================================

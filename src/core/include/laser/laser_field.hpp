@@ -59,6 +59,19 @@ public:
   // type since the polarization/E-to-B construction is identical regardless of the transverse mode.
   FaradayTensor get_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const;
 
+  // Sibling to get_faraday_tensor: the same E/B construction from complex_amplitude, but returning the
+  // complex ("phasor") field directly instead of its real part -- i.e. the same quantity
+  // Simulation::run_simulation's own scattered-field output represents (a frequency-domain complex
+  // Faraday tensor), but for the incident beam itself. A global complex phase common to every
+  // component (the only thing a different evaluation instant/carrier phase would change) cancels
+  // exactly out of every bilinear angular-momentum formula in theory/angular_momentum_*.md, so no
+  // particular instant needs to be singled out as "the" phasor -- see
+  // Radiation::export_incident_field_fourier, the caller that uses this. Deliberately duplicates
+  // get_faraday_tensor's combination logic rather than sharing it (dropping the final real(...) isn't
+  // easily factored without templating the whole function), matching this project's existing
+  // precedent of isolated diagnostic paths (Debug::export_radiation_integrand vs. Radiation::compute_radiation).
+  Core::MathUtils::ComplexFourTensor get_complex_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const;
+
   double get_omega() const { return omega; }
   double get_a0() const { return a0; }
   double get_flat_duration() const { return flat_duration; }

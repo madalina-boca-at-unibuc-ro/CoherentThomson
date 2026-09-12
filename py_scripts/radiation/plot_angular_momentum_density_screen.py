@@ -39,10 +39,22 @@ unless noted otherwise:
     (no `x1`/`x2` combination needed) -- the doc's own Cartesian-grid trick
     (`dphi_F = -x2*dF/dx1 + x1*dF/dx2`) is only needed when the grid isn't already a fixed-radius
     polar one.
-  - `rectangular`: built from that Cartesian-grid identity via `np.gradient` in `x` and `y`
-    (`_azimuthal_derivative_rectangular`), which falls back to one-sided differences at the screen
-    edges -- the doc's own caveat ("check convergence... under grid refinement") is not attempted
-    here.
+  - `rectangular`: built from that Cartesian-grid identity via an FFT-based spectral derivative in
+    `x` and `y` (`_azimuthal_derivative_rectangular`/`_fft_derivative`) -- exact for a band-limited
+    signal that is periodic over the configured window, and far more accurate than a simple
+    finite-difference scheme (`np.gradient`, used here previously) once the field's phase varies by
+    an appreciable fraction of a cycle per grid step, which it does whenever the detector isn't deep
+    in the far field (a real, not-especially-rare regime for this project -- see CLAUDE.md's Fresnel-
+    number bullet). Found by direct comparison on a real run: `np.gradient`'s result and this
+    spectral result correlated only ~0.75 with each other and disagreed in magnitude too, on a
+    64x64 grid where the geometric/Fresnel phase changed by up to ~1.2 rad per grid step near the
+    screen edges -- `np.gradient` was simply not resolving that phase curvature accurately.
+    **Caveat inherent to the FFT approach**: it implicitly assumes periodicity over the window, i.e.
+    that the field's amplitude has decayed close to zero at the screen edges -- a window too narrow
+    for the actual field extent will show edge (Gibbs-type) artifacts. If seen, widen
+    `rectangular_detector_x/y_min/max` so the field is genuinely small at the boundary, rather than
+    only adding more points at the same width. The doc's own convergence-under-grid-refinement check
+    is still not attempted automatically here.
 """
 import sys
 import os
@@ -86,16 +98,34 @@ QUANTITIES = (
 )
 
 
+def _fft_derivative(values, axis, coord):
+    """
+    Exact spectral derivative of `values` along `axis`, for a uniformly-spaced coordinate array
+    `coord` (`coord[1]-coord[0]` sets the sample spacing). Assumes `values` is periodic over the
+    full span of `coord` -- see `_azimuthal_derivative_rectangular`'s own docstring for the caveat
+    this implies. A size-1 axis has no defined derivative (a single-column or single-row rectangular
+    detector has no spatial variation to differentiate) -- treated as zero.
+    """
+    N = values.shape[axis]
+    if N <= 1:
+        return np.zeros_like(values)
+    d_coord = coord[1] - coord[0]
+    k = 2.0 * np.pi * np.fft.fftfreq(N, d=d_coord)
+    shape = [1] * values.ndim
+    shape[axis] = N
+    k = k.reshape(shape)
+    return np.fft.ifft(1j * k * np.fft.fft(values, axis=axis), axis=axis)
+
+
 def _azimuthal_derivative_rectangular(values, x1_grid, x2_grid):
     """
-    dphi_F = -x2*dF/dx1 + x1*dF/dx2 (theory doc's Cartesian-grid identity), via np.gradient's central
-    differences (one-sided at the screen edges). `values`/`x1_grid`/`x2_grid` all shape (Nx, Ny),
-    meshgrid('ij') convention. A size-1 axis has no defined derivative along it (a single-column or
-    single-row rectangular detector has no spatial variation to differentiate) -- treated as zero.
+    dphi_F = -x2*dF/dx1 + x1*dF/dx2 (theory doc's Cartesian-grid identity), via `_fft_derivative` in
+    `x1` and `x2` -- see the module docstring's rectangular bullet for why this replaced an earlier
+    `np.gradient`-based finite-difference version. `values`/`x1_grid`/`x2_grid` all shape (Nx, Ny),
+    meshgrid('ij') convention.
     """
-    Nx, Ny = values.shape
-    dF_dx1 = np.zeros_like(values) if Nx <= 1 else np.gradient(values, x1_grid[:, 0], axis=0)
-    dF_dx2 = np.zeros_like(values) if Ny <= 1 else np.gradient(values, x2_grid[0, :], axis=1)
+    dF_dx1 = _fft_derivative(values, axis=0, coord=x1_grid[:, 0])
+    dF_dx2 = _fft_derivative(values, axis=1, coord=x2_grid[0, :])
     return -x2_grid * dF_dx1 + x1_grid * dF_dx2
 
 
@@ -257,15 +287,38 @@ def integrate_angular_momentum_density_screen(result, detector_type, config_path
 
 _RUN_LOG_SECTION_HEADER = "Angular-momentum density screen integration (plot_angular_momentum_density_screen.py)"
 
+# Printed (stdout) and logged (run_log.txt) whenever this script runs on incident_field.dat: the
+# incident-beam "phasor" (Radiation::export_incident_field_fourier) has NO Fourier-transform
+# normalization applied -- it's LaguerreGaussLaser::complex_amplitude's own raw spatial envelope,
+# evaluated at one instant, relying on a global phase common to every component cancelling out of
+# every bilinear formula here. That makes RATIOS between these quantities meaningful (orb_can/spin,
+# orb_res/spin, this-script's-int/flux-script's-int, ...) but leaves the ABSOLUTE magnitudes on an
+# arbitrary scale -- found the hard way when a real run's L3_spin ~ 1e13 a.u. looked nonsensical next
+# to an actual scattered-radiation run's own L3_spin ~ 1e-6 a.u.: the two are not on comparable
+# footing, by construction, and neither should be read as "the beam's real angular momentum in units
+# of hbar." See CLAUDE.md's "analytic incident-field cross-check" note for the ratios that ARE meant
+# to be trusted from this mode.
+_UNCALIBRATED_MAGNITUDE_CAVEAT = (
+    "NOTE: incident_field.dat's absolute field magnitude has no Fourier-transform normalization "
+    "applied (see this script's _UNCALIBRATED_MAGNITUDE_CAVEAT) -- only RATIOS between the columns "
+    "below (e.g. L3_orb_can/L3_spin, L3_orb_res/L3_spin) are physically meaningful; the absolute "
+    "values are on an arbitrary scale and are NOT comparable to a real scattered-radiation run's own "
+    "L3_* values."
+)
 
-def append_integration_to_run_log(run_dir, detector_type, integrated):
+
+def append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=""):
     """
     Appends (or, on a re-run, replaces) an 'L3' summary table in the run's own run_log.txt --
     Section 6 of theory/angular_momentum_density_screen_from_Faraday.md integrated over the whole
     screen, one row per frequency. Only this script's own previously-appended section (identified by
-    _RUN_LOG_SECTION_HEADER, distinct from plot_angular_momentum_flux_screen.py's own header) is ever
-    replaced.
+    _RUN_LOG_SECTION_HEADER + label_suffix, distinct from plot_angular_momentum_flux_screen.py's own
+    header) is ever replaced. `label_suffix` (e.g. " -- incident beam", set when run on
+    incident_field.dat -- see plot_angular_momentum_density_screen) keeps that table in its own
+    section rather than overwriting the actual scattered-radiation run's own logged section, and also
+    triggers _UNCALIBRATED_MAGNITUDE_CAVEAT being written into that section.
     """
+    header = _RUN_LOG_SECTION_HEADER + label_suffix
     log_path = os.path.join(run_dir, "run_log.txt")
     if not os.path.exists(log_path):
         raise FileNotFoundError(
@@ -275,12 +328,15 @@ def append_integration_to_run_log(run_dir, detector_type, integrated):
     with open(log_path) as f:
         content = f.read()
 
-    marker = f"\n{_RUN_LOG_SECTION_HEADER}\n"
+    marker = f"\n{header}\n"
     marker_index = content.find(marker)
     if marker_index != -1:
         content = content[:marker_index]
 
-    lines = [content.rstrip("\n"), "", _RUN_LOG_SECTION_HEADER, "-" * len(_RUN_LOG_SECTION_HEADER),
+    lines = [content.rstrip("\n"), "", header, "-" * len(header)]
+    if label_suffix:
+        lines += [f"  {_UNCALIBRATED_MAGNITUDE_CAVEAT}", ""]
+    lines += [
              f"  Rough sum_p Delta_A_p * L3_p screen integration (theory/angular_momentum_density_screen_from_Faraday.md",
              f"  Section 6), {detector_type} detector, trapezoidal quadrature in "
              f"{'(x, y)' if detector_type == 'rectangular' else '(r^2, phi)'} (same quadrature as "
@@ -297,12 +353,15 @@ def append_integration_to_run_log(run_dir, detector_type, integrated):
     print(f"Appended angular-momentum density screen integration to {log_path}")
 
 
-def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label):
+def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label,
+                       label_suffix="", title_suffix=""):
     """
     Renders `column` (one of L3_int/L3_spin/L3_orb_res/L3_orb_can): a line plot vs. omega/omega_1 for
     a 1x1 detector (the dense_frequency_spectrum workflow), or one heatmap PNG per frequency on the
     detector's own native grid otherwise -- same rendering convention as
-    plot_angular_momentum_flux_screen.py's own _plot_one_quantity.
+    plot_angular_momentum_flux_screen.py's own _plot_one_quantity. `label_suffix`/`title_suffix` (set
+    when run on incident_field.dat -- see plot_angular_momentum_density_screen) keep those PNGs from
+    overwriting the actual scattered-radiation run's own plots and mark the figure titles accordingly.
     """
     if result['i_screen'].nunique() == 1:
         subset = result.sort_values('omega')
@@ -311,10 +370,10 @@ def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, p
         ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
         ax.set_ylabel(axis_label)
         ax.grid(True)
-        fig.suptitle(f"Spectral angular-momentum density ({name})", fontsize=13, fontweight='bold')
+        fig.suptitle(f"Spectral angular-momentum density ({name}){title_suffix}", fontsize=13, fontweight='bold')
         plt.tight_layout()
 
-        output_img = os.path.join(png_dir, f"angular_momentum_density_{name}_spectrum.png")
+        output_img = os.path.join(png_dir, f"angular_momentum_density_{name}{label_suffix}_spectrum.png")
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
@@ -354,12 +413,12 @@ def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, p
         fig.colorbar(sc, ax=ax, label=axis_label, pad=0.15)
         add_w0_secondary_axes(ax, w0)
 
-        fig.suptitle(f"Angular-momentum density ({name}), $\\omega$ index {i_omega} "
+        fig.suptitle(f"Angular-momentum density ({name}){title_suffix}, $\\omega$ index {i_omega} "
                      f"($\\omega/\\omega_1$={omega_value:.4g}), {detector_type} detector, "
                      f"{detector_geometry_label}", fontsize=11, fontweight='bold')
         plt.tight_layout()
 
-        output_img = os.path.join(png_dir, f"angular_momentum_density_{name}_omega{i_omega}.png")
+        output_img = os.path.join(png_dir, f"angular_momentum_density_{name}{label_suffix}_omega{i_omega}.png")
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
@@ -371,29 +430,54 @@ def plot_angular_momentum_density_screen(radiation_filepath):
     orbital-residual, orbital-canonical) from theory/angular_momentum_density_screen_from_Faraday.md.
     Also integrates each over the screen (Section 6) and appends the resulting L3(omega) table to
     the run's own run_log.txt (see append_integration_to_run_log).
+
+    `radiation_filepath` may point at either a run's radiation_field.dat (the actual coherently-summed
+    scattered field) or its incident_field.dat sibling (Core::Radiation::export_incident_field_fourier
+    -- the incident LG/plane-wave beam's own analytic field, evaluated at z=0, same screen geometry) --
+    both share the identical column format, so every formula/plot here is agnostic to which produced
+    it. Detected by filename so incident-beam runs get their own PNG names and run_log section instead
+    of overwriting the real run's: see the CLAUDE.md "analytic incident-field cross-check" note for
+    why this is useful (a clean, exactly-known reference field with no coherent-sum noise or far-field
+    aliasing, to validate these formulas/derivatives against independently of the scattered field's
+    own numerical behavior).
     """
+    is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
+    label_suffix = "_incident" if is_incident else ""
+    title_suffix = " (incident beam)" if is_incident else ""
+    run_log_header_suffix = " -- incident beam" if is_incident else ""
+
     result, detector_type, config_path = compute_angular_momentum_density_screen(radiation_filepath)
 
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
 
     for column, name, axis_label in QUANTITIES:
-        _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label)
+        _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label,
+                           label_suffix=label_suffix, title_suffix=title_suffix)
 
     integrated = integrate_angular_momentum_density_screen(result, detector_type, config_path)
+    if is_incident:
+        print(_UNCALIBRATED_MAGNITUDE_CAVEAT)
     print(integrated.to_string(index=False))
-    append_integration_to_run_log(os.path.dirname(radiation_filepath), detector_type, integrated)
+    append_integration_to_run_log(os.path.dirname(radiation_filepath), detector_type, integrated,
+                                  label_suffix=run_log_header_suffix)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2:
-        input_file = os.path.join(sys.argv[1], "radiation_field.dat")
+    args = sys.argv[1:]
+    use_incident = "--incident" in args
+    if use_incident:
+        args.remove("--incident")
+    field_filename = "incident_field.dat" if use_incident else "radiation_field.dat"
+
+    if len(args) >= 1:
+        input_file = os.path.join(args[0], field_filename)
         if not os.path.exists(input_file):
             print(f"Error: '{input_file}' not found")
             sys.exit(1)
     else:
         try:
-            input_file = find_latest_output_file("radiation_field.dat")
+            input_file = find_latest_output_file(field_filename)
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
             sys.exit(1)

@@ -52,9 +52,12 @@ python3 py_scripts/laser/plot_heatmap_z0.py       # only has output if plot_fiel
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
 python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
 python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
-python3 py_scripts/radiation/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
-python3 py_scripts/radiation/plot_angular_momentum_flux_screen.py          # rectangular/circular detectors only, see its module docstring
-python3 py_scripts/radiation/plot_angular_momentum_density_screen.py       # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_angular_momentum_flux.py [--incident]                 # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_angular_momentum_flux_screen.py [--incident]          # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_angular_momentum_density_screen.py [--incident]       # rectangular/circular detectors only, see its module docstring
+# --incident (before the optional run-folder arg) analyzes incident_field.dat (the incident laser beam's own
+# analytic field, Core::Radiation::export_incident_field_fourier) instead of radiation_field.dat -- see CLAUDE.md's
+# "analytic incident-field cross-check" note
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 python3 py_scripts/radiation/plot_all_components.py  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
 ```
@@ -389,7 +392,7 @@ constants as the conversion basis) the next time this file is touched.
   (laser-along-`Oz`) frame unless the beam's mean momentum has zero transverse component — centering the window
   correctly in the general case would need reproducing that rotation here. Falls back to the previous
   laser-type-dependent windowing only when `beam_cylinder_radius == 0` (a single on-axis point beam, e.g.
-  `config/coherent_thomson_debug.cfg`, where a zero-radius window would otherwise collapse the heatmap to a single
+  `config/debug.cfg`, where a zero-radius window would otherwise collapse the heatmap to a single
   point): `plane_wave` (no transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss`
   ignores those and uses `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
   **Every heatmap-producing script adds secondary top/right axes in units of `w0`** (`x/w0`, `y/w0`) alongside the
@@ -739,8 +742,22 @@ constants as the conversion basis) the next time this file is touched.
   fixed `r` (`_azimuthal_derivative_circular` — `CircularDetector`'s own `phi=linspace(0,2*pi,N_phi)` grid already
   samples at fixed `r` along `phi`, so the doc's azimuthal derivative reduces directly to `d/dphi`, no
   `x1`/`x2`-combination formula needed, unlike the doc's own Cartesian-grid section); for `rectangular`, built
-  from that Cartesian-grid identity (`dphi_F = -x2*dF/dx1 + x1*dF/dx2`) via `np.gradient` (one-sided at the screen
-  edges — the doc's own "check convergence under grid refinement" caveat is not attempted). **Observed on a real
+  from that Cartesian-grid identity (`dphi_F = -x2*dF/dx1 + x1*dF/dx2`) via an FFT-based spectral derivative in `x`
+  and `y` (`_fft_derivative`) — **switched from an earlier `np.gradient`-based finite-difference version** after a
+  real rectangular-detector run (`p=0, l=0`, circular polarization, 64x64 grid, detector distance 25000 lambda)
+  showed `L3_orb_can` as pure unstructured speckle while `L3_int`/`L3_spin`/`L3_orb_res` (no derivative needed)
+  looked physically sensible. Root cause: at that distance/window the coherently-summed field's phase changes by
+  up to ~1.2 rad per grid step near the screen edges (Fresnel number ~0.25, not deep far-field — see the Fresnel-
+  number bullet above) — only ~5 samples per phase cycle, too coarse for `np.gradient`'s central difference.
+  Confirmed by comparing two independent differentiation schemes on the same data (the theory doc's own suggested
+  check): the old `np.gradient` result and an FFT/spectral derivative correlated only ~0.75 with each other and
+  disagreed in magnitude, and a same-config circular-detector run (whose `_azimuthal_derivative_circular` is exact,
+  not finite-difference) showed a smooth, structured `L3_orb_can` at the same scale — strong evidence the
+  rectangular finite-difference estimate, not the formula, was the problem. The FFT approach is exact for a
+  band-limited signal but **assumes periodicity over the configured window** (i.e. the field has decayed close to
+  zero at the screen edges) — a window too narrow for the actual field extent will show edge (Gibbs-type)
+  artifacts instead; widen `rectangular_detector_x/y_min/max` if so, rather than only adding points at fixed
+  width. The doc's own "check convergence under grid refinement" caveat is still not automated. **Observed on a real
   LG (`p=2, l=2`) test run**: `L3_orb_res` and `L3_orb_can` came out with the same spatial pattern (a smooth,
   axisymmetric ring structure) and comparable peak magnitude but opposite sign (`corrcoef ~ -0.97`) — the theory
   doc permits them to disagree pointwise, but doesn't predict near-exact sign-flipped agreement either; flagged
@@ -771,6 +788,112 @@ constants as the conversion basis) the next time this file is touched.
   comparing this script's `L3_orb_can` sign against "the beam's own physical rotation sense" (canonical,
   beam-axis-fixed) rather than purely internally — that comparison needs this `-1` applied explicitly for a
   backward-facing detector.
+- **`Radiation::export_incident_field_fourier` (`radiation_plotter.hpp`/`.cpp`) exports the INCIDENT laser beam's
+  own complex field — not the scattered radiation — as `incident_field.dat`, in the exact same column format as
+  `radiation_field.dat`** (reuses `plot_radiation_field`'s writer verbatim, passing the incident tensor as
+  `long_range` with `short_range`/`boundary` left zero), so every `py_scripts/radiation/plot_angular_momentum_*.py`
+  script can be pointed at either file. Purpose: a clean, exactly-known reference field (no coherent-sum noise, no
+  far-field Fresnel/near-field aliasing) to validate the angular-momentum formulas/derivatives against,
+  independent of the scattered field's own numerical behavior — see the "analytic incident-field cross-check"
+  bullet below for what this found. `main.cpp` calls it right after `plot_radiation_field`, for
+  `RectangularDetector`/`CircularDetector` only (skipped with a `std::cout` message, not a throw, for
+  `SphericalDetector` — matching the angular-momentum theory docs' own flat-screen restriction). Reuses the
+  detector's own local 2D grid (`get_row_coordinate`/`get_col_coordinate`, circular's being `(r, phi)` converted to
+  `(x, y)`) but **always evaluates at the laser's own canonical-frame beam waist, `z_loc=0`, ignoring the
+  detector's actual configured distance/rotation entirely** — i.e. "same size/resolution/`i_screen` ordering as
+  the real screen, teleported to the laser's own focus" — and always in the canonical frame (no lab-frame
+  counterpart exists for it, unlike `radiation_field.dat`, since the real distance/orientation is bypassed by
+  construction). Evaluated at the middle of the pulse's flat-top plateau, `phi = (get_phi_min()+get_phi_max())/2`
+  (envelope exactly `0` there, i.e. peak amplitude) — the specific instant doesn't matter because a global complex
+  phase common to every tensor component (all six share the same `complex_amplitude` evaluated at the same
+  `x_mu`) cancels exactly out of every bilinear angular-momentum formula (`Re[F*conj(F')]`, `Im[conj(F)*F']`), so
+  no real Fourier transform of the pulse is needed — the complex "phasor" `LaserField::get_complex_faraday_tensor`
+  builds (a new sibling to `get_faraday_tensor`, identical E/B construction minus the final `real(...)`) already
+  stands in for `F(omega)` at the carrier. **Units footgun found and fixed while building this**: initially passed
+  raw `laser.get_omega()` as the one-element `frequencies_list` to `plot_radiation_field`, but that function
+  divides by `fundamental_frequency`, which is in `PhysUtils::non_linear_Thomson_formula`'s `omega/c` convention,
+  not raw angular frequency — the exported `omega` column came out `~137.04` (`~= c`) instead of `~1.0` until fixed
+  by passing `laser.get_omega() / PhysUtils::AtomicUnits::c` instead. Verified end-to-end on a scratch rectangular
+  run: field magnitudes match the Gaussian falloff expected from the configured `w0`/`a0`, and
+  `plot_angular_momentum_density_screen.py --incident`/`plot_angular_momentum_flux_screen.py --incident` (see
+  next bullet) reproduce the same qualitative pattern as the standalone analytic Python cross-check below.
+- **The three `py_scripts/radiation/plot_angular_momentum_*.py` scripts (`plot_angular_momentum_flux.py`,
+  `plot_angular_momentum_flux_screen.py`, `plot_angular_momentum_density_screen.py`) all accept an `--incident`
+  flag** (before the optional run-folder argument, e.g. `plot_angular_momentum_density_screen.py --incident
+  ~/output/20260913_...`), which points the identical analysis at `incident_field.dat` instead of
+  `radiation_field.dat` — both share the same column format, so no other code path changes. Detected by filename
+  (`os.path.basename(radiation_filepath) == "incident_field.dat"`) inside `plot_angular_momentum_flux`/
+  `plot_angular_momentum_flux_screen`/`plot_angular_momentum_density_screen` themselves (not just the CLI), so
+  calling them programmatically with an `incident_field.dat` path also gets this behavior automatically. An
+  incident-beam run gets its own PNG filenames (`_incident` inserted before `_omega<N>`/`_spectrum`) and its own
+  `run_log.txt` section header (` -- incident beam` appended) rather than overwriting/being overwritten by the
+  real run's own plots/log section — both can be run back-to-back on the same run directory and coexist (verified:
+  all four `run_log.txt` sections — density/flux, real/incident — present simultaneously after running all four).
+  **`--incident`'s absolute magnitudes are not physically calibrated — only ratios between its own columns are
+  meaningful.** Found directly from a real run: `L3_spin` came out `~2.16e13 a.u.` on `--incident`, next to
+  `~1e-6 a.u.` on the same run's actual `radiation_field.dat` — 19 orders of magnitude apart, not something to
+  read as two comparable physical predictions. Root cause: `incident_field.dat`'s field has no Fourier-transform
+  normalization applied at all, unlike `radiation_field.dat`'s `general_factor`-scaled, properly-Liénard-Wiechert-
+  derived output — it's `LaguerreGaussLaser::complex_amplitude`'s own raw spatial envelope, evaluated at one
+  instant, relying only on a global phase cancelling out of the bilinear formulas (see
+  `export_incident_field_fourier`'s doc comment above). That's sufficient for the *ratio* checks the next bullet
+  relies on (`L3_orb_can/L3_spin`, `M33_int/L3_int`, ...), but the absolute numbers themselves carry no physical
+  meaning and must never be compared directly against a real run's own values, nor treated as "the beam's actual
+  angular momentum in units of `hbar`." Each of the three `plot_angular_momentum_*.py` scripts now prints this
+  caveat to stdout and writes it into its `run_log.txt` section whenever run with `--incident`
+  (`_UNCALIBRATED_MAGNITUDE_CAVEAT` in each file) specifically so this can't be missed a second time.
+- **Analytic incident-field cross-check: applied the density/flux formulas directly to the exact, smooth incident
+  LG(p=0,l=0) field (via a standalone Python replica of `LaguerreGaussLaser::complex_amplitude`, predating
+  `export_incident_field_fourier` above — that C++ export was added afterward specifically so this check can be
+  reproduced from the actual solver output instead of a separate Python reimplementation) to separate two
+  questions: is the density/flux **formula and code** wrong, or is the **scattered-radiation data** itself just
+  noisy/near-field-messy? Setup: `p=0,l=0`, circular polarization, evaluated at the beam's own waist (`z=0`), on a
+  grid spanning `+-4*w0` (decays to `~1e-4` of peak at the edge — good FFT periodicity, unlike the scattered-field
+  case above). Findings**:
+  - Both consistency identities hold exactly (`L3_int = L3_spin + L3_orb_res`, `M33_int = M33_spin + M33_orb_int`)
+    — confirms the code correctly implements the docs' definitions; no arithmetic bug.
+  - **`L3_orb_can / L3_spin ~ 4.5e-6`** — essentially zero, exactly the textbook expectation that a pure `l=0`
+    beam carries (almost) no canonical orbital angular momentum, only spin. Validates the canonical-orbital
+    formula *and* the FFT-derivative fix above together, on a case where the right answer is known in advance.
+  - **`L3_orb_res / L3_spin ~ -0.985`** — the "kinetic residual" orbital term (`L3_int - L3_spin`) nearly
+    *completely cancels* the spin term, even for this perfectly clean incident beam. This is the same
+    near-total-cancellation pattern seen on the actual scattered-radiation run (`p=0,l=0`, run
+    `20260913_003126`, `L3_orb_res/L3_spin ~= -0.988` there) — so it is **not** a scattering artifact or numerical
+    noise; it is already present in the bare incident field. It means `L3_orb_res` and `L3_orb_can`, evaluated on
+    the *identical exact field*, disagree wildly (`-100%` vs. `~0%` of spin) even fully integrated over the beam —
+    exactly where Section 5's own caveat ("their integrals agree once the boundary term vanishes") should most
+    favor agreement, since this Gaussian is essentially fully contained in the window. **Left as a genuinely open
+    question** — not yet resolved as a bug vs. a known subtlety in kinetic-vs-canonical angular-momentum
+    decomposition (the literature does distinguish "kinetic"/Poynting-based spin-orbit splits from "canonical"
+    phase-gradient ones, and they are not guaranteed to agree pointwise or in this particular sub-decomposition,
+    but that has not been independently re-derived here).
+  - **Density-vs-flux ratios: `int` is a proven exact algebraic identity, `spin` is a near-exact paraxial one —
+    and they are legitimately different constants from each other, not a bug.** Prompted by a direct question
+    ("shouldn't `int` and `spin` have the same flux/density ratio?" — a reasonable expectation if flux were simply
+    density transported at speed `c`, the way energy flux `S = c*u` works for a plane wave). Derived symbolically
+    (SymPy) from the exact closed forms of `G1`/`G2` (density, Section 1) and `T13`/`T23` (flux, Section 1) for
+    the `p=0,l=0` incident field, for *arbitrary* polarization and spatial-derivative values (not just this run's
+    numbers): **`T13 = ((c^2+1)/2) * G1` and `T23 = ((c^2+1)/2) * G2` identically** (confirmed:
+    `sympy.simplify(T13 - (c**2+1)/2*G1)` and the `T23` analogue both reduce to exactly `0`), hence
+    `M33_int = ((c^2+1)/2) * L3_int` exactly — `(c^2+1)/2 = 9389.93`, matching the `~9390` seen on both the
+    scattered-radiation run and the incident-field run to the precision already reported (the earlier "`c^2/2`"
+    write-up here was off by the `+1`, negligible in size but not exactly right). For spin, the same derivation
+    gives `M33_spin/L3_spin = 2*c^2/(c^2+1) + O(1/(k*w0)^2)` (the second term a genuine but tiny
+    position-dependent correction, `~4e-6` relative for `w0=75*lambda`) — **not** a global constant the way `int`
+    is, just extremely close to one (`2*c^2/(c^2+1) = 1.99989...`) because the paraxial correction is so small.
+    **Why `int` and `spin` differ from each other at all (`~9390` vs. `~2`), despite being built from the same six
+    Faraday components**: `G_i` (density) mixes *transverse-E x longitudinal-B* and *longitudinal-E x
+    transverse-B* products, while `T_i3` (flux) mixes *transverse-E x longitudinal-E* and *transverse-B x
+    longitudinal-B* products — genuinely different bilinear contractions, not the same quantity times a transport
+    velocity. The theory docs' own prefactors already carry one explicit power of `c` between density and flux
+    (`4*pi*epsilon0*c` vs `4*pi*epsilon0*c^2` for int; `2*pi*epsilon0*c^2/omega` vs `4*pi*epsilon0*c^3/omega` for
+    spin — from `E_i = c*F^{i0}` while `B` carries no such factor); for `int` the *remaining* bracket ratio itself
+    scales as `~c/2` (stacking with the prefactor's own `c` to give `~c^2/2` overall), while for `spin` the
+    bracket ratio instead scales as `~1/c` (cancelling the prefactor's extra `c` down to `~2`) — opposite trends,
+    so there is no single uniform "flux = k * density" constant across every quantity, and there being two
+    different per-quantity constants is the *correct*, now-proven behavior of these formulas, not a discrepancy to
+    chase further. `M33_orb_int/M33_spin`'s own ratio (`67.5` on the scattered run) is fully explained by these
+    same two relations via `M33_orb_int = M33_int - M33_spin` — not an independent third relation.
 - **`py_scripts/radiation/plot_angular_momentum_flux.py`'s own standalone output (`flux_total`) is now redundant,
   but the file itself cannot be deleted** — it is the shared utility module three other scripts import their
   rotation/coordinate machinery from, not just a superseded standalone script:
@@ -1098,7 +1221,7 @@ constants as the conversion basis) the next time this file is touched.
   `1/sqrt(2)`/`sqrt(2)`, which does reproduce the same envelope shape *and* total duration for that one
   config) -- reverted in favor of fixing `envelope` itself, since a per-config rescaling has to be
   redone by hand for every other config using `laser_wing_sigma`/`laser_wing_sigma_cutoff`
-  (`config/coherent_thomson.cfg`, `config/coherent_thomson_debug.cfg`, ...), whereas fixing the formula
+  (`config/config.cfg`, `config/debug.cfg`, ...), whereas fixing the formula
   once fixes all of them.
 - **`PhysUtils::AtomicUnits::c` (`phys_utils.hpp`) raised from the truncated `137.036` to the 2018 CODATA
   inverse fine-structure constant `137.035999084`** -- prompted by adding the SI-unit conversion constants

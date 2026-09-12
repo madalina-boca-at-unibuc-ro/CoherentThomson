@@ -19,7 +19,7 @@ cmake -B build/ && cmake --build build/
 The binary lands at `bin/coherent_thomson_solver` and requires a config file argument:
 
 ```
-./bin/coherent_thomson_solver config/coherent_thomson.cfg
+./bin/coherent_thomson_solver config/config.cfg
 ```
 
 Or configure, build, and run in one step:
@@ -47,7 +47,7 @@ python3 py_scripts/laser/plot_heatmap_z0.py       # only if plot_field_heatmap=t
 
 ## Configuration
 
-`config/coherent_thomson.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
+`config/config.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
 frequency/envelope/direction/polarization, beam particle count/geometry, initial momentum distribution, and
 radiation spectrum settings.
 

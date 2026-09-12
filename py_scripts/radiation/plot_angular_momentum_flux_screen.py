@@ -268,15 +268,31 @@ def integrate_angular_momentum_flux_screen(result, detector_type, config_path):
 
 _RUN_LOG_SECTION_HEADER = "Angular-momentum flux screen integration (plot_angular_momentum_flux_screen.py)"
 
+# See plot_angular_momentum_density_screen.py's own _UNCALIBRATED_MAGNITUDE_CAVEAT for the full
+# reasoning -- identical issue here: incident_field.dat's field has no Fourier-transform normalization
+# applied, so M33_* absolute magnitudes from --incident are on an arbitrary scale, not comparable to a
+# real scattered-radiation run's own M33_* values. Only ratios (e.g. M33_int/M33_spin, or against the
+# density script's own L3_* values) are meaningful.
+_UNCALIBRATED_MAGNITUDE_CAVEAT = (
+    "NOTE: incident_field.dat's absolute field magnitude has no Fourier-transform normalization "
+    "applied (see this script's _UNCALIBRATED_MAGNITUDE_CAVEAT) -- only RATIOS between the columns "
+    "below (e.g. M33_orb_int/M33_spin) are physically meaningful; the absolute values are on an "
+    "arbitrary scale and are NOT comparable to a real scattered-radiation run's own M33_* values."
+)
 
-def append_integration_to_run_log(run_dir, detector_type, integrated):
+
+def append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=""):
     """
     Appends (or, on a re-run, replaces) a 'J3' summary table in the run's own run_log.txt --
     Section 5 of theory/angular_momentum_flux_screen_from_Faraday.md integrated over the whole
     screen, one row per frequency. Only this script's own previously-appended section (identified by
-    _RUN_LOG_SECTION_HEADER) is ever replaced; everything Logging::write_run_log itself wrote is left
-    untouched, so re-running this script doesn't pile up duplicate sections.
+    _RUN_LOG_SECTION_HEADER + label_suffix) is ever replaced; everything Logging::write_run_log itself
+    wrote is left untouched, so re-running this script doesn't pile up duplicate sections.
+    `label_suffix` (e.g. " -- incident beam", set when run on incident_field.dat -- see
+    plot_angular_momentum_flux_screen) keeps that table in its own section rather than overwriting the
+    actual scattered-radiation run's own logged section.
     """
+    header = _RUN_LOG_SECTION_HEADER + label_suffix
     log_path = os.path.join(run_dir, "run_log.txt")
     if not os.path.exists(log_path):
         raise FileNotFoundError(
@@ -286,12 +302,15 @@ def append_integration_to_run_log(run_dir, detector_type, integrated):
     with open(log_path) as f:
         content = f.read()
 
-    marker = f"\n{_RUN_LOG_SECTION_HEADER}\n"
+    marker = f"\n{header}\n"
     marker_index = content.find(marker)
     if marker_index != -1:
         content = content[:marker_index]
 
-    lines = [content.rstrip("\n"), "", _RUN_LOG_SECTION_HEADER, "-" * len(_RUN_LOG_SECTION_HEADER),
+    lines = [content.rstrip("\n"), "", header, "-" * len(header)]
+    if label_suffix:
+        lines += [f"  {_UNCALIBRATED_MAGNITUDE_CAVEAT}", ""]
+    lines += [
              f"  Rough sum_p Delta_A_p * M33_p screen integration (theory/angular_momentum_flux_screen_from_Faraday.md",
              f"  Section 5), {detector_type} detector, trapezoidal quadrature in "
              f"{'(x, y)' if detector_type == 'rectangular' else '(r^2, phi)'} (exact in total area regardless of grid",
@@ -307,12 +326,15 @@ def append_integration_to_run_log(run_dir, detector_type, integrated):
     print(f"Appended angular-momentum flux screen integration to {log_path}")
 
 
-def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label):
+def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label,
+                       label_suffix="", title_suffix=""):
     """
     Renders `column` (one of M33_int/M33_spin/M33_orb_int) the same way
     plot_angular_momentum_flux.py's own plot_angular_momentum_flux renders its single flux_total: a
     line plot vs. omega/omega_1 for a 1x1 detector (the dense_frequency_spectrum workflow), or one
-    heatmap PNG per frequency on the detector's own native grid otherwise.
+    heatmap PNG per frequency on the detector's own native grid otherwise. `label_suffix`/
+    `title_suffix` (set when run on incident_field.dat -- see plot_angular_momentum_flux_screen) keep
+    those PNGs from overwriting the actual scattered-radiation run's own plots.
     """
     if result['i_screen'].nunique() == 1:
         subset = result.sort_values('omega')
@@ -321,10 +343,10 @@ def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, p
         ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
         ax.set_ylabel(axis_label)
         ax.grid(True)
-        fig.suptitle(f"Spectral angular-momentum flux density ({name})", fontsize=13, fontweight='bold')
+        fig.suptitle(f"Spectral angular-momentum flux density ({name}){title_suffix}", fontsize=13, fontweight='bold')
         plt.tight_layout()
 
-        output_img = os.path.join(png_dir, f"angular_momentum_screen_{name}_spectrum.png")
+        output_img = os.path.join(png_dir, f"angular_momentum_screen_{name}{label_suffix}_spectrum.png")
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
@@ -366,12 +388,12 @@ def _plot_one_quantity(result, detector_type, config_path, radiation_filepath, p
         fig.colorbar(sc, ax=ax, label=axis_label, pad=0.15)
         add_w0_secondary_axes(ax, w0)
 
-        fig.suptitle(f"Angular-momentum flux density ({name}), $\\omega$ index {i_omega} "
+        fig.suptitle(f"Angular-momentum flux density ({name}){title_suffix}, $\\omega$ index {i_omega} "
                      f"($\\omega/\\omega_1$={omega_value:.4g}), {detector_type} detector, "
                      f"{detector_geometry_label}", fontsize=11, fontweight='bold')
         plt.tight_layout()
 
-        output_img = os.path.join(png_dir, f"angular_momentum_screen_{name}_omega{i_omega}.png")
+        output_img = os.path.join(png_dir, f"angular_momentum_screen_{name}{label_suffix}_omega{i_omega}.png")
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
@@ -384,29 +406,49 @@ def plot_angular_momentum_flux_screen(radiation_filepath):
     multi-point detector, three separate sets of per-frequency plots), one per quantity. Also
     integrates each over the screen (Section 5) and appends the resulting J3(omega) table to the
     run's own run_log.txt (see append_integration_to_run_log).
+
+    `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
+    sibling (Core::Radiation::export_incident_field_fourier) -- see
+    plot_angular_momentum_density_screen's own doc comment for why/how; detected by filename so an
+    incident-beam run gets its own PNG names and run_log section instead of overwriting the real run's.
     """
+    is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
+    label_suffix = "_incident" if is_incident else ""
+    title_suffix = " (incident beam)" if is_incident else ""
+    run_log_header_suffix = " -- incident beam" if is_incident else ""
+
     result, detector_type, config_path = compute_angular_momentum_flux_screen(radiation_filepath)
 
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
 
     for column, name, axis_label in QUANTITIES:
-        _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label)
+        _plot_one_quantity(result, detector_type, config_path, radiation_filepath, png_dir, column, name, axis_label,
+                           label_suffix=label_suffix, title_suffix=title_suffix)
 
     integrated = integrate_angular_momentum_flux_screen(result, detector_type, config_path)
+    if is_incident:
+        print(_UNCALIBRATED_MAGNITUDE_CAVEAT)
     print(integrated.to_string(index=False))
-    append_integration_to_run_log(os.path.dirname(radiation_filepath), detector_type, integrated)
+    append_integration_to_run_log(os.path.dirname(radiation_filepath), detector_type, integrated,
+                                  label_suffix=run_log_header_suffix)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2:
-        input_file = os.path.join(sys.argv[1], "radiation_field.dat")
+    args = sys.argv[1:]
+    use_incident = "--incident" in args
+    if use_incident:
+        args.remove("--incident")
+    field_filename = "incident_field.dat" if use_incident else "radiation_field.dat"
+
+    if len(args) >= 1:
+        input_file = os.path.join(args[0], field_filename)
         if not os.path.exists(input_file):
             print(f"Error: '{input_file}' not found")
             sys.exit(1)
     else:
         try:
-            input_file = find_latest_output_file("radiation_field.dat")
+            input_file = find_latest_output_file(field_filename)
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
             sys.exit(1)

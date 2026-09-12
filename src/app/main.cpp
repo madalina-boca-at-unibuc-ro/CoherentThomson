@@ -192,6 +192,19 @@ int main(int argc, char* argv[]) {
     Radiation::plot_radiation_field(radiation_field, sim_par.frequencies, sim_par.fundamental_frequency,
                                     run_output_dir + "/radiation_field.dat");
 
+    // Additive diagnostic export: the incident laser beam's own field (not the scattered radiation),
+    // in the same file format, for cross-checking the angular-momentum analysis scripts against a
+    // known-analytic reference field -- see Radiation::export_incident_field_fourier's doc comment.
+    // Only meaningful for rectangular/circular detectors (the angular-momentum theory docs' own
+    // flat-screen restriction); skipped with a message rather than aborting the run otherwise.
+    if (detector->get_type_name() == "RectangularDetector" || detector->get_type_name() == "CircularDetector") {
+      Radiation::export_incident_field_fourier(*laser, *detector, sim_par.fundamental_frequency,
+                                               run_output_dir + "/incident_field.dat");
+    } else {
+      std::cout << "Skipping incident field export: detector_type '" << detector->get_type_name()
+                << "' has no flat local (x, y) plane (only rectangular/circular are supported).\n";
+    }
+
     Logging::write_run_log(simulation_config, *laser, *detector, electron_beam.size(), sim_par, num_threads,
                            simulation_elapsed.count(), total_cpu_seconds, run_output_dir + "/run_log.txt");
     std::cout << "Successfully exported run log to " << run_output_dir << "/run_log.txt\n";

@@ -290,7 +290,23 @@ def plot_angular_momentum_flux(radiation_filepath):
       workflow): one line plot vs. omega.
     - multiple screen points: one heatmap PNG per frequency, rendered on the detector's own native
       grid like radiation/plot_field.py's pcolormesh panels.
+
+    `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
+    sibling (Core::Radiation::export_incident_field_fourier) -- see
+    plot_angular_momentum_density_screen.py's own doc comment for why/how; detected by filename so an
+    incident-beam run gets its own PNG names/titles instead of overwriting the real run's.
     """
+    is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
+    label_suffix = "_incident" if is_incident else ""
+    title_suffix = " (incident beam)" if is_incident else ""
+    if is_incident:
+        # See plot_angular_momentum_density_screen.py's _UNCALIBRATED_MAGNITUDE_CAVEAT: incident_field.dat's
+        # field has no Fourier-transform normalization applied, so flux_total's absolute colorbar scale here
+        # is arbitrary -- not comparable to a real scattered-radiation run's own flux_total values.
+        print("NOTE: incident_field.dat's absolute field magnitude has no Fourier-transform normalization "
+              "applied -- this plot's colorbar scale is arbitrary and NOT comparable to a real "
+              "scattered-radiation run's own flux_total values.")
+
     result, detector_type, config_path = compute_angular_momentum_flux(radiation_filepath)
 
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
@@ -305,10 +321,11 @@ def plot_angular_momentum_flux(radiation_filepath):
         ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
         ax.set_ylabel("$d\\mathcal{F}_{J_z}/d\\omega$ (a.u.)")
         ax.grid(True)
-        fig.suptitle("Spectral angular-momentum flux density (total field)", fontsize=13, fontweight='bold')
+        fig.suptitle(f"Spectral angular-momentum flux density (total field){title_suffix}",
+                     fontsize=13, fontweight='bold')
         plt.tight_layout()
 
-        output_img = os.path.join(png_dir, "angular_momentum_flux_spectrum.png")
+        output_img = os.path.join(png_dir, f"angular_momentum_flux{label_suffix}_spectrum.png")
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
@@ -350,26 +367,32 @@ def plot_angular_momentum_flux(radiation_filepath):
         fig.colorbar(sc, ax=ax, label="$d\\mathcal{F}_{J_z}/d\\omega$ (a.u.)", pad=0.15)
         add_w0_secondary_axes(ax, w0)
 
-        fig.suptitle(f"$d\\mathcal{{F}}_{{J_z}}/d\\omega$ (total field), $\\omega$ index {i_omega} "
+        fig.suptitle(f"$d\\mathcal{{F}}_{{J_z}}/d\\omega$ (total field){title_suffix}, $\\omega$ index {i_omega} "
                      f"($\\omega/\\omega_1$={omega_value:.4g}), {detector_type} detector, "
                      f"{detector_geometry_label}", fontsize=12, fontweight='bold')
         plt.tight_layout()
 
-        output_img = os.path.join(png_dir, f"angular_momentum_flux_omega{i_omega}.png")
+        output_img = os.path.join(png_dir, f"angular_momentum_flux{label_suffix}_omega{i_omega}.png")
         plt.savefig(output_img, dpi=200, bbox_inches='tight')
         print(f"Successfully saved plot to {output_img}")
         plt.close(fig)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2:
-        input_file = os.path.join(sys.argv[1], "radiation_field.dat")
+    args = sys.argv[1:]
+    use_incident = "--incident" in args
+    if use_incident:
+        args.remove("--incident")
+    field_filename = "incident_field.dat" if use_incident else "radiation_field.dat"
+
+    if len(args) >= 1:
+        input_file = os.path.join(args[0], field_filename)
         if not os.path.exists(input_file):
             print(f"Error: '{input_file}' not found")
             sys.exit(1)
     else:
         try:
-            input_file = find_latest_output_file("radiation_field.dat")
+            input_file = find_latest_output_file(field_filename)
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
             sys.exit(1)
