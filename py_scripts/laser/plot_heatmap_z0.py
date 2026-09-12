@@ -7,6 +7,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
+MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+
 def read_header_comments(filepath):
     """
     Peeks at the file's leading '# ...' comment lines (written by
@@ -73,9 +75,9 @@ def plot_field_heatmap(filepath):
     if snapshot_description:
         plt.suptitle(f"{snapshot_description} -- start of flat-top plateau", fontsize=9, y=0.98)
 
-    # Save output plot into a 'png_folder' subfolder of the run directory,
-    # alongside the .dat files.
-    png_dir = os.path.join(os.path.dirname(filepath), "png_folder")
+    # Save output plot into a per-module subfolder of the run directory's 'png_folder'
+    # (mirroring py_scripts/'s own laser/detector/particle/radiation/debug layout).
+    png_dir = os.path.join(os.path.dirname(filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
     output_name = os.path.basename(filepath).rsplit('.', 1)[0] + "_plot.png"
     output_img = os.path.join(png_dir, output_name)
@@ -85,16 +87,19 @@ def plot_field_heatmap(filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        # No explicit path given: locate laser_field_heatmap_z0.dat under the
-        # most recent run directory inside the configured output_folder.
+        # No explicit run folder given: locate laser_field_heatmap_z0.dat under
+        # the most recent run directory inside the configured output_folder.
         try:
             input_file = find_latest_output_file("laser_field_heatmap_z0.dat")
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
-            print(f"Run command like: python3 {sys.argv[0]} <path_to_data_file>")
+            print(f"Run command like: python3 {sys.argv[0]} <path_to_run_folder>")
             sys.exit(1)
-        print(f"No file given; using latest run's field heatmap: {input_file}")
+        print(f"No folder given; using latest run: {input_file}")
     else:
-        input_file = sys.argv[1]
+        input_file = os.path.join(sys.argv[1], "laser_field_heatmap_z0.dat")
+        if not os.path.exists(input_file):
+            print(f"Error: '{input_file}' not found")
+            sys.exit(1)
 
     plot_field_heatmap(input_file)

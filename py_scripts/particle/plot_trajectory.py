@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file, get_laser_period
 
+MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+
 # Core::PhysUtils::AtomicUnits (phys_utils.hpp): c in the solver's own atomic units (1/alpha, 2018
 # CODATA), and m_0 = 1.0 there -- so mc (the momentum unit) is just C_LIGHT itself, no separate mass
 # factor needed. Mirrors phys_utils.hpp's own value independently (no shared constants module between
@@ -99,7 +101,9 @@ def plot_electron_trajectory(filepath):
     cmap = plt.get_cmap('tab10')
     electron_colors = {eid: cmap(i) for i, eid in enumerate(electron_ids)}
 
-    png_dir = os.path.join(os.path.dirname(filepath), "png_folder")
+    # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
+    # laser/detector/particle/radiation/debug layout).
+    png_dir = os.path.join(os.path.dirname(filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
     basename = os.path.basename(filepath).rsplit('.', 1)[0]
 
@@ -126,16 +130,19 @@ def plot_electron_trajectory(filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        # No explicit path given: locate electron.dat under the most recent
-        # run directory inside the configured output_folder.
+        # No explicit run folder given: locate electron.dat under the most
+        # recent run directory inside the configured output_folder.
         try:
             input_file = find_latest_output_file("electron.dat")
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
-            print(f"Run command like: python3 {sys.argv[0]} <path_to_electron.dat>")
+            print(f"Run command like: python3 {sys.argv[0]} <path_to_run_folder>")
             sys.exit(1)
-        print(f"No file given; using latest run's trajectory: {input_file}")
+        print(f"No folder given; using latest run: {input_file}")
     else:
-        input_file = sys.argv[1]
+        input_file = os.path.join(sys.argv[1], "electron.dat")
+        if not os.path.exists(input_file):
+            print(f"Error: '{input_file}' not found")
+            sys.exit(1)
 
     plot_electron_trajectory(input_file)

@@ -26,18 +26,21 @@ python3 py_scripts/compile_and_run.py [config_file]
 ```
 Running the binary directly requires a config file argument:
 ```
-./bin/coherent_thomson_solver config/coherent_thomson.cfg
+./bin/coherent_thomson_solver config/config.cfg
 ```
 
 When testing a code change (not validating physics), run with a drastically reduced
-`beam_particle_count` (e.g. `50` instead of the repo default `2000`) — simulation time scales with
+`beam_particle_count` (e.g. `50` instead of the repo default `1024`) — simulation time scales with
 the electron count and a full run can take tens of seconds to minutes, dominating iteration time for
 no benefit while just checking that something builds/runs/exports the right files. Copy the config
-rather than editing `config/coherent_thomson.cfg` in place, unless the task is specifically about
+rather than editing `config/config.cfg` in place, unless the task is specifically about
 changing the default config.
 
 Visualize `.dat` outputs (no arguments — each locates the most recent `<output_folder>/YYYYMMDD_HHMMSS` run via
-`py_scripts/utils/run_output_utils.py`, so plotting always targets the last solver run):
+`py_scripts/utils/run_output_utils.py`, so plotting always targets the last solver run). Every script also accepts
+an optional trailing **run folder** argument (not a specific `.dat` file path) — it joins its own known filename
+(e.g. `radiation_field.dat` for every `radiation/` script) onto that folder itself and errors clearly if the file
+isn't there:
 ```
 python3 py_scripts/laser/plot_field.py
 python3 py_scripts/detector/plot_stereographic.py
@@ -51,6 +54,7 @@ python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful o
 python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
 python3 py_scripts/radiation/plot_angular_momentum_flux.py                 # rectangular/circular detectors only, see its module docstring
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
+python3 py_scripts/radiation/plot_all_components.py  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -96,6 +100,17 @@ There is no test suite yet.
   namespace package (no `__init__.py` needed) without requiring `python -m`. Sibling scripts within the same
   module folder (e.g. `radiation/plot_spherical_components.py` importing from `radiation/plot_angular_momentum_flux.py`
   or `radiation/plot_field.py`) import each other directly by filename with no shim, same as before the move.
+- **CLI convention**: every plotting script's optional trailing argument is a run *folder* (e.g.
+  `~/output/20260912_105244`), not a specific `.dat` file path — the script already knows its own one required
+  filename (`radiation_field.dat` for every `radiation/` script, `electron.dat` for `particle/plot_trajectory.py`,
+  ...), so it just joins that onto the given folder and errors clearly if the file isn't there. Omitting the
+  argument still falls back to `find_latest_output_file` (auto-discovering the latest run), unchanged.
+- **PNG output convention**: every plotting script writes into a per-module subfolder of the run directory's
+  `png_folder/` — `png_folder/laser/`, `png_folder/detector/`, `png_folder/particle/`, `png_folder/radiation/`,
+  `png_folder/debug/` — mirroring `py_scripts/`'s own module layout, instead of one flat `png_folder/`. Each
+  script derives its own subfolder name automatically as `MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))`
+  (a module-level constant near its imports) rather than hardcoding the string, so it can't drift from the
+  script's actual location.
 
 ### Namespace structure
 
@@ -117,7 +132,7 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 
 ### Config file format
 
-`config/coherent_thomson.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
+`config/config.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
 frequency/envelope/direction/polarization, beam particle count/geometry, initial momentum distribution, radiation
 spectrum range, and a trajectory-print-frequency knob. Numeric values may carry a unit suffix (`lambda`, `pi`,
 `mc`, `cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...) resolved by `IoUtils::convert_unit_to_number` against the
@@ -140,7 +155,7 @@ One exception to the single-number-plus-unit convention: the laser's polarizatio
 
 ### Debug mode (per-tau radiation integrand diagnostics)
 
-`config/coherent_thomson_debug.cfg` is a ready-made config satisfying the constraints below (`debug=true`,
+`config/debug.cfg` is a ready-made config satisfying the constraints below (`debug=true`,
 `beam_particle_count=1`, single-point rectangular detector) — use it (or a copy) instead of hand-editing the
 default config when exercising this path.
 
@@ -169,7 +184,7 @@ Two output files, both one row per trajectory point (`tau`), for the single elec
 Both of those plotting scripts, and `particle/plot_trajectory.py`, plot against `tau/T` rather than raw `tau` (`T
 = 2*pi/omega`, the laser period) — `utils.run_output_utils.get_laser_period(run_dir)` reads `laser_frequency` back out
 of that specific run's own `config.cfg` (written by `IoUtils::copy_config_to_run_directory`), not the live repo
-config, so the axis stays correct even if `config/coherent_thomson.cfg` has since changed. `debug/plot_integrand.py`
+config, so the axis stays correct even if `config/config.cfg` has since changed. `debug/plot_integrand.py`
 still plots against raw `tau`, not `tau/T`.
 
 ### Run log

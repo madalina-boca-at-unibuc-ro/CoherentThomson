@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 
+MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+
 def read_axes_unit(filepath):
     """
     Peeks at the file's leading '# axes_unit <name>' comment line (written by
@@ -51,9 +53,9 @@ def plot_stereographic(filepath):
     plt.ylabel(y_label, fontsize=12)
     plt.grid(True, linestyle=':', alpha=0.6)
 
-    # Save output plot into a 'png_folder' subfolder of the run directory,
-    # alongside the .dat files.
-    png_dir = os.path.join(os.path.dirname(filepath), "png_folder")
+    # Save output plot into a per-module subfolder of the run directory's 'png_folder'
+    # (mirroring py_scripts/'s own laser/detector/particle/radiation/debug layout).
+    png_dir = os.path.join(os.path.dirname(filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
     output_name = os.path.basename(filepath).rsplit('.', 1)[0] + "_plot.png"
     output_img = os.path.join(png_dir, output_name)
@@ -63,16 +65,19 @@ def plot_stereographic(filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        # No explicit path given: locate detector_stereographic.dat under the
-        # most recent run directory inside the configured output_folder.
+        # No explicit run folder given: locate detector_stereographic.dat under
+        # the most recent run directory inside the configured output_folder.
         try:
             input_file = find_latest_output_file("detector_stereographic.dat")
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
-            print(f"Run command like: python3 {sys.argv[0]} <path_to_data_file>")
+            print(f"Run command like: python3 {sys.argv[0]} <path_to_run_folder>")
             sys.exit(1)
-        print(f"No file given; using latest run's stereographic projection: {input_file}")
+        print(f"No folder given; using latest run: {input_file}")
     else:
-        input_file = sys.argv[1]
+        input_file = os.path.join(sys.argv[1], "detector_stereographic.dat")
+        if not os.path.exists(input_file):
+            print(f"Error: '{input_file}' not found")
+            sys.exit(1)
 
     plot_stereographic(input_file)

@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 
+MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+
 def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
@@ -39,7 +41,9 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
         print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
         sys.exit(1)
 
-    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder")
+    # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
+    # laser/detector/particle/radiation/debug layout).
+    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
 
     component_label = f"F^{{{mu}{nu}}}_{{\\mathrm{{{range_type}}}}}"
@@ -87,7 +91,7 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary> <mu> <nu> [path_to_radiation_field.dat]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary> <mu> <nu> [path_to_run_folder]")
         sys.exit(1)
 
     range_type = sys.argv[1]
@@ -107,13 +111,16 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if len(sys.argv) >= 5:
-        input_file = sys.argv[4]
+        input_file = os.path.join(sys.argv[4], "radiation_field.dat")
+        if not os.path.exists(input_file):
+            print(f"Error: '{input_file}' not found")
+            sys.exit(1)
     else:
         try:
             input_file = find_latest_output_file("radiation_field.dat")
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
             sys.exit(1)
-        print(f"No file given; using latest run's radiation field: {input_file}")
+        print(f"No folder given; using latest run: {input_file}")
 
     plot_point_spectrum(range_type, mu, nu, input_file)

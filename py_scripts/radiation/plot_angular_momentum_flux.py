@@ -51,6 +51,8 @@ from plot_field import (
 )
 from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
+MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+
 # Core::PhysUtils::AtomicUnits (phys_utils.hpp): c and epsilon_0 in the solver's own atomic units --
 # c is 1/alpha (2018 CODATA). Mirrors phys_utils.hpp's own value independently (no shared constants
 # module between C++ and Python) -- keep in sync if that one changes.
@@ -291,7 +293,9 @@ def plot_angular_momentum_flux(radiation_filepath):
     """
     result, detector_type, config_path = compute_angular_momentum_flux(radiation_filepath)
 
-    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder")
+    # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
+    # laser/detector/particle/radiation/debug layout).
+    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
 
     if result['i_screen'].nunique() == 1:
@@ -359,14 +363,17 @@ def plot_angular_momentum_flux(radiation_filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2:
-        input_file = sys.argv[1]
+        input_file = os.path.join(sys.argv[1], "radiation_field.dat")
+        if not os.path.exists(input_file):
+            print(f"Error: '{input_file}' not found")
+            sys.exit(1)
     else:
         try:
             input_file = find_latest_output_file("radiation_field.dat")
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
             sys.exit(1)
-        print(f"No file given; using latest run's radiation field: {input_file}")
+        print(f"No folder given; using latest run: {input_file}")
 
     try:
         plot_angular_momentum_flux(input_file)
