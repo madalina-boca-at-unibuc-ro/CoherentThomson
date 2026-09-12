@@ -985,3 +985,12 @@ constants as the conversion basis) the next time this file is touched.
   Debug-vs-Release build-type footgun documented above**: after editing a widely-`#include`d header in
   this repo, prefer a `--clean-first` (or fresh `build/`) rebuild over trusting incremental `cmake --build`
   to have picked up every affected translation unit, at least until this is root-caused.
+- **TODO: the sign of the `exp(ik...)` phase term in the *simplified* form (Form 2,
+  `radiation_phase_argument`/`short_range_prefactor`/`long_range_prefactor` in `radiation.cpp`, and the matching
+  derivation in `theory/FT_Faraday_tensor-direct_and_simplified_forms.md`) needs to be rechecked against an
+  external theoretical reference.** Confirmed (see the "FT sign convention" discussion) that the code currently
+  implements `exp(+i*omega*(x^0+R))` throughout (`radiation.cpp`, `debug_radiation.cpp`, and the theory doc all
+  agree with each other on this), but that only establishes internal self-consistency, not correctness against
+  the reference document being checked against. Flagged here at the user's request while that cross-check is in
+  progress; revisit this note once resolved (delete if confirmed correct, or update with the fix and a pointer to
+  what changed if not — following the pattern of the "Sign bug (fixed)" bullet above for the `F_s` term).
