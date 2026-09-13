@@ -45,7 +45,7 @@ isn't there:
 python3 py_scripts/laser/plot_field.py
 python3 py_scripts/detector/plot_stereographic.py
 python3 py_scripts/particle/plot_trajectory.py
-python3 py_scripts/radiation/plot_field.py
+python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [path_to_run_folder] [--incident]
 python3 py_scripts/detector/plot_scatter.py       # only has output if plot_detector_scatter=true in the config
 python3 py_scripts/particle/plot_beam_scatter.py  # only has output if plot_beam_scatter=true in the config
 python3 py_scripts/laser/plot_heatmap_z0.py       # only has output if plot_field_heatmap=true in the config
@@ -55,11 +55,16 @@ python3 py_scripts/debug/plot_exponent.py                        # meaningful ou
 python3 py_scripts/radiation/plot_angular_momentum_flux.py [--incident]                 # rectangular/circular detectors only, see its module docstring
 python3 py_scripts/radiation/plot_angular_momentum_flux_screen.py [--incident]          # rectangular/circular detectors only, see its module docstring
 python3 py_scripts/radiation/plot_angular_momentum_density_screen.py [--incident]       # rectangular/circular detectors only, see its module docstring
+python3 py_scripts/radiation/plot_angular_momentum_density_and_flux.py [--incident]     # rectangular/circular detectors only; separate, from-scratch reimplementation of the density
+                                                                                        # formulas per the still-being-reorganized theory/angular-momentum-density-and-flux.md --
+                                                                                        # see its module docstring; kept alongside, not instead of, the three scripts above.
+                                                                                        # --incident additionally runs the exact direct=spin+orbital+dJ3 identity check (needs
+                                                                                        # incident_field_zminus.dat/_zplus.dat, written by main.cpp alongside incident_field.dat)
 # --incident (before the optional run-folder arg) analyzes incident_field.dat (the incident laser beam's own
 # analytic field, Core::Radiation::export_incident_field_fourier) instead of radiation_field.dat -- see CLAUDE.md's
 # "analytic incident-field cross-check" note
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
-python3 py_scripts/radiation/plot_all_components.py  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
+python3 py_scripts/radiation/plot_all_components.py [--incident]  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -634,6 +639,16 @@ constants as the conversion basis) the next time this file is touched.
   isn't a useful diagnostic here). The fundamental (`i_omega=0`) also isn't a useful test this close to the beam
   axis — its angular variation is ~6 orders of magnitude below its constant offset, below the double-precision
   noise floor.
+- **STATUS WARNING: everything related to angular-momentum (all `theory/angular_momentum*.md`/
+  `theory/angular-momentum*.md` docs and every `py_scripts/radiation/plot_angular_momentum_*.py` script below) is
+  currently highly suspicious and should not be trusted.** Across every variant tried so far — the original
+  flux/density-screen scripts, the reorganized `plot_angular_momentum_density_and_flux.py`, spin-vs-orbital splits,
+  direct-vs-sum representations, the incident beam vs. the real scattered field — internally-consistent identities
+  that should hold either fail outright or are off by large factors (not residual/quadrature-sized errors), and
+  where two independent derivations of "the same" quantity have been cross-checked they don't obviously agree
+  either. See the bullets below for the specific numbers, but treat all of them (and any `L3_*`/`M33_*`/`j3_*`
+  value from any of these scripts) as under active, unresolved investigation, not as validated physics, until this
+  warning is removed.
 - **`theory/angular_momentum_flux_density.md` derives the spectral angular-momentum flux density along `Oz`**,
   evaluated from the physical total field (`E_total`/`B_total`, summed over whichever of `long_range`/
   `short_range`/`boundary` the run's `radiation_formula` produced — `boundary` is identically zero for
@@ -842,6 +857,23 @@ constants as the conversion basis) the next time this file is touched.
   angular momentum in units of `hbar`." Each of the three `plot_angular_momentum_*.py` scripts now prints this
   caveat to stdout and writes it into its `run_log.txt` section whenever run with `--incident`
   (`_UNCALIBRATED_MAGNITUDE_CAVEAT` in each file) specifically so this can't be missed a second time.
+- **`py_scripts/radiation/plot_field.py`'s `plot_radiation_component` (and its `plot_all_components.py` driver)
+  also accept `--incident`**, the same flag/detection convention as the three `plot_angular_momentum_*.py` scripts
+  above (`os.path.basename(radiation_filepath) == "incident_field.dat"`, checked inside the plotting function
+  itself, not just its CLI) — so the raw `F^{mu nu}` Re/Im/Abs/Phase heatmaps can be inspected directly against
+  the exact incident-beam reference field, not just the derived angular-momentum quantities. `incident_field.dat`
+  only ever populates `long_range` (`short_range`/`boundary` are identically zero — the incident field has no such
+  split), so `'short'`/`'boundary'` degrade gracefully to all-zero panels and `'total'` reduces to `'long'` exactly;
+  no other code path changes. **Unlike** the three `plot_angular_momentum_*.py` scripts (which disambiguate
+  incident-beam output from a real run's by inserting `_incident` into the PNG filename, keeping both in the same
+  `png_folder/radiation/` folder), `plot_radiation_component` instead routes every PNG into a `png_folder/radiation/
+  emitted/` or `png_folder/radiation/incident/` subfolder (filenames unchanged, neither left bare in
+  `png_folder/radiation/` itself) — two parallel, equally-named folders rather than one being the implicit default,
+  so `plot_all_components.py --incident`'s 24 output files land as a self-contained set, distinguishable from a real
+  run's own 24 `emitted/` files by folder rather than by a filename suffix on every one of them. Prints the same
+  `_UNCALIBRATED_MAGNITUDE_CAVEAT`-style note (adapted for a raw tensor plot rather than a bilinear angular-momentum
+  quantity) once per `plot_radiation_component` call
+  when `--incident` is set.
 - **Analytic incident-field cross-check: applied the density/flux formulas directly to the exact, smooth incident
   LG(p=0,l=0) field (via a standalone Python replica of `LaguerreGaussLaser::complex_amplitude`, predating
   `export_incident_field_fourier` above — that C++ export was added afterward specifically so this check can be
@@ -911,6 +943,83 @@ constants as the conversion basis) the next time this file is touched.
   `angular_momentum_utils.py`, or fold into `py_scripts/utils/`), delete `plot_angular_momentum_flux.py`'s own
   plotting function and `__main__` block, and update the three importing scripts' `from plot_angular_momentum_flux
   import ...` lines accordingly — genuinely removes the redundant script, but touches four files instead of zero.
+- **`py_scripts/radiation/plot_angular_momentum_density_and_flux.py` is a fourth, deliberately separate script**
+  implementing `theory/angular-momentum-density-and-flux.md` — a from-scratch reorganization/simplification of
+  the density formulas, being actively rewritten by the user, **not** a port of
+  `plot_angular_momentum_density_screen.py`'s own `angular_momentum_density_screen_from_Faraday.md`. Kept
+  alongside (imports shared machinery from, but does not modify or replace) the three existing
+  `plot_angular_momentum_*.py` scripts specifically so this doc's formulas can be iterated on and cross-checked
+  against the older, already-validated ones rather than silently superseding them. Computes four quantities per
+  screen point/frequency, using the doc's own column names directly (`j3_*`, not `L3_*`, and lower-case since the
+  doc calls these a volume density, not a screen density): `j3_spin` = `s_z`, `j3_orbital` (both
+  `(pi*epsilon_0/omega) * Im[...]`, doc Section 3.2 — the current prefactor, `4*pi*epsilon_0/(4*omega)` as the doc
+  writes it; two earlier, now-superseded versions of this script used `epsilon_0/(4*pi*omega)` and then
+  `2*pi*epsilon_0/omega`, each tracking the doc's own prefactor at the time), `j3_sum` (`= j3_spin + j3_orbital`),
+  and `j3_direct` = `4*pi*epsilon_0 * Re[x*(E3 B1*-E1 B3*) - y*(E2 B3*-E3 B2*)]` (doc Section 3.1, unchanged since
+  first implemented) — same bracket as `plot_angular_momentum_flux.py`'s own `angular_momentum_flux_density`, but
+  a **different prefactor** (`4*pi*epsilon_0` here vs. that function's `epsilon_0/pi`, from a different,
+  since-revised older theory-doc derivation) — so `j3_direct` is its own small function (`_j3_direct`), not a
+  reuse of `angular_momentum_flux_density` with an implicit rescale. `_spin_vector_components` returns the full
+  spin-density vector `(s_x, s_y, s_z)` (doc Sections 3.2/4.1, same `pi*epsilon_0/omega` prefactor, cyclic
+  `(1,2,3)->(2,3,1)->(3,1,2)` index permutation) — `s_z` is reused directly as `j3_spin`; `s_x`/`s_y` are only
+  needed for the divergence-correction term below, not among the four plotted quantities. The azimuthal derivative
+  needed for `j3_orbital` deliberately does **not** reuse `plot_angular_momentum_density_screen.py`'s FFT-based
+  `_azimuthal_derivative_rectangular`: this doc's own Section 4 specifies plain central finite differences
+  (`np.gradient`) on the Cartesian grid instead, so this script reimplements that function locally under the same
+  name — only `_azimuthal_derivative_circular` (a periodic centered difference in `phi` at fixed `r`, which is
+  exactly what the doc's polar-grid recipe also asks for) is still imported unchanged.
+- **The theory doc's Section 4 derives the EXACT pointwise identity between the direct and spin/orbital
+  representations**: `j3_direct = j3_spin + j3_orbital + dD_z/dz + div_perp(M_perp)`, where `dD_z/dz` is a genuine
+  z-derivative of the transverse spin moment (needs the field at neighboring z-planes — impossible from any
+  single-z export) and `div_perp(M_perp)`'s own screen integral is a boundary contour term the doc's Section 5
+  shows vanishes exactly for a large-enough screen — **the user has confirmed this project's screens are always
+  chosen large enough for that boundary term to be dropped**, leaving the practically checkable, purely
+  *integrated* form (Section 5, item 2): `J3_direct(omega) ~= J3_spin(omega) + J3_orbital(omega) + dJ3(omega)`,
+  `dJ3(omega) = [S(z=+delta_z) - S(z=-delta_z)] / (2*delta_z)`, `S(z) = sum_p Delta_A_p * (1/2)*(x_p s_x,p +
+  y_p s_y,p)` at that z-plane.
+  - **`Core::Radiation::export_incident_field_fourier` (`radiation_plotter.hpp`/`.cpp`) gained an optional
+    `z_offset_au` parameter (default `0.0`)**, shifting the evaluated canonical-frame plane along the laser's own
+    propagation direction away from the beam waist — added specifically so `main.cpp` can call it three times
+    (`z_offset_au = -delta_z, 0, +delta_z`) and give the Python script the three neighboring z-planes `dJ3` needs,
+    which no other export in this project can provide without a full re-run. Only meaningful for the incident
+    beam: the real scattered field has no analogous "evaluate off the actual detector plane" knob. **`x_mu[0]` is
+    compensated by `+z_offset_au` too** (not left at the fixed `ct0` the `z_offset_au=0` case uses) — found to be
+    necessary, not optional, while testing this: since a plane wave's phase (and therefore
+    `LaserField::envelope`'s own argument) depends on `(ct - z)`, leaving `x_mu[0]` fixed while shifting only `z`
+    silently also shifts *which instant of the pulse's own finite-duration envelope* gets sampled. A first attempt
+    without this compensation gave `incident_field_zminus.dat`/`incident_field_zplus.dat` that were **byte-for-byte
+    identical** for a large test offset (`+-5000 lambda`, verified via `md5sum`) — traced to the shift being larger
+    than the pulse's own spatial extent (`~50 cycles` for the test config, vs. `5000` wavelengths of shift), so
+    both planes landed squarely in the leading/trailing Gaussian wing where `envelope()` underflows to exactly
+    `0.0` regardless of sign. Compensating `ct0` holds "the same instant within the pulse" fixed and isolates the
+    intended quantity — the paraxial beam profile's own z-structure (Gouy phase, wavefront curvature) — from this
+    spurious envelope-drift effect; re-verified after the fix: `incident_field_zminus.dat`/`_zplus.dat` now differ
+    (`Re(F10)` even in `z_offset`, `Im(F10)` odd — the physically expected symmetry for this beam, not a
+    coincidence, confirmed analytically from `phi_mid` always landing on an exact multiple of `pi` whenever a
+    pulse's timing config keys are given in whole `cycles_adim` units), and the default `1 lambda` offset gives a
+    well-resolved (not degenerate), small finite-difference signal.
+  - **New config key `incident_field_delta_z`** (`config/config.cfg`, `config/debug.cfg`; default `1.0 lambda`,
+    small relative to a typical Rayleigh range `z_R ~ pi*w0^2/lambda`, thousands of `lambda` for this project's
+    usual `w0`) controls this spacing; read in `main.cpp` via the same `split_value_and_unit`/
+    `convert_unit_to_number` pattern as every other unit-bearing key. `main.cpp` writes the two extra exports
+    (`incident_field_zminus.dat`/`incident_field_zplus.dat`) right after the existing `incident_field.dat`,
+    wherever that's already written (i.e. `RectangularDetector`/`CircularDetector` only).
+  - **`verify_direct_spin_orbital_identity`** (Python) reads the two z-shifted files via
+    `_transverse_spin_moment_integral` (computes `S(z)` — only `s_x`/`s_y`, via `_spin_vector_components`, area-
+    integrated with `plot_angular_momentum_flux_screen.py`'s `get_screen_area_weights_au`, needed here, not the
+    full pointwise `j3_*` machinery), forms `dJ3` via central difference, and compares against
+    `integrate_angular_momentum_density_and_flux`'s own `j3_spin+j3_orbital` — appended to `run_log.txt` under its
+    own section (`append_identity_check_to_run_log`) via `plot_angular_momentum_density_and_flux`, **only when
+    `--incident` is set** (returns `None` with a printed explanation, not an error, if the two z-shifted files are
+    missing — e.g. a run predating this feature). **Verified on a real 5-electron incident-beam test run: the
+    identity does NOT hold** — `J3_spin+J3_orbital+dJ3 ~= 1.079e13` vs. `J3_direct ~= 3.15e11`, off by a factor of
+    `~34`. Notably, `dJ3` itself came out tiny (`~-4.86e7`, five orders of magnitude below `J3_spin`) — i.e. the
+    new divergence-correction term does essentially nothing to close the gap; the `~34x` mismatch is the same
+    order-of-magnitude discrepancy already visible in plain `j3_sum` vs. `j3_direct` before this identity check
+    existed, not something explained by the missing z-derivative term. **Not yet root-caused** — flagged here as a
+    concrete, reproducible number for whoever next works on reconciling the doc's spin/orbital and direct
+    prefactors, since the gap is far too large (orders of magnitude, not a residual quadrature/boundary-term
+    effect) to be explained by the boundary-term-dropped approximation alone.
 - **`py_scripts/radiation/plot_spherical_components.py` projects the exported Faraday tensor onto canonical-frame
   spherical components** (`E_r`/`E_theta`/`E_phi`/`B_r`/`B_theta`/`B_phi`), for `spherical`-detector runs only —
   again Python-only post-processing of `radiation_field.dat`, no C++ output involved. Unlike

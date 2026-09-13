@@ -77,7 +77,8 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
 }
 
 void export_incident_field_fourier(const Laser::LaserField& laser, const Detector::Detector_2D& detector,
-                                   double fundamental_frequency, const std::string& filepath) {
+                                   double fundamental_frequency, const std::string& filepath,
+                                   double z_offset_au) {
   std::string detector_type = detector.get_type_name();
   if (detector_type != "RectangularDetector" && detector_type != "CircularDetector") {
     throw std::runtime_error("export_incident_field_fourier: detector_type '" + detector_type +
@@ -93,6 +94,7 @@ void export_incident_field_fourier(const Laser::LaserField& laser, const Detecto
   double ct0 = phi_mid * PhysUtils::AtomicUnits::c / laser.get_omega();
   Core::MathUtils::RealFourVector eps1 = laser.get_epsilon_1();
   Core::MathUtils::RealFourVector eps2 = laser.get_epsilon_2();
+  Core::MathUtils::RealFourVector unity_n = laser.get_unity_n();
 
   size_t N1 = detector.get_cols();
   size_t N2 = detector.get_rows();
@@ -115,13 +117,28 @@ void export_incident_field_fourier(const Laser::LaserField& laser, const Detecto
         y_loc = detector.get_col_coordinate(j);
       }
 
-      // Canonical-frame position (t=ct0/c, x_loc, y_loc, z_loc=0), built directly from the laser's own
-      // transverse basis vectors -- bypassing the detector's actual to_lab_frame rotation/distance
-      // entirely, so this screen sits at the laser's own waist regardless of the real detector geometry.
+      // Canonical-frame position (t=(ct0+z_offset_au)/c, x_loc, y_loc, z_loc=z_offset_au), built
+      // directly from the laser's own transverse/propagation basis vectors -- bypassing the
+      // detector's actual to_lab_frame rotation/distance entirely, so this screen sits at the laser's
+      // own waist (offset by z_offset_au along its own propagation direction, zero by default)
+      // regardless of the real detector geometry.
+      //
+      // x_mu[0] is compensated by +z_offset_au (not left at the fixed ct0 every other caller uses)
+      // specifically so contract(x_mu, unity_n) -- and therefore complex_amplitude's carrier/envelope
+      // phase phi, and envelope(phi) -- comes out IDENTICAL to the z_offset_au=0 case: a plane wave's
+      // phase depends on (ct - z), so leaving x_mu[0] fixed while only shifting z would also shift
+      // *which instant of the pulse's own finite-duration envelope* gets sampled, contaminating the
+      // z-derivative this parameter exists for (see radiation_plotter.hpp's own doc comment) with a
+      // spurious envelope-drift term -- for a large enough z_offset_au (bigger than the pulse's own
+      // spatial length ~ c*pulse_duration) this isn't a subtle contamination but outright samples
+      // outside the wavepacket entirely, where the field is genuinely (correctly) zero. Compensating
+      // ct here holds "the same instant within the pulse" fixed and isolates the actual quantity of
+      // interest: the paraxial beam profile's own z-structure (Gouy phase, wavefront curvature, beam
+      // width) at a fixed local time, independent of any envelope translation.
       Core::MathUtils::RealFourVector x_mu;
-      x_mu[0] = ct0;
+      x_mu[0] = ct0 + z_offset_au;
       for (size_t mu = 1; mu < 4; ++mu) {
-        x_mu[mu] = x_loc * eps1[mu] + y_loc * eps2[mu];
+        x_mu[mu] = x_loc * eps1[mu] + y_loc * eps2[mu] + z_offset_au * unity_n[mu];
       }
 
       size_t i_screen = i * N2 + j;

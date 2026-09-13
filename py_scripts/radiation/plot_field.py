@@ -10,6 +10,20 @@ from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
+# Printed once whenever plot_radiation_component runs on incident_field.dat -- see
+# Radiation::export_incident_field_fourier's doc comment (radiation_plotter.hpp): that file holds the
+# incident beam's raw phasor field (a single evaluation instant, no tau-integration or general_factor
+# scaling applied), not a properly Fourier-transform-normalized F(omega) like radiation_field.dat's --
+# so its absolute Re/Im/Abs scale is not on the same footing as a real scattered-radiation run's,
+# even though the phase relationships between Re/Im/Abs/Phase within one panel set remain meaningful.
+# Same caveat text (adapted) as plot_angular_momentum_density_screen.py's/plot_angular_momentum_flux_screen.py's
+# own _UNCALIBRATED_MAGNITUDE_CAVEAT.
+_UNCALIBRATED_MAGNITUDE_CAVEAT = (
+    "NOTE: incident_field.dat's absolute field magnitude has no Fourier-transform normalization "
+    "applied -- this plot's colorbar scale is arbitrary and NOT comparable to a real "
+    "scattered-radiation run's own F^{mu nu} values."
+)
+
 def read_config_value(key, config_path=DEFAULT_CONFIG_PATH):
     """
     Reads a single 'key value [unit]' line out of the .cfg file and returns
@@ -285,7 +299,22 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     instead of a filled screen, and (for the spherical/circular polar grids specifically) breaks the
     azimuthal continuity (phi=0 and phi=2*pi are the same physical direction) that any helical/vortex
     structure in the field needs to actually look like a spiral around the vertex.
+
+    `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
+    sibling (Core::Radiation::export_incident_field_fourier) -- detected by filename, mirroring
+    radiation/plot_angular_momentum_flux.py's own is_incident convention. incident_field.dat only has
+    long_range populated (short_range/boundary are identically zero -- the incident field has no such
+    split), so 'short'/'boundary' degrade gracefully to all-zero panels and 'total' reduces to 'long'
+    exactly; no special-casing needed beyond the title/output-folder below. PNGs go into their own
+    'emitted'/'incident' subfolder of png_folder/radiation/ (rather than a suffix on the filename), so
+    a real run's plots are never at risk of being overwritten by an incident-beam one sharing the same
+    range_type/mu/nu/i_omega.
     """
+    is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
+    title_suffix = " (incident beam)" if is_incident else ""
+    if is_incident:
+        print(_UNCALIBRATED_MAGNITUDE_CAVEAT)
+
     try:
         data = pd.read_csv(radiation_filepath, sep=' ', comment='#')
     except Exception as e:
@@ -365,8 +394,12 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
 
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
-    # laser/detector/particle/radiation/debug layout).
-    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
+    # laser/detector/particle/radiation/debug layout), further split into 'emitted'/'incident'
+    # subfolders (rather than leaving the real run's own PNGs bare in png_folder/radiation/) so both
+    # sets sit side by side with parallel, equally-named paths instead of one being the implicit
+    # default.
+    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME,
+                           "incident" if is_incident else "emitted")
     os.makedirs(png_dir, exist_ok=True)
 
     component_label = f"F^{{{mu}{nu}}}_{{\\mathrm{{{range_type}}}}}"
@@ -415,7 +448,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
             add_w0_secondary_axes(ax, w0)
             cbars.append(cbar)
 
-        fig.suptitle(f"Radiated field, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
+        fig.suptitle(f"Radiated field{title_suffix}, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
                      f"{detector_type} detector, {detector_geometry_label}",
                      fontsize=12)
 
@@ -452,18 +485,23 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         plt.close(fig)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary|total> <mu> <nu> [path_to_run_folder]")
+    args = sys.argv[1:]
+    use_incident = "--incident" in args
+    if use_incident:
+        args.remove("--incident")
+
+    if len(args) < 3:
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary|total> <mu> <nu> [path_to_run_folder] [--incident]")
         sys.exit(1)
 
-    range_type = sys.argv[1]
+    range_type = args[0]
     if range_type not in ('long', 'short', 'boundary', 'total'):
         print("Error: first argument must be 'long', 'short', 'boundary', or 'total'")
         sys.exit(1)
 
     try:
-        mu = int(sys.argv[2])
-        nu = int(sys.argv[3])
+        mu = int(args[1])
+        nu = int(args[2])
     except ValueError:
         print("Error: mu and nu must be integers")
         sys.exit(1)
@@ -472,14 +510,15 @@ if __name__ == "__main__":
         print("Error: mu and nu must each be in [0, 3]")
         sys.exit(1)
 
-    if len(sys.argv) >= 5:
-        input_file = os.path.join(sys.argv[4], "radiation_field.dat")
+    field_filename = "incident_field.dat" if use_incident else "radiation_field.dat"
+    if len(args) >= 4:
+        input_file = os.path.join(args[3], field_filename)
         if not os.path.exists(input_file):
             print(f"Error: '{input_file}' not found")
             sys.exit(1)
     else:
         try:
-            input_file = find_latest_output_file("radiation_field.dat")
+            input_file = find_latest_output_file(field_filename)
         except (ValueError, FileNotFoundError) as e:
             print(f"Usage error: {e}")
             sys.exit(1)
