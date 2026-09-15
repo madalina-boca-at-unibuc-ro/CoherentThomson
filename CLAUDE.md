@@ -792,6 +792,24 @@ constants as the conversion basis) the next time this file is touched.
   ratio on the *same* run to 3+ significant figures in every case (e.g. both `~1.902` on the rectangular-incident
   run). This independent agreement between the flux and density ratios (different formulas, sharing only the
   underlying field data) is strong evidence the flux implementation is correct, not just internally consistent.
+  **Stronger independent check, found afterward on a real 16384-electron circular-detector run
+  (`config/config.cfg`'s own `laser_lg_p=2, laser_lg_l=2`): `Flux_total_quantity / Density_total_quantity ==
+  C_LIGHT` for all three pairs (`Sigma_zz/S_z`, `Lambda_zz/L_z`, `Flux_tot/J_z`), each independently, to ~3e-5
+  relative** (`137.0317` vs. `C_LIGHT = 137.035999084`) — not built into the formulas by construction (`Sigma_zz`/
+  `Lambda_zz` and `S_z`/`L_z` are algebraically unrelated bilinear combinations of `E`/`B`, each with its own
+  `epsilon_0`/`epsilon_0*c^2` prefactor from the theory doc, so this ratio landing on `c` is a genuine physical
+  result, not an artifact). **Why this is expected physically**: a flux (angular momentum crossing the screen per
+  unit time per unit area) equals a density (angular momentum sitting on/near the screen per unit area) times the
+  speed at which it's being transported — exactly the same relationship as the Poynting vector to the EM energy
+  density (`S = c*u`) for radiation freely propagating at `c`. Getting this ratio for angular momentum too,
+  independently for the spin and orbital pieces separately, is a strong confirmation that both flux formulas
+  (`Sigma_zz`/`Lambda_zz`) are correctly implemented *and* that this pipeline's Faraday-tensor export normalization
+  is self-consistent between the density and flux quantities (an open question elsewhere in this project for
+  other formula pairs, e.g. the FT-normalization caveat on the deleted flux-density scripts' own doc). The small
+  residual (`~3e-5`, consistent across all three pairs — not random noise) is most plausibly the finite `(N_R=128,
+  N_phi=64)` trapezoidal screen-integration quadrature error, or a genuine near-field/Fresnel-number correction
+  (this project's detector sits at a finite, not asymptotically-far, distance — see the Fresnel-number bullet
+  above) rather than a bug; not investigated further.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
