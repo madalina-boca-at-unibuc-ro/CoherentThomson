@@ -56,7 +56,7 @@ python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful o
 python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 python3 py_scripts/radiation/plot_all_components.py [--incident]  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
-python3 py_scripts/radiation/plot_angular_momentum.py [path_to_run_folder] [--incident]  # dS_z/dL_z/dJ_z / d(omega/omega_1) heatmaps + screen-integrated totals appended to run_log.txt; rectangular/circular detectors only, see theory/numerical_calculation_of_angular_momentum.md
+python3 py_scripts/radiation/plot_angular_momentum.py [path_to_run_folder] [--incident]  # dS_z/dL_z/dJ_z density + dSigma_zz/dLambda_zz/dFlux_tot flux heatmaps / d(omega/omega_1), + screen-integrated totals appended to run_log.txt; rectangular/circular detectors only, see theory/numerical_calculation_of_angular_momentum.md
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -697,7 +697,25 @@ constants as the conversion basis) the next time this file is touched.
   therefore just `[path_to_run_folder] [--incident]` (no leading range-type argument), reusing `plot_field.py`'s
   `--incident` flag and its own `emitted`/`incident` split of `png_folder/radiation/`, and its screen-geometry/
   cell-edge functions directly rather than duplicating them. Renders one single-panel (not 2x2 Re/Im/Abs/Phase —
-  each quantity is already real-valued) diverging-colormap heatmap per frequency, for each of `S_z`/`L_z`/`J_z`.
+  each quantity is already real-valued) diverging-colormap heatmap per frequency, for each entry of the
+  `QUANTITIES` tuple — originally just `S_z`/`L_z`/`J_z` density, extended below to also cover
+  `Sigma_zz`/`Lambda_zz`/`Flux_tot` flux.
+  **Circular detector: `pcolormesh(..., shading='gouraud')` on cell *centers*, not the flat-shaded cell-edge
+  quads every other detector plot in this project uses.** A coarse `(N_R, N_phi)` grid mapped to Cartesian `x`/`y`
+  and flat-shaded renders as visible pie-slice facets (confirmed on a real 50-electron/64-`N_phi` run — worst at
+  large radius, where each azimuthal wedge spans a wide arc length); `gouraud` shading interpolates color across
+  each cell from its own four corner values instead of flat-filling it, using the exact same grid this project
+  already builds (`get_screen_coordinates`'s centers, reshaped — matplotlib requires `X`/`Y`/`C` all the same
+  shape for `gouraud`, unlike flat shading's one-bigger edges array), so it costs no extra data and can't
+  desynchronize from the underlying grid. A `matplotlib.tri`/`tricontourf` Delaunay re-triangulation of the raw
+  point cloud was considered and rejected instead: it would fabricate interpolated data across the detector's own
+  center hole whenever `circular_detector_R_min > 0` (Delaunay has no notion that region has no data), and risks a
+  degenerate-triangulation failure right at `R_min=0` specifically, where the whole innermost ring collapses to
+  `N_phi` exactly-coincident points at the origin — `gouraud` shading instead just draws a degenerate (zero-area)
+  quad there, harmless, and leaves a small residual radial-striping artifact confined to the few pixels immediately
+  around that one degenerate point (visible on the same test run's beam-axis heatmaps), not a numerical failure.
+  Rectangular stays flat-shaded on cell edges, unchanged: its cells are already axis-aligned squares, so flat
+  shading doesn't produce the same faceted look.
   **Restricted to rectangular/circular detectors only** (the theory doc's own "Target Screens" instruction) — a
   spherical detector's `(theta, phi)` grid has no flat local `(x, y)` plane for the OAM operator (`x*d/dy-y*d/dx`
   or `d/dphi`) to act on, so `detector_type=spherical` is rejected outright (a `ValueError`), unlike the old,
@@ -742,6 +760,38 @@ constants as the conversion basis) the next time this file is touched.
   LG(p=2,l=2) mode's own radial intensity structure. The emitted (`radiation_field.dat`) field's ratio came out
   `~1.65` on the same run — not expected to match the incident beam's ratio exactly (Doppler shift/beam averaging/
   scattering physics intervene), but the same order of magnitude, as a coarse consistency check.
+- **`plot_angular_momentum.py` extended to also compute the z-directed SAM/OAM/total *flux*** (`Sigma_zz`/
+  `Lambda_zz`/`Flux_tot`, theory doc sections 3-4: "Spin/Orbital Angular Momentum Flux and Continuity Equation"),
+  alongside the density (`S_z`/`L_z`/`J_z`) the script already computed — **a genuinely different physical
+  quantity from the density, not the same thing in different units** (angular momentum flowing *through* the
+  screen along its own normal, vs. angular momentum *accumulated* on it; this project's own deleted precedent
+  scripts, `plot_angular_momentum_flux_screen.py`/`plot_angular_momentum_density_screen.py`, made the same
+  density-vs-flux distinction — see their own bullets' history in this file's git log if useful context). Both
+  flux quantities need the magnetic field too, so `_get_B_total` was added alongside `_get_E_total` (`Bx=F^{32}`,
+  `By=F^{13}`, `Bz=F^{21}`, no `c` factor, per `Eq. (definition-of-E-and-B)`) — both are now thin wrappers around
+  one shared `_get_total_field(data, index_pairs, scale)` helper (LR+SR+BR sum, optional BR-column presence
+  check) rather than two near-duplicate functions. `Sigma_zz` is a pointwise formula (`Im[Bx^* Ex + By^* Ey -
+  Bz^* Ez]`, no spatial derivative); `Lambda_zz` needs the *same* `hat{L}_z` operator the OAM density already
+  uses (`x*d/dy-y*d/dx` rectangular / `d/dphi` circular) — factored out into its own `_lz_operator(detector_type,
+  E, ...)` dispatcher, replacing the density-only `_rectangular_oam_terms`/`_circular_oam_terms` pair from the
+  first version, so both `L_z` and `Lambda_zz` now share one implementation of the derivative instead of each
+  reimplementing it. `compute_angular_momentum_density` was renamed `compute_angular_momentum` to reflect the
+  broader scope (density and flux together, one pass over the data — computing `E`/`B` and the `hat{L}_z`-applied
+  fields only once per frequency rather than once per quantity). `integrate_angular_momentum_density`/
+  `_RUN_LOG_SECTION_HEADER`'s table were likewise generalized to loop over every `QUANTITIES` entry rather than
+  hardcoding three columns, so `run_log.txt`'s appended table now has six numeric columns (`S_z`, `L_z`, `J_z`,
+  `Sigma_zz`, `Lambda_zz`, `Flux_tot`) instead of three, automatically extending to any future addition to
+  `QUANTITIES` without touching the integration/logging code again. New output filenames
+  (`angular_momentum_flux_spin_omega<N>.png`, `_flux_orbital_`, `_flux_total_`) sit alongside the existing three,
+  no collisions. Gouraud shading (see the bullet above) applies to all six on a circular detector, unlike
+  `plot_field.py`'s Phase panel exclusion — every quantity here is a plain real-valued scalar with no branch-cut
+  wrap, so there's no analogous risk.
+  **Sanity-checked** on the same 1024-electron rectangular and 50-electron circular `laser_lg_p=2, laser_lg_l=2`
+  runs used to validate the density formulas: `Lambda_zz_total/Sigma_zz_total` came out `~1.90` (rectangular
+  incident), `~1.99` (circular incident), and `~1.65` (rectangular emitted) — matching `L_z_total/S_z_total`'s own
+  ratio on the *same* run to 3+ significant figures in every case (e.g. both `~1.902` on the rectangular-incident
+  run). This independent agreement between the flux and density ratios (different formulas, sharing only the
+  underlying field data) is strong evidence the flux implementation is correct, not just internally consistent.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
@@ -900,6 +950,20 @@ constants as the conversion basis) the next time this file is touched.
   Each panel's colorbar uses `shrink=0.85` (not full axis height) and carries no `cbar.set_label` — the panel
   title above already names the quantity, and a second, redundant vertical label competed with the right
   column's colorbar for width, contributing to the misalignment described next.
+  **Circular detector: Re/Im/Abs panels use `pcolormesh(..., shading='gouraud')` on cell centers; the Phase
+  panel deliberately does not** — same pie-slice-facet problem and `gouraud`-on-centers fix as
+  `plot_angular_momentum.py`'s circular branch (see that script's own bullet above for the full rationale,
+  including why a Delaunay/`tricontourf` alternative was rejected), but here it's applied per-panel rather than
+  to the whole figure: `phase_values` (`np.arctan2`) wraps from `+pi` to `-pi` at an essentially arbitrary branch
+  cut unrelated to the field's actual smoothness there, and `gouraud` linearly interpolates that raw wrapped
+  value between neighboring grid points — sweeping the interpolated color through the *entire* colorbar range
+  across what should be one sharp, physically meaningless jump, which is actively misleading rather than merely
+  coarse. Flat shading's sharp jump between adjacent quads is the *correct* rendering of a phase wrap, so the
+  Phase panel keeps it (`x`/`y` cell-edge arrays, `x_gouraud`/`y_gouraud` centers computed alongside them but
+  only used by the other three panels) — confirmed on a real circular-detector run: the Phase panel still shows
+  a clean, sharply-bounded spiral (the branch cut), while Re/Im/Abs lost their pie-slice faceting. Rectangular
+  and spherical are both untouched (`x_gouraud`/`y_gouraud` stay `None`, so every panel there still takes the
+  flat-shaded branch, same as before this change).
   **Non-obvious `matplotlib` gotcha, found and fixed while matching this style: `layout='constrained'` does
   not reliably column-align per-axes colorbars added via `fig.colorbar(sc, ax=ax, shrink=...)`.** With four
   panels arranged 2x2 (Re/Im on top, Modulus/Phase below), the two right-column colorbars (Im, Phase) can end

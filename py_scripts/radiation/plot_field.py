@@ -351,16 +351,21 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         sys.exit(1)
 
     detector_type, _ = read_config_value('detector_type', config_path)
-    x, y, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
+    x_centers, y_centers, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
     detector_geometry_label = get_detector_geometry_label(detector_type, config_path)
 
     # All three detector types lay their points out row-major over their own native grid -- see
     # Core::Detector_2D::get_grid_indices -- so the field values below reshape cleanly into that
-    # grid; x/y are replaced with the cell-corner coordinates pcolormesh needs (see
+    # grid; x/y are replaced with the cell-corner coordinates flat pcolormesh shading needs (see
     # get_rectangular_cell_edges/get_spherical_cell_edges/get_circular_cell_edges) instead of the
     # per-point centers get_screen_coordinates returns.
     aspect = 'equal'
     axes_unit = None
+    # Circular only: gouraud-shaded panels (Re/Im/Abs below) use cell *centers* (x_gouraud/y_gouraud,
+    # same shape as grid_shape); every other panel, and every other detector type, keeps flat shading
+    # on cell corners (x/y, one bigger than grid_shape per axis) -- see the circular branch below for
+    # why the phase panel is deliberately excluded from gouraud even here.
+    x_gouraud = y_gouraud = None
     if detector_type == 'rectangular':
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
@@ -380,7 +385,21 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
         grid_shape = (N_R, N_phi)
+        # Flat-shaded quads over a coarse (r, phi) grid mapped to Cartesian x/y render as visible
+        # pie-slice facets, worst at large radius (same issue plot_angular_momentum.py's own circular
+        # branch documents and fixes the same way -- see that script's comment for the full
+        # rationale, including why a Delaunay/tricontourf re-triangulation was rejected in favor of
+        # gouraud shading on this project's own already-correct grid). Re/Im/Abs below use it;
+        # **the phase panel does not**: gouraud linearly interpolates the raw scalar value between
+        # neighboring grid points, and phase (`np.arctan2`) wraps from +pi to -pi at an essentially
+        # arbitrary branch cut that has nothing to do with the underlying field being smooth there --
+        # gouraud-interpolating straight through that wrap would sweep the interpolated color through
+        # the entire colorbar range (0, then every intermediate phase) across what should be a single
+        # sharp, physically meaningless jump, actively misleading rather than merely coarse. Flat
+        # shading's sharp jump between adjacent quads is the *correct* rendering of a phase wrap.
         x, y = get_circular_cell_edges(config_path)
+        x_gouraud = x_centers.reshape(grid_shape)
+        y_gouraud = y_centers.reshape(grid_shape)
         axes_unit = read_config_value('circular_detector_R_min', config_path)[1]
 
     # w0 (laguerre_gauss runs only, unit-matched to axes_unit -- see
@@ -417,17 +436,24 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         # comparable at a glance, even though Re/Im then generally look paler than the modulus.
         # Magnitude is non-negative (sequential cmap, floored at 0); phase wraps at +-pi (cyclic cmap).
         abs_max = abs_values.max() if abs_values.size else None
+        # Last element of each tuple: whether this panel may use gouraud shading on a circular
+        # detector (x_gouraud is None for every other detector type, so this is a no-op there) --
+        # Re/Im/Abs are continuous scalars, safe to interpolate; phase is not, see the comment above.
         panels = [
-            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', -abs_max, abs_max),
-            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', -abs_max, abs_max),
-            (abs_values, f"$|{component_label}|$", 'viridis', 0, abs_max),
-            (phase_values, f"$\\arg({component_label})$", 'twilight', -np.pi, np.pi),
+            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', -abs_max, abs_max, True),
+            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', -abs_max, abs_max, True),
+            (abs_values, f"$|{component_label}|$", 'viridis', 0, abs_max, True),
+            (phase_values, f"$\\arg({component_label})$", 'twilight', -np.pi, np.pi, False),
         ]
 
         fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), layout='constrained')
         cbars = []
-        for ax, (values, title, cmap, vmin, vmax) in zip(axes.flat, panels):
-            sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
+        for ax, (values, title, cmap, vmin, vmax, gouraud_ok) in zip(axes.flat, panels):
+            if gouraud_ok and x_gouraud is not None:
+                sc = ax.pcolormesh(x_gouraud, y_gouraud, values.reshape(grid_shape), cmap=cmap,
+                                   vmin=vmin, vmax=vmax, shading='gouraud')
+            else:
+                sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)

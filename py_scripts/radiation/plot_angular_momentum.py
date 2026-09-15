@@ -1,26 +1,40 @@
 """
 Computes and plots the z-component of the spin (SAM), orbital (OAM), and total (TAM) angular
-momentum spectral densities from a run's coherently-summed Faraday tensor (radiation_field.dat) or
-the incident beam's own analytic field (incident_field.dat, via --incident) -- see
-theory/numerical_calculation_of_angular_momentum.md ("Applications for the angular momentum
-density") for the derivation. Supersedes plot_spin_angular_momentum.py, which only computed S_z and
-(per that doc's own correction) was missing the epsilon_0 = 1/(4*pi) prefactor -- see
-Core::PhysUtils::AtomicUnits::epsilon_0 (phys_utils.hpp) for the same constant on the C++ side.
+momentum spectral densities AND their z-directed fluxes from a run's coherently-summed Faraday
+tensor (radiation_field.dat) or the incident beam's own analytic field (incident_field.dat, via
+--incident) -- see theory/numerical_calculation_of_angular_momentum.md ("Applications for the
+angular momentum density", sections 1-2 for density, 3-4 for flux) for the derivation. Supersedes
+plot_spin_angular_momentum.py, which only computed S_z and (per that doc's own correction) was
+missing the epsilon_0 = 1/(4*pi) prefactor -- see Core::PhysUtils::AtomicUnits::epsilon_0
+(phys_utils.hpp) for the same constant on the C++ side.
 
+Density (accumulated angular momentum per unit screen area):
 $$\\frac{d\\mathcal{S}_z}{d\\omega} = \\frac{4\\epsilon_0}{\\omega}\\mathrm{Im}[\\tilde E_x^*\\tilde E_y]$$
-$$\\frac{d\\mathcal{L}_z}{d\\omega} = \\frac{2\\epsilon_0}{\\omega}\\sum_i\\mathrm{Im}\\left[\\tilde E_i^*\\,\\hat L_z\\tilde E_i\\right],
-\\quad \\hat L_z = x\\partial_y - y\\partial_x \\;(\\text{rectangular}) = \\partial_\\phi \\;(\\text{circular})$$
+$$\\frac{d\\mathcal{L}_z}{d\\omega} = \\frac{2\\epsilon_0}{\\omega}\\sum_i\\mathrm{Im}\\left[\\tilde E_i^*\\,\\hat L_z\\tilde E_i\\right]$$
 $$\\frac{d\\mathcal{J}_z}{d\\omega} = \\frac{d\\mathcal{L}_z}{d\\omega} + \\frac{d\\mathcal{S}_z}{d\\omega}$$
+
+Flux (angular momentum flow per unit screen area, through the screen along its own normal Oz --
+a genuinely different physical quantity from the density above, not the same thing in different
+units, see CLAUDE.md's density-vs-flux distinction from this project's earlier, since-deleted
+angular-momentum scripts):
+$$\\frac{d\\Sigma_{zz}}{d\\omega} = \\frac{2\\epsilon_0 c^2}{\\omega}\\mathrm{Im}\\left[\\tilde B_x^*\\tilde E_x + \\tilde B_y^*\\tilde E_y - \\tilde B_z^*\\tilde E_z\\right]$$
+$$\\frac{d\\Lambda_{zz}}{d\\omega} = \\frac{2\\epsilon_0 c^2}{\\omega}\\mathrm{Im}\\left[\\tilde B_y^*\\,\\hat L_z\\tilde E_x - \\tilde B_x^*\\,\\hat L_z\\tilde E_y + \\tilde B_z^*\\tilde E_z\\right]$$
+$$\\frac{d(\\Sigma_{zz}+\\Lambda_{zz})}{d\\omega} \\;\\text{(total flux)}$$
+
+where $\\hat L_z = x\\partial_y - y\\partial_x$ (rectangular) $= \\partial_\\phi$ (circular) -- the
+*same* operator for both density and flux, just combined with different field components afterward
+(E with itself for density, B with E for flux); see _lz_operator.
 
 **Always uses the total (physical) Faraday tensor, LR+SR+BR summed** -- there is no
 long-range/short-range/boundary decomposition of an angular-momentum observable (that split only
 has meaning for the derivation's intermediate F^{mu nu} terms, see
 theory/FT_Faraday_tensor-direct_and_simplified_forms.md); only the sum is the actual radiated field
-E appearing in the S_z/L_z formulas above. BR is treated as zero if the file predates the boundary
-term; for incident_field.dat, SR/BR are already identically zero so the sum reduces to LR alone.
+E/B appearing in the formulas above. BR is treated as zero if the file predates the boundary term;
+for incident_field.dat, SR/BR are already identically zero so the sum reduces to LR alone.
 
-Ex/Ey/Ez are recovered directly from the stored F^{10}/F^{20}/F^{30} columns (E_i=c*F^{i0}, the same
-F^{mu nu}<->E/B convention faraday_frame_utils.py's extract_rotated_faraday_fields documents).
+Ex/Ey/Ez/Bx/By/Bz are recovered directly from the stored F^{mu nu} columns (E_i=c*F^{i0},
+Bx=F^{32}, By=F^{13}, Bz=F^{21} -- the same convention faraday_frame_utils.py's
+extract_rotated_faraday_fields documents).
 
 **Restricted to rectangular and circular detectors** (theory doc's own "Target Screens"
 instruction): a spherical detector's (theta, phi) grid has no flat local (x, y) plane for the OAM
@@ -36,27 +50,28 @@ this is implemented by hand -- see _periodic_phi_derivative), which is what x*d/
 to exactly at fixed r on a polar grid. Both are finite-difference approximations, not exact for a
 rapidly-varying near-field phase (the same caveat this project documents elsewhere for
 np.gradient-based derivatives, e.g. CLAUDE.md's Fresnel-number bullet) -- a coarse grid close to the
-beam (small Fresnel number) may under-resolve the true spatial variation. Note the L_z density itself
-is invariant under an isotropic rescaling of x/y (x*d/dy-y*d/dx is the rotation generator, scale-free
-under x->c*x, y->c*y), so it does not matter that get_screen_coordinates returns x/y in the config's
-own length unit (e.g. 'lambda') rather than atomic units -- only the screen-integrated total below
-needs an explicit unit conversion, since an area DOES scale with the unit choice.
+beam (small Fresnel number) may under-resolve the true spatial variation. Note the L_z density/flux
+formulas are invariant under an isotropic rescaling of x/y (x*d/dy-y*d/dx is the rotation generator,
+scale-free under x->c*x, y->c*y), so it does not matter that get_screen_coordinates returns x/y in
+the config's own length unit (e.g. 'lambda') rather than atomic units -- only the screen-integrated
+totals below need an explicit unit conversion, since an area DOES scale with the unit choice.
 
 **Frequency convention**: neither .dat file exports raw atomic-unit omega, only the dimensionless
 omega/omega_1 ratio (see CLAUDE.md's radiation_field.dat 'omega' column bullet) -- recovering true
 fundamental_frequency in Python would mean re-parsing it out of run_log.txt's human-readable dump.
-So the 1/omega prefactor above uses that same ratio, making the plotted densities
+So the 1/omega prefactor above uses that same ratio, making the plotted quantities
 d.../d(omega/omega_1) rather than d.../domega in raw atomic units -- consistent with every other
 frequency-axis quantity this project already plots in omega/omega_1 units, and differing from the
 true d.../domega only by the constant factor omega_1 (fundamental_frequency), which does not affect
 the spatial pattern at any given omega index or the relative comparison across harmonics.
 
-**Screen integration**: appends an S_z/L_z/J_z(omega) summary table to the run's own run_log.txt
-(theory doc's "Surface Integration" step), replacing any such table from a previous run of this
-script on the same run_log.txt so re-running doesn't pile up duplicates. Trapezoidal quadrature in
-(x, y) for rectangular, (r^2, phi) for circular (matching CircularDetector's own equal-area radial
-spacing, so a constant-r^2-step trapezoidal rule is exact-in-area for any N_R) -- area weights are
-converted to atomic-unit length^2 (get_screen_area_weights_au), unlike the density values themselves.
+**Screen integration**: appends a summary table (one column per quantity below) to the run's own
+run_log.txt (theory doc's "Surface Integration" step), replacing any such table from a previous run
+of this script on the same run_log.txt so re-running doesn't pile up duplicates. Trapezoidal
+quadrature in (x, y) for rectangular, (r^2, phi) for circular (matching CircularDetector's own
+equal-area radial spacing, so a constant-r^2-step trapezoidal rule is exact-in-area for any N_R) --
+area weights are converted to atomic-unit length^2 (get_screen_area_weights_au), unlike the density/
+flux values themselves.
 
 Reuses plot_field.py's screen-geometry/cell-edge reconstruction directly (same CLI shape:
 [path_to_run_folder] [--incident]), and the same is_incident split into
@@ -76,7 +91,6 @@ from plot_field import (
     read_config_value,
     get_screen_coordinates,
     get_rectangular_cell_edges,
-    get_circular_cell_edges,
     get_detector_geometry_label,
 )
 from faraday_frame_utils import C_LIGHT, convert_unit_to_number
@@ -98,35 +112,60 @@ EPSILON_0 = 1.0 / (4.0 * np.pi)
 # cross-check" note for the ratios that ARE meant to be trusted from this mode.
 _UNCALIBRATED_MAGNITUDE_CAVEAT = (
     "NOTE: incident_field.dat's absolute field magnitude has no Fourier-transform normalization "
-    "applied -- only RATIOS between the S_z/L_z/J_z columns below are physically meaningful; the "
-    "absolute values are on an arbitrary scale and are NOT comparable to a real scattered-radiation "
-    "run's own values."
+    "applied -- only RATIOS between the columns below (S_z/L_z/J_z density, Sigma_zz/Lambda_zz/"
+    "Flux_tot flux) are physically meaningful; the absolute values are on an arbitrary scale and are "
+    "NOT comparable to a real scattered-radiation run's own values."
 )
 
+# (result column, output-filename tag, figure title, math-symbol panel title). Density (S_z/L_z/J_z)
+# and flux (Sigma_zz/Lambda_zz/Flux_tot) are deliberately different physical quantities (accumulated
+# angular momentum vs. its flow through the screen), not the same thing in different units -- kept
+# as one list purely because every quantity here shares the same plotting/integration machinery.
 QUANTITIES = (
-    ('dSz', 'spin', r'$d\mathcal{S}_z/d(\omega/\omega_1)$'),
-    ('dLz', 'orbital', r'$d\mathcal{L}_z/d(\omega/\omega_1)$'),
-    ('dJz', 'total', r'$d\mathcal{J}_z/d(\omega/\omega_1)$'),
+    ('dSz', 'spin', 'Spin angular momentum density', r'$d\mathcal{S}_z/d(\omega/\omega_1)$'),
+    ('dLz', 'orbital', 'Orbital angular momentum density', r'$d\mathcal{L}_z/d(\omega/\omega_1)$'),
+    ('dJz', 'total', 'Total angular momentum density', r'$d\mathcal{J}_z/d(\omega/\omega_1)$'),
+    ('dSigmazz', 'flux_spin', 'Spin angular momentum flux', r'$d\Sigma_{zz}/d(\omega/\omega_1)$'),
+    ('dLambdazz', 'flux_orbital', 'Orbital angular momentum flux', r'$d\Lambda_{zz}/d(\omega/\omega_1)$'),
+    ('dFluxTotal', 'flux_total', 'Total angular momentum flux',
+     r'$d(\Sigma_{zz}{+}\Lambda_{zz})/d(\omega/\omega_1)$'),
 )
+
+# Short labels for run_log.txt's table columns (same order/columns as QUANTITIES).
+_RUN_LOG_LABELS = {
+    'dSz': 'S_z', 'dLz': 'L_z', 'dJz': 'J_z',
+    'dSigmazz': 'Sigma_zz', 'dLambdazz': 'Lambda_zz', 'dFluxTotal': 'Flux_tot',
+}
 
 
 def _complex_column(data, prefix, mu, nu):
     return (data[f'{prefix}_F{mu}{nu}_re'] + 1j * data[f'{prefix}_F{mu}{nu}_im']).to_numpy()
 
 
-def _get_E_total(data):
+def _get_total_field(data, index_pairs, scale=1.0):
     """
-    Returns (Ex, Ey, Ez), each a complex numpy array (one entry per row of `data`), from the total
-    (LR+SR+BR) Faraday tensor -- see this module's own doc comment for why only the total, never a
-    single range, is used here. E_i = c*F^{i0}.
+    Generic total-(LR+SR+BR) field extractor: one complex numpy array per (mu, nu) pair in
+    `index_pairs`, each scaled by `scale`. Shared by _get_E_total (E_i=c*F^{i0}, scale=C_LIGHT) and
+    _get_B_total (B_i=F^{jk} directly, scale=1) -- see this module's own doc comment for why only
+    the total, never a single range, is used here.
     """
-    def component(mu):
-        value = _complex_column(data, 'LR', mu, 0) + _complex_column(data, 'SR', mu, 0)
-        if {f'BR_F{mu}0_re', f'BR_F{mu}0_im'}.issubset(data.columns):
-            value = value + _complex_column(data, 'BR', mu, 0)
-        return C_LIGHT * value
+    def component(mu, nu):
+        value = _complex_column(data, 'LR', mu, nu) + _complex_column(data, 'SR', mu, nu)
+        if {f'BR_F{mu}{nu}_re', f'BR_F{mu}{nu}_im'}.issubset(data.columns):
+            value = value + _complex_column(data, 'BR', mu, nu)
+        return scale * value
 
-    return component(1), component(2), component(3)
+    return tuple(component(mu, nu) for mu, nu in index_pairs)
+
+
+def _get_E_total(data):
+    """Returns (Ex, Ey, Ez) from the total Faraday tensor. E_i = c*F^{i0}."""
+    return _get_total_field(data, ((1, 0), (2, 0), (3, 0)), scale=C_LIGHT)
+
+
+def _get_B_total(data):
+    """Returns (Bx, By, Bz) from the total Faraday tensor. Bx=F^{32}, By=F^{13}, Bz=F^{21}."""
+    return _get_total_field(data, ((3, 2), (1, 3), (2, 1)), scale=1.0)
 
 
 def _periodic_phi_derivative(grid):
@@ -148,34 +187,28 @@ def _periodic_phi_derivative(grid):
     return np.concatenate([d_unique, d_unique[:, :1]], axis=1)
 
 
-def _rectangular_oam_terms(Ex, Ey, Ez, x_grid, y_grid, x_vals, y_vals):
+def _lz_operator(detector_type, E, x_grid=None, y_grid=None, x_vals=None, y_vals=None):
     """
-    sum_i Im[E_i^* (x*dE_i/dy - y*dE_i/dx)] over a (Nx, Ny) grid (Eq. primary-definition-of-Lz-
-    rectangular), via numpy.gradient in x (axis 0) and y (axis 1). A size-1 axis has no defined
-    derivative (a single-row/column rectangular detector has no spatial variation to differentiate
-    along that axis) -- treated as zero, matching numpy.gradient's own minimum-2-points requirement.
+    hat{L}_z E = x*dE/dy - y*dE/dx (rectangular, via numpy.gradient) or dE/dphi (circular, via
+    _periodic_phi_derivative) -- the one operator both the OAM density (Eq. primary-definition-of-Lz-
+    rectangular/-circular) and OAM flux (Eq. primary-definition-of-Lambda-zz-rectangular/-circular)
+    formulas need, just combined with different field components afterward by their respective
+    callers. A size-1 rectangular axis has no defined derivative (a single-row/column detector has no
+    spatial variation to differentiate along that axis) -- treated as zero, matching numpy.gradient's
+    own minimum-2-points requirement. `x_grid`/`y_grid`/`x_vals`/`y_vals` are ignored for circular.
     """
-    def term(E):
+    if detector_type == 'rectangular':
         dE_dx = np.gradient(E, x_vals, axis=0) if E.shape[0] > 1 else np.zeros_like(E)
         dE_dy = np.gradient(E, y_vals, axis=1) if E.shape[1] > 1 else np.zeros_like(E)
-        return np.imag(np.conj(E) * (x_grid * dE_dy - y_grid * dE_dx))
-
-    return term(Ex) + term(Ey) + term(Ez)
-
-
-def _circular_oam_terms(Ex, Ey, Ez):
-    """sum_i Im[E_i^* dE_i/dphi] over a (N_R, N_phi) grid (Eq. primary-definition-of-Lz-circular)."""
-    def term(E):
-        return np.imag(np.conj(E) * _periodic_phi_derivative(E))
-
-    return term(Ex) + term(Ey) + term(Ez)
+        return x_grid * dE_dy - y_grid * dE_dx
+    return _periodic_phi_derivative(E)
 
 
-def compute_angular_momentum_density(radiation_filepath):
+def compute_angular_momentum(radiation_filepath):
     """
     Returns (result, detector_type, config_path). `result` has one row per radiation_field.dat row
-    with omega/omega_1 != 0 (i_omega, omega, i_screen, dSz, dLz, dJz), computed from the physical
-    total field (LR+SR+BR, see _get_E_total).
+    with omega/omega_1 != 0 (i_omega, omega, i_screen, dSz, dLz, dJz, dSigmazz, dLambdazz,
+    dFluxTotal), computed from the physical total field (LR+SR+BR, see _get_E_total/_get_B_total).
     """
     try:
         data = pd.read_csv(radiation_filepath, sep=' ', comment='#')
@@ -183,7 +216,9 @@ def compute_angular_momentum_density(radiation_filepath):
         print(f"Error reading file '{radiation_filepath}': {e}")
         sys.exit(1)
 
-    required = {f'{p}_F{m}0_{part}' for p in ('LR', 'SR') for m in (1, 2, 3) for part in ('re', 'im')}
+    required = {f'{p}_F{m}{n}_{part}' for p in ('LR', 'SR')
+                for m, n in ((1, 0), (2, 0), (3, 0), (3, 2), (1, 3), (2, 1))
+                for part in ('re', 'im')}
     if not required.issubset(data.columns):
         print(f"Error: File must contain columns {sorted(required)}")
         sys.exit(1)
@@ -198,9 +233,10 @@ def compute_angular_momentum_density(radiation_filepath):
     if detector_type not in ('rectangular', 'circular'):
         raise ValueError(
             f"detector_type '{detector_type}' is not a flat rectangular/circular screen -- "
-            "theory/numerical_calculation_of_angular_momentum.md's angular-momentum density "
-            "calculation is only implemented for those two (its own 'Target Screens' instruction).")
+            "theory/numerical_calculation_of_angular_momentum.md's angular-momentum calculation is "
+            "only implemented for those two (its own 'Target Screens' instruction).")
 
+    x_grid = y_grid = x_vals = y_vals = None
     if detector_type == 'rectangular':
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
@@ -224,18 +260,27 @@ def compute_angular_momentum_density(radiation_filepath):
             continue
 
         Ex, Ey, Ez = _get_E_total(subset)
-        dSz = (4.0 * EPSILON_0 / omega_ratio) * np.imag(np.conj(Ex) * Ey)
+        Bx, By, Bz = _get_B_total(subset)
 
-        Ex_grid, Ey_grid, Ez_grid = Ex.reshape(grid_shape), Ey.reshape(grid_shape), Ez.reshape(grid_shape)
-        if detector_type == 'rectangular':
-            oam_terms = _rectangular_oam_terms(Ex_grid, Ey_grid, Ez_grid, x_grid, y_grid, x_vals, y_vals)
-        else:
-            oam_terms = _circular_oam_terms(Ex_grid, Ey_grid, Ez_grid)
-        dLz = (2.0 * EPSILON_0 / omega_ratio) * oam_terms.ravel()
+        dSz = (4.0 * EPSILON_0 / omega_ratio) * np.imag(np.conj(Ex) * Ey)
+        dSigmazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_ratio) * np.imag(
+            np.conj(Bx) * Ex + np.conj(By) * Ey - np.conj(Bz) * Ez)
+
+        Ex_grid, Ey_grid, Ez_grid = (a.reshape(grid_shape) for a in (Ex, Ey, Ez))
+        Bx_grid, By_grid, Bz_grid = (a.reshape(grid_shape) for a in (Bx, By, Bz))
+        LEx = _lz_operator(detector_type, Ex_grid, x_grid, y_grid, x_vals, y_vals)
+        LEy = _lz_operator(detector_type, Ey_grid, x_grid, y_grid, x_vals, y_vals)
+        LEz = _lz_operator(detector_type, Ez_grid, x_grid, y_grid, x_vals, y_vals)
+
+        dLz = (2.0 * EPSILON_0 / omega_ratio) * np.imag(
+            np.conj(Ex_grid) * LEx + np.conj(Ey_grid) * LEy + np.conj(Ez_grid) * LEz).ravel()
+        dLambdazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_ratio) * np.imag(
+            np.conj(By_grid) * LEx - np.conj(Bx_grid) * LEy + np.conj(Bz_grid) * Ez_grid).ravel()
 
         rows.append(pd.DataFrame({
             'i_omega': i_omega, 'omega': omega_ratio, 'i_screen': subset['i_screen'].to_numpy(),
             'dSz': dSz, 'dLz': dLz, 'dJz': dSz + dLz,
+            'dSigmazz': dSigmazz, 'dLambdazz': dLambdazz, 'dFluxTotal': dSigmazz + dLambdazz,
         }))
 
     if n_skipped:
@@ -297,10 +342,12 @@ def get_screen_area_weights_au(detector_type, config_path):
     return (0.5 * w_r_sq[:, None] * w_phi[None, :]).ravel()
 
 
-def integrate_angular_momentum_density(result, detector_type, config_path):
+def integrate_angular_momentum(result, detector_type, config_path):
     """
-    Screen integration (theory doc's 'Surface Integration' step): Q_z(omega) = sum_p Delta A_p *
-    (dQ_z/domega)_p, Q in {S, L, J}. Returns a DataFrame with one row per unique i_omega.
+    Screen integration (theory doc's 'Surface Integration' step): Q(omega) = sum_p Delta A_p *
+    (dQ/domega)_p, for every quantity in QUANTITIES (density and flux alike -- the formula is
+    identical regardless of what physical quantity is being integrated). Returns a DataFrame with
+    one row per unique i_omega.
     """
     area_weights = get_screen_area_weights_au(detector_type, config_path)
 
@@ -312,13 +359,10 @@ def integrate_angular_momentum_density(result, detector_type, config_path):
                 f"i_omega={i_omega}: {len(subset)} screen points in radiation_field.dat but "
                 f"{len(area_weights)} expected from the detector's own configured grid -- geometry "
                 "mismatch (e.g. the config was edited after this run).")
-        rows.append({
-            'i_omega': i_omega,
-            'omega': subset['omega'].iloc[0],
-            'Sz_total': np.sum(area_weights * subset['dSz'].to_numpy()),
-            'Lz_total': np.sum(area_weights * subset['dLz'].to_numpy()),
-            'Jz_total': np.sum(area_weights * subset['dJz'].to_numpy()),
-        })
+        row = {'i_omega': i_omega, 'omega': subset['omega'].iloc[0]}
+        for column, *_ in QUANTITIES:
+            row[column] = np.sum(area_weights * subset[column].to_numpy())
+        rows.append(row)
     return pd.DataFrame(rows).sort_values('i_omega').reset_index(drop=True)
 
 
@@ -347,14 +391,15 @@ def _find_run_log_sections(content):
 
 def append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=""):
     """
-    Appends (or, on a re-run, replaces) an S_z/L_z/J_z summary table in the run's own run_log.txt --
-    theory/numerical_calculation_of_angular_momentum.md's 'Surface Integration' step, integrated over
-    the whole screen, one row per frequency. Only this script's own previously-appended section
-    (identified by _RUN_LOG_SECTION_HEADER + label_suffix, via _find_run_log_sections) is ever
-    replaced -- in place, regardless of what other sections precede or follow it. `label_suffix`
-    (e.g. " -- incident beam", set when run on incident_field.dat) keeps that table in its own section
-    rather than overwriting the actual scattered-radiation run's own logged section, and also triggers
-    _UNCALIBRATED_MAGNITUDE_CAVEAT being written into that section.
+    Appends (or, on a re-run, replaces) a density/flux summary table (one column per QUANTITIES
+    entry) in the run's own run_log.txt -- theory/numerical_calculation_of_angular_momentum.md's
+    'Surface Integration' step, integrated over the whole screen, one row per frequency. Only this
+    script's own previously-appended section (identified by _RUN_LOG_SECTION_HEADER + label_suffix,
+    via _find_run_log_sections) is ever replaced -- in place, regardless of what other sections
+    precede or follow it. `label_suffix` (e.g. " -- incident beam", set when run on
+    incident_field.dat) keeps that table in its own section rather than overwriting the actual
+    scattered-radiation run's own logged section, and also triggers _UNCALIBRATED_MAGNITUDE_CAVEAT
+    being written into that section.
     """
     header = _RUN_LOG_SECTION_HEADER + label_suffix
     log_path = os.path.join(run_dir, "run_log.txt")
@@ -377,15 +422,18 @@ def append_integration_to_run_log(run_dir, detector_type, integrated, label_suff
     if label_suffix:
         lines += [f"  {_UNCALIBRATED_MAGNITUDE_CAVEAT}", ""]
     lines += [
-        "  Rough sum_p Delta_A_p * (dQ_z/domega)_p screen integration "
+        "  Rough sum_p Delta_A_p * (dQ/domega)_p screen integration "
         "(theory/numerical_calculation_of_angular_momentum.md,",
         f"  'Surface Integration' step), {detector_type} detector, trapezoidal quadrature in "
         f"{'(x, y)' if detector_type == 'rectangular' else '(r^2, phi)'}, area weights in atomic units.",
-        f"  {'i_omega':>8} {'omega/omega_1':>14} {'S_z [a.u.]':>16} {'L_z [a.u.]':>16} {'J_z [a.u.]':>16}",
     ]
+    header_cells = ['i_omega', 'omega/omega_1'] + [f'{_RUN_LOG_LABELS[c]} [a.u.]' for c, *_ in QUANTITIES]
+    lines.append(f"  {header_cells[0]:>8} {header_cells[1]:>14} "
+                 + ' '.join(f'{cell:>16}' for cell in header_cells[2:]))
     for _, row in integrated.iterrows():
-        lines.append(f"  {int(row['i_omega']):>8d} {row['omega']:>14.6f} {row['Sz_total']:>16.6e} "
-                     f"{row['Lz_total']:>16.6e} {row['Jz_total']:>16.6e}")
+        cells = [f"{int(row['i_omega']):>8d}", f"{row['omega']:>14.6f}"]
+        cells += [f"{row[c]:>16.6e}" for c, *_ in QUANTITIES]
+        lines.append('  ' + ' '.join(cells))
 
     with open(log_path, "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -394,9 +442,10 @@ def append_integration_to_run_log(run_dir, detector_type, integrated, label_suff
 
 def plot_angular_momentum(radiation_filepath):
     """
-    Plots dS_z/d(omega/omega_1), dL_z/d(omega/omega_1), and dJ_z/d(omega/omega_1) (one single-panel
-    diverging-colormap heatmap each, since all three are real-valued) over the detector screen, one
-    figure set per configured frequency, then appends the screen-integrated totals to run_log.txt.
+    Plots every quantity in QUANTITIES (S_z/L_z/J_z density, Sigma_zz/Lambda_zz/Flux_tot flux -- one
+    single-panel diverging-colormap heatmap each, since all six are real-valued) over the detector
+    screen, one figure set per configured frequency, then appends the screen-integrated totals to
+    run_log.txt.
 
     `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
     sibling, detected by filename -- see this module's own doc comment for how each is handled.
@@ -406,9 +455,9 @@ def plot_angular_momentum(radiation_filepath):
     if is_incident:
         print(_UNCALIBRATED_MAGNITUDE_CAVEAT)
 
-    result, detector_type, config_path = compute_angular_momentum_density(radiation_filepath)
+    result, detector_type, config_path = compute_angular_momentum(radiation_filepath)
 
-    _, _, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
+    x_centers, y_centers, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
     detector_geometry_label = get_detector_geometry_label(detector_type, config_path)
 
     aspect = 'equal'
@@ -416,13 +465,35 @@ def plot_angular_momentum(radiation_filepath):
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
         grid_shape = (Nx, Ny)
+        # Flat shading needs cell *corners* (one more point per axis than the data) -- coarse
+        # rectangular grids already render as reasonably-shaped axis-aligned squares this way, so
+        # there's no strong reason to switch this one to gouraud too (see the circular branch below).
         x, y = get_rectangular_cell_edges(config_path)
+        shading = 'flat'
         axes_unit = read_config_value('rectangular_detector_x_min', config_path)[1]
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
         grid_shape = (N_R, N_phi)
-        x, y = get_circular_cell_edges(config_path)
+        # Flat-shaded quads over a coarse (r, phi) grid mapped to Cartesian x/y render as visible
+        # pie-slice facets, worst at large radius where each azimuthal wedge spans a wide arc length
+        # (confirmed on a real 50-electron/64-phi-point run). Gouraud shading fixes this by linearly
+        # interpolating color across each cell from its four corner *values* instead of flat-filling
+        # it -- needs cell *centers* (matplotlib requires X/Y/C all the same shape for shading=
+        # 'gouraud', unlike flat shading's one-bigger edges array) and the values at those centers,
+        # both already available from get_screen_coordinates/compute_angular_momentum; no extra data
+        # or a different (edges) array needed, unlike the flat-shaded branch above. Preferred over a
+        # Delaunay/tricontourf re-triangulation of the point cloud (an alternative considered and
+        # rejected): this still uses the detector's own known grid connectivity, so it can't
+        # fabricate data across the R_min>0 center hole the way a blind triangulation would, and
+        # isn't at risk of a degenerate-triangulation crash at R_min=0, where the whole inner ring
+        # collapses to N_phi coincident points at the origin -- gouraud just draws a degenerate
+        # (zero-area) quad there, same as it always has for any repeated vertex. Every quantity here
+        # (unlike plot_field.py's Phase panel) is a plain real-valued scalar with no branch-cut wrap,
+        # so gouraud is safe for all of them, not just a subset.
+        x = x_centers.reshape(grid_shape)
+        y = y_centers.reshape(grid_shape)
+        shading = 'gouraud'
         axes_unit = read_config_value('circular_detector_R_min', config_path)[1]
 
     w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
@@ -435,12 +506,13 @@ def plot_angular_momentum(radiation_filepath):
         subset = subset.sort_values('i_screen')
         omega_ratio = subset['omega'].iloc[0]
 
-        for column, tag, symbol_label in QUANTITIES:
+        for column, tag, name, symbol_label in QUANTITIES:
             values = subset[column].to_numpy()
             abs_max = np.abs(values).max() if values.size else None
 
             fig, ax = plt.subplots(figsize=(6.5, 5.5), layout='constrained')
-            sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap='RdBu_r', vmin=-abs_max, vmax=abs_max)
+            sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap='RdBu_r', vmin=-abs_max, vmax=abs_max,
+                              shading=shading)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
@@ -449,8 +521,8 @@ def plot_angular_momentum(radiation_filepath):
             fig.colorbar(sc, ax=ax, shrink=0.85)
             add_w0_secondary_axes(ax, w0)
 
-            fig.suptitle(f"{tag.capitalize()} angular momentum density{title_suffix}, $\\omega$ index "
-                         f"{i_omega} ($\\omega/\\omega_1$={omega_ratio:.4g}), {detector_type} detector, "
+            fig.suptitle(f"{name}{title_suffix}, $\\omega$ index {i_omega} "
+                         f"($\\omega/\\omega_1$={omega_ratio:.4g}), {detector_type} detector, "
                          f"{detector_geometry_label}", fontsize=11)
 
             output_name = f"angular_momentum_{tag}_omega{i_omega}.png"
@@ -460,7 +532,7 @@ def plot_angular_momentum(radiation_filepath):
             plt.close(fig)
 
     run_dir = os.path.dirname(radiation_filepath)
-    integrated = integrate_angular_momentum_density(result, detector_type, config_path)
+    integrated = integrate_angular_momentum(result, detector_type, config_path)
     append_integration_to_run_log(run_dir, detector_type, integrated,
                                   label_suffix=" -- incident beam" if is_incident else "")
 

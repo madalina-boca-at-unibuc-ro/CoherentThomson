@@ -91,24 +91,82 @@ $$\frac{d {\cal L}_z}{d\omega} = \frac{2\epsilon_0}{\omega}\sum_{i=x,y,z}\operat
 
 ---
 
+### 3. Spin Angular Momentum Flux and Continuity Equation
+
+The local conservation law for the spin angular momentum in vacuum takes the form of a continuity equation:
+<a id="eq-continuity-spin"></a>
+$$\partial_t {\cal S}_i + \partial_j \Sigma_{ij} = 0 \tag{continuity-spin}$$
+
+where ${\cal S}_i = \epsilon_0(\mathbf{E} \times \mathbf{A})_i$ is the spin density, and $\Sigma_{ij}$ is the spin flux tensor:
+<a id="eq-spin-flux-tensor"></a>
+$$\Sigma_{ij} = \epsilon_0 c^2 \Big[ \delta_{ij}(\mathbf{B}\cdot\mathbf{A}) - B_i A_j - B_j A_i \Big] = \frac{1}{\mu_0}\Big[ \delta_{ij}(\mathbf{B}\cdot\mathbf{A}) - B_i A_j - B_j A_i \Big] \tag{spin-flux-tensor}$$
+
+#### Derivation of the Continuity Equation in SI Units
+1. In the radiation gauge ($\nabla \cdot \mathbf{A} = 0$, $\phi = 0$), the fields are $\mathbf{E} = -\partial_t \mathbf{A}$ and $\mathbf{B} = \boldsymbol{\nabla} \times \mathbf{A}$. The time derivative of $\boldsymbol{\cal S}$ is:
+   $$\partial_t \boldsymbol{\cal S} = \epsilon_0 \left[ (\partial_t \mathbf{E}) \times \mathbf{A} + \mathbf{E} \times (\partial_t \mathbf{A}) \right]$$
+   Since $\mathbf{E} \times (\partial_t \mathbf{A}) = -\mathbf{E} \times \mathbf{E} = \mathbf{0}$, and using the vacuum Maxwell-Ampère law $\partial_t \mathbf{E} = c^2 (\boldsymbol{\nabla}\times\mathbf{B})$:
+   $$\partial_t S_i = \epsilon_0 c^2 \big[ (\boldsymbol{\nabla}\times\mathbf{B})\times\mathbf{A} \big]_i = \epsilon_0 c^2 \Big[ (\partial_l B_i) A_l - (\partial_i B_l) A_l \Big]$$
+
+2. Taking the spatial divergence of the flux tensor $\partial_j \Sigma_{ij}$:
+   $$\partial_j \Sigma_{ij} = \epsilon_0 c^2 \partial_j \Big[ \delta_{ij}(B_l A_l) - B_i A_j - B_j A_i \Big]$$
+   Using the transversality conditions $\partial_j A_j = 0$ and $\partial_j B_j = 0$:
+   $$\partial_j \Sigma_{ij} = \epsilon_0 c^2 \Big[ (\partial_i B_l) A_l - (\partial_l B_i) A_l + B_j(\partial_i A_j - \partial_j A_i) \Big]$$
+   Because $B_j(\partial_i A_j - \partial_j A_i) = [\mathbf{B}\times(\boldsymbol{\nabla}\times\mathbf{A})]_i = [\mathbf{B}\times\mathbf{B}]_i = 0$, this simplifies to:
+   $$\partial_j \Sigma_{ij} = \epsilon_0 c^2 \Big[ (\partial_i B_l) A_l - (\partial_l B_i) A_l \Big] = -\partial_t S_i$$
+   which confirms $\partial_t S_i + \partial_j \Sigma_{ij} = 0$.
+
+#### Spectral Density of the $z$-directed Flux $\Sigma_{zz}$
+We are interested in the flux along $Oz$ of the spin angular momentum ${\cal S}_z$, represented by the component $\Sigma_{zz}$. Setting $i=z, j=z$:
+$$\Sigma_{zz} = \epsilon_0 c^2 \Big[ (\mathbf{B}\cdot\mathbf{A}) - 2 B_z A_z \Big] = \epsilon_0 c^2 \Big[ B_x A_x + B_y A_y - B_z A_z \Big]$$
+
+Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) and substituting $\tilde{A}_k^* = \frac{i}{\omega}\tilde{E}_k^*$:
+<a id="eq-primary-definition-of-Sigma-zz"></a>
+$$\frac{d\Sigma_{zz}}{d\omega} = -\frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[\tilde B_x \tilde E_x^* + \tilde B_y \tilde E_y^* - \tilde B_z \tilde E_z^*\right] = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[\tilde B_x^* \tilde E_x + \tilde B_y^* \tilde E_y - \tilde B_z^* \tilde E_z\right] \tag{primary-definition-of-Sigma-zz}$$
+
+
+### 4. Orbital Angular Momentum Flux and Continuity Equation
+
+The local conservation law for the orbital angular momentum in vacuum is:
+<a id="eq-continuity-oam"></a>
+$$\partial_t L_i + \partial_j \Lambda_{ij} = 0 \tag{continuity-oam}$$
+
+where $L_i = \epsilon_0 \sum_m E_m (\mathbf{r}\times\boldsymbol{\nabla})_i A_m$ is the canonical orbital angular momentum density, and the OAM flux tensor in SI units is:
+<a id="eq-oam-flux-tensor"></a>
+$$\Lambda_{ij} = \epsilon_0 c^2 \left\{ \varepsilon_{ikl} r_k \left[ \varepsilon_{jmn} B_n (\partial_l A_m) + \frac{1}{2}\delta_{lj}\left(\frac{E^2}{c^2} - B^2\right) \right] + B_j A_i \right\} \tag{oam-flux-tensor}$$
+
+#### Reduction of the Axial Component $\Lambda_{zz}$
+For $i = z = 3$ and $j = z = 3$, the trace term vanishes identically because $\varepsilon_{3k3} = 0$. Using the transverse operator $\hat{L}_z = x\partial_y - y\partial_x$, the time-domain axial flux reduces to:
+$$\Lambda_{zz} = \epsilon_0 c^2 \Big[ B_y \hat{L}_z A_x - B_x \hat{L}_z A_y + B_z A_z \Big]$$
+
+#### Spectral Density of the $z$-directed Flux $\Lambda_{zz}$
+Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) and substituting $\tilde{A}_k^* = \frac{i}{\omega}\tilde{E}_k^*$:
+
+##### A. Rectangular Screen (Cartesian Grid)
+Using $\hat{L}_z = x\partial_y - y\partial_x$:
+<a id="eq-primary-definition-of-Lambda-zz-rectangular"></a>
+$$\frac{d\Lambda_{zz}}{d\omega} = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \left(x\frac{\partial \tilde E_x}{\partial y} - y\frac{\partial \tilde E_x}{\partial x}\right) - \tilde{B}_x^* \left(x\frac{\partial \tilde E_y}{\partial y} - y\frac{\partial \tilde E_y}{\partial x}\right) + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-rectangular}$$
+
+##### B. Circular Screen (Polar Grid)
+Using $\hat{L}_z = \partial_\phi$:
+<a id="eq-primary-definition-of-Lambda-zz-circular"></a>
+$$\frac{d\Lambda_{zz}}{d\omega} = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \frac{\partial \tilde E_x}{\partial \phi} - \tilde{B}_x^* \frac{\partial \tilde E_y}{\partial \phi} + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-circular}$$
+---
+
 ## Indications for numerical implementation in Python
 
-1. **Target Screens:** Implement the angular momentum density calculations exclusively for the rectangular screen (Cartesian grid) and the circular screen (polar grid).
-2. **Data Ingestion:** For each run and for both exported field states (the emitted radiation and the incident LG beam), load the exported Faraday tensor array $F^{\mu\nu}({\bf x},\omega)$ from disk.
-3. **Field Reconstruction:** At every spatial grid node, reconstruct the complex electric field vector $\tilde{\bf E} = (\tilde E_x, \tilde E_y, \tilde E_z)$ and magnetic field vector $\tilde{\bf B}$ using [Eq. (definition-of-E-and-B)](#eq-definition-of-E-and-B).
-4. **SAM Density Calculation:**
-   - Compute the local SAM spectral density $\frac{d{\cal S}_z}{d\omega}$ using [Eq. (primary-definition-of-Sz)](#eq-primary-definition-of-Sz).
-5. **OAM Density Calculation:**
-   - **Rectangular Screen:** Compute numerical spatial derivatives $\frac{\partial \tilde E_i}{\partial x}$ and $\frac{\partial \tilde E_i}{\partial y}$ (using central finite differences `numpy.gradient` along axis 1 and axis 0, taking grid spacings $\Delta x, \Delta y$ into account). Evaluate $\frac{d{\cal L}_z}{d\omega}$ using [Eq. (primary-definition-of-Lz-rectangular)](#eq-primary-definition-of-Lz-rectangular).
-   - **Circular Screen:** Compute the azimuthal derivative $\frac{\partial \tilde E_i}{\partial \phi}$ along the periodic angular coordinate grid $\phi$ (with central differences and periodic boundary conditions `numpy.gradient(..., axis=phi_axis)`). Evaluate $\frac{d{\cal L}_z}{d\omega}$ using [Eq. (primary-definition-of-Lz-circular)](#eq-primary-definition-of-Lz-circular).
-6. **Total Angular Momentum (TAM) Density:**
-   - Compute the local total angular momentum spectral density as the direct sum:
+1. **Target Screens:** Implement the angular momentum calculations for both the rectangular screen (Cartesian grid) and the circular screen (polar grid)[cite: 4].
+2. **Data Ingestion:** For each run and for both exported field states (the emitted radiation and the incident LG beam), load the exported Faraday tensor array $F^{\mu\nu}({\bf x},\omega)$ from disk[cite: 4].
+3. **Field Reconstruction:** At every spatial grid node, reconstruct the complex electric field vector $\tilde{\bf E} = (\tilde E_x, \tilde E_y, \tilde E_z)$ and magnetic field vector $\tilde{\bf B} = (\tilde B_x, \tilde B_y, \tilde B_z)$ using [Eq. (definition-of-E-and-B)](#eq-definition-of-E-and-B)[cite: 4].
+4. **Spectral Quantity Evaluations:**
+   - **SAM Density ($\frac{d{\cal S}_z}{d\omega}$):** Calculate according to [Eq. (primary-definition-of-Sz)](#eq-primary-definition-of-Sz)[cite: 4].
+   - **OAM Density ($\frac{d{\cal L}_z}{d\omega}$):**
+     - *Rectangular Screen:* Compute numerical derivatives $\frac{\partial \tilde E_i}{\partial x}$ and $\frac{\partial \tilde E_i}{\partial y}$ with `numpy.gradient` and evaluate [Eq. (primary-definition-of-Lz-rectangular)](#eq-primary-definition-of-Lz-rectangular)[cite: 4].
+     - *Circular Screen:* Compute azimuthal derivatives $\frac{\partial \tilde E_i}{\partial \phi}$ along the periodic $\phi$ grid and evaluate [Eq. (primary-definition-of-Lz-circular)](#eq-primary-definition-of-Lz-circular)[cite: 4].
+   - **Total Angular Momentum (TAM) Density ($\frac{d{\cal J}_z}{d\omega}$):**
      $$\frac{d{\cal J}_z}{d\omega} = \frac{d{\cal L}_z}{d\omega} + \frac{d{\cal S}_z}{d\omega}$$
-7. **Surface Integration (Integrated Flux / Power):**
-   - Integrate each spectral density ($\frac{d{\cal S}_z}{d\omega}$, $\frac{d{\cal L}_z}{d\omega}$, and $\frac{d{\cal J}_z}{d\omega}$) across the screen using the composite 2D trapezoidal rule:
-     - **Rectangular screen:** $\int\int \dots\, dx\, dy$ via `scipy.integrate.trapezoid` or nested `numpy.trapz`.
-     - **Circular screen:** $\int\int \dots\, \rho\, d\rho\, d\phi$, explicitly including the radial Jacobian weight $\rho$.
-   - Append the integrated values to the `run_log` file with timestamps, run parameters, and clear column labels.
-8. **Visualization:**
-   - Generate heatmaps for $\frac{d{\cal S}_z}{d\omega}$, $\frac{d{\cal L}_z}{d\omega}$, and $\frac{d{\cal J}_z}{d\omega}$.
-   - Format colorscales, colormaps, aspect ratios, and spatial extent ticks consistently with the existing Faraday tensor component heatmaps.
+   - **SAM Flux along $z$ ($\frac{d\Sigma_{zz}}{d\omega}$):** Calculate according to [Eq. (primary-definition-of-Sigma-zz)](#eq-primary-definition-of-Sigma-zz)[cite: 4].
+5. **Surface Integration (Integrated Screen Totals):**
+   - Integrate each spectral quantity ($\frac{d{\cal S}_z}{d\omega}$, $\frac{d{\cal L}_z}{d\omega}$, $\frac{d{\cal J}_z}{d\omega}$, and $\frac{d\Sigma_{zz}}{d\omega}$) across the screen surface using the composite 2D trapezoidal rule:
+     - *Rectangular screen:* $\iint \dots\, dx\, dy$ via `scipy.integrate.trapezoid` or nested `numpy.trapz`[cite: 4].
+     - *Circular screen:* $\iint \dots\, \rho\, d\rho\, d\phi$, explicitly including the radial Jacobian weight $\rho$[cite: 4].
+   - Append the computed surface integrals to `run_log.txt` under labeled columns: `int_dSz_domega`, `int_dLz_domega`, `int_dJz_domega`, and `int_dSigma_zz_domega`.
