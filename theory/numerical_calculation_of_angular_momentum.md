@@ -152,6 +152,42 @@ Using $\hat{L}_z = \partial_\phi$:
 $$\frac{d\Lambda_{zz}}{d\omega} = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \frac{\partial \tilde E_x}{\partial \phi} - \tilde{B}_x^* \frac{\partial \tilde E_y}{\partial \phi} + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-circular}$$
 ---
 
+---
+
+### 5. Electromagnetic Energy Density and Energy Flux (Poynting Vector)
+
+The electromagnetic energy density in the temporal domain (in SI units) is:
+$$u(t) = \frac{1}{2}\epsilon_0 \mathbf{E}^2(t) + \frac{1}{2\mu_0} \mathbf{B}^2(t) = \frac{1}{2}\epsilon_0 \left[ \mathbf{E}^2(t) + c^2 \mathbf{B}^2(t) \right]$$
+
+
+*** Spectral Density of the Energy Density***
+For any real field component $E_i(t)$, applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) with identical factors yields:
+$$\frac{d\langle E_i^2\rangle}{d\omega} = 2\operatorname{Re}\left[\tilde{E}_i \tilde{E}_i^*\right] = 2 |\tilde{E}_i|^2$$
+
+The prefactor $\frac{1}{2}\epsilon_0$ cancels the factor of 2, giving the spectral energy density:
+<a id="eq-primary-definition-of-u"></a>
+$$\frac{d u}{d\omega} = \epsilon_0 |\tilde{\mathbf{E}}|^2 + \frac{1}{\mu_0} |\tilde{\mathbf{B}}|^2 = \epsilon_0 \left( |\tilde{\mathbf{E}}|^2 + c^2 |\tilde{\mathbf{B}}|^2 \right) \tag{primary-definition-of-u}$$
+
+where $|\tilde{\mathbf{E}}|^2 = |\tilde{E}_x|^2 + |\tilde{E}_y|^2 + |\tilde{E}_z|^2$ and $|\tilde{\mathbf{B}}|^2 = |\tilde{B}_x|^2 + |\tilde{B}_y|^2 + |\tilde{B}_z|^2$.
+
+### 6. Spectral Density of the Axial Energy Flux (Poynting Vector $P_z$)
+
+The energy flux density (Poynting vector) is:
+$$\mathbf{P}(t) = \frac{1}{\mu_0}\big(\mathbf{E}(t) \times \mathbf{B}(t)\big) = \epsilon_0 c^2 \big(\mathbf{E}(t) \times \mathbf{B}(t)\big)$$
+(note that we use the notation $P$ to distinguish from $S$ which is the spin)
+
+In vacuum, energy conservation is governed by the Poynting continuity theorem:
+<a id="eq-continuity-energy"></a>
+$$\partial_t u + \boldsymbol{\nabla} \cdot \mathbf{P} = 0 \tag{continuity-energy}$$
+The component along the screen normal ($Oz$) is:
+$$P_z(t) = \epsilon_0 c^2 \big( E_x(t) B_y(t) - E_y(t) B_x(t) \big)$$
+
+Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density):
+<a id="eq-primary-definition-of-Pz"></a>
+$$\frac{d P_z}{d\omega} = 2\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right] = \frac{2}{\mu_0}\operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right] \tag{primary-definition-of-Pz}$$
+
+*(Sanity check: For a paraxial wave propagating along $+z$ with $\tilde{B}_y = \tilde{E}_x/c$ and $\tilde{B}_x = -\tilde{E}_y/c$, this reduces to $\frac{d P_z}{d\omega} = c \frac{d u}{d\omega}$, matching free-space energy transport at the speed of light).*
+
 ## Indications for numerical implementation in Python
 
 1. **Target Screens:** Implement the angular momentum calculations for both the rectangular screen (Cartesian grid) and the circular screen (polar grid)[cite: 4].
@@ -165,8 +201,12 @@ $$\frac{d\Lambda_{zz}}{d\omega} = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im
    - **Total Angular Momentum (TAM) Density ($\frac{d{\cal J}_z}{d\omega}$):**
      $$\frac{d{\cal J}_z}{d\omega} = \frac{d{\cal L}_z}{d\omega} + \frac{d{\cal S}_z}{d\omega}$$
    - **SAM Flux along $z$ ($\frac{d\Sigma_{zz}}{d\omega}$):** Calculate according to [Eq. (primary-definition-of-Sigma-zz)](#eq-primary-definition-of-Sigma-zz)[cite: 4].
-5. **Surface Integration (Integrated Screen Totals):**
-   - Integrate each spectral quantity ($\frac{d{\cal S}_z}{d\omega}$, $\frac{d{\cal L}_z}{d\omega}$, $\frac{d{\cal J}_z}{d\omega}$, and $\frac{d\Sigma_{zz}}{d\omega}$) across the screen surface using the composite 2D trapezoidal rule:
+   - - **Energy Density ($\frac{du}{d\omega}$):**
+     $$\frac{du}{d\omega} = \epsilon_0 \left( |\tilde{E}_x|^2 + |\tilde{E}_y|^2 + |\tilde{E}_z|^2 \right) + \epsilon_0 c^2 \left( |\tilde{B}_x|^2 + |\tilde{B}_y|^2 + |\tilde{B}_z|^2 \right)$$
+   - **Energy Flux along $z$ ($\frac{dP_z}{d\omega}$):**
+     $$\frac{dP_z}{d\omega} = 2\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right]$$
+1. **Surface Integration (Integrated Screen Totals):**
+   - Integrate each spectral quantity ($\frac{d{\cal S}_z}{d\omega}$, $\frac{d{\cal L}_z}{d\omega}$, $\frac{d{\cal J}_z}{d\omega}$,  $\frac{d\Sigma_{zz}}{d\omega}$, $\frac{du}{d\omega$}$, $\frac{dP_z}{d\omega}$) across the screen surface using the composite 2D trapezoidal rule:
      - *Rectangular screen:* $\iint \dots\, dx\, dy$ via `scipy.integrate.trapezoid` or nested `numpy.trapz`[cite: 4].
      - *Circular screen:* $\iint \dots\, \rho\, d\rho\, d\phi$, explicitly including the radial Jacobian weight $\rho$[cite: 4].
-   - Append the computed surface integrals to `run_log.txt` under labeled columns: `int_dSz_domega`, `int_dLz_domega`, `int_dJz_domega`, and `int_dSigma_zz_domega`.
+   - Append the computed surface integrals to `run_log.txt` under labeled columns: `int_dSz_domega`, `int_dLz_domega`, `int_dJz_domega`, `int_dSigma_zz_domega`,`int_du_domega`and `int_dPz_domega`

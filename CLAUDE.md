@@ -56,7 +56,7 @@ python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful o
 python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 python3 py_scripts/radiation/plot_all_components.py [--incident]  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
-python3 py_scripts/radiation/plot_angular_momentum.py [path_to_run_folder] [--incident]  # dS_z/dL_z/dJ_z density + dSigma_zz/dLambda_zz/dFlux_tot flux heatmaps / d(omega/omega_1), + screen-integrated totals appended to run_log.txt; rectangular/circular detectors only, see theory/numerical_calculation_of_angular_momentum.md
+python3 py_scripts/radiation/plot_observables.py [path_to_run_folder] [--incident]  # dS_z/dL_z/dJ_z density + dSigma_zz/dLambda_zz/dFlux_tot flux + du/dP_z energy density/flux heatmaps / d(omega/omega_1), + screen-integrated totals appended to run_log.txt; rectangular/circular detectors only, see theory/numerical_calculation_of_angular_momentum.md; formerly plot_angular_momentum.py
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -677,8 +677,9 @@ constants as the conversion basis) the next time this file is touched.
   directly, so both degrade gracefully together. `detector/plot_stereographic.py` was not touched — it renders
   with `plt.scatter`, which already drops `nan` points silently rather than crashing (so a full-sphere config just
   shows a scatter plot missing the exact-pole ring, not an error).
-- **`py_scripts/radiation/plot_angular_momentum.py` plots the z-components of the spin (SAM), orbital (OAM), and
-  total (TAM) angular momentum spectral densities**, per `theory/numerical_calculation_of_angular_momentum.md`'s
+- **`py_scripts/radiation/plot_angular_momentum.py` (since renamed `plot_observables.py` — see the bullet below)
+  plots the z-components of the spin (SAM), orbital (OAM), and total (TAM) angular momentum spectral densities**,
+  per `theory/numerical_calculation_of_angular_momentum.md`'s
   "Applications for the angular momentum density" section — Python-only post-processing of `radiation_field.dat`/
   `incident_field.dat`, no new C++ export. Supersedes the older `plot_spin_angular_momentum.py` (S_z only, deleted
   by this change), which the theory doc's own update found was **missing the `epsilon_0 = 1/(4*pi)` prefactor**
@@ -810,6 +811,31 @@ constants as the conversion basis) the next time this file is touched.
   N_phi=64)` trapezoidal screen-integration quadrature error, or a genuine near-field/Fresnel-number correction
   (this project's detector sits at a finite, not asymptotically-far, distance — see the Fresnel-number bullet
   above) rather than a bug; not investigated further.
+- **`plot_angular_momentum.py` renamed `plot_observables.py` and extended to also compute the electromagnetic
+  energy spectral density (`u`) and its z-directed flux, the Poynting vector (`P_z`)** — theory doc sections 5-6
+  ("Electromagnetic Energy Density and Energy Flux (Poynting Vector)"), added to
+  `theory/numerical_calculation_of_angular_momentum.md` after the angular-momentum sections were already
+  implemented. Folded into the same script rather than split into a new one, since `u`/`P_z` need nothing
+  angular-momentum-specific — they reuse every piece of existing machinery (screen geometry, incident/emitted
+  split, `run_log.txt` table splicing, `QUANTITIES`-driven plotting loop) unchanged; the rename reflects the
+  broadened scope now that "angular momentum" no longer describes everything the script computes. **Unlike every
+  angular-momentum quantity, `u`/`P_z` carry no explicit `1/omega` prefactor** — they're bilinear directly in
+  `E`/`B` (never in the vector potential `A`), so [Eq. (bilinear-spectral-density)] applies to the fields
+  themselves with no extra factor from `A = E/(i*omega)`; the existing `S_z`/`L_z`/`Sigma_zz`/`Lambda_zz` formulas
+  pick up their `1/omega` specifically from that substitution. `compute_angular_momentum`/`plot_angular_momentum`/
+  `integrate_angular_momentum` were renamed `compute_observables`/`plot_observables`/`integrate_observables` to
+  match; `_RUN_LOG_SECTION_HEADER` changed to `"Screen-integrated observables (plot_observables.py)"` (a prior
+  run's differently-titled section from before the rename is left alone rather than replaced, same as any other
+  `label_suffix` mismatch — see `_find_run_log_sections`). Output filenames changed from
+  `angular_momentum_<tag>_omega<N>.png` to `observable_<tag>_omega<N>.png` for the same reason, now covering
+  `energy_density`/`energy_flux` alongside the six existing tags.
+  **Sanity-checked** the same way as the `Sigma_zz`/`Lambda_zz` flux-vs-density ratios above: on a
+  1024-electron rectangular-detector `laser_lg_p=2, laser_lg_l=2` run, `P_z_total/u_total` came out `137.03`,
+  matching `C_LIGHT = 137.035999084` to the same `~3e-5` relative precision as the existing `Sigma_zz/S_z` and
+  `Lambda_zz/L_z` checks — expected, since flux equals density times transport speed for radiation propagating at
+  `c` (the theory doc's own in-line sanity check for `P_z` reduces to exactly `dP_z/domega = c * du/domega` for a
+  paraxial wave). Independent confirmation the new formulas are implemented correctly, not just that the two
+  intermediate factors (`epsilon_0` vs. `epsilon_0*c^2`) happen to cancel by construction.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
@@ -970,7 +996,7 @@ constants as the conversion basis) the next time this file is touched.
   column's colorbar for width, contributing to the misalignment described next.
   **Circular detector: Re/Im/Abs panels use `pcolormesh(..., shading='gouraud')` on cell centers; the Phase
   panel deliberately does not** — same pie-slice-facet problem and `gouraud`-on-centers fix as
-  `plot_angular_momentum.py`'s circular branch (see that script's own bullet above for the full rationale,
+  `plot_observables.py`'s (née `plot_angular_momentum.py`) circular branch (see that script's own bullet above for the full rationale,
   including why a Delaunay/`tricontourf` alternative was rejected), but here it's applied per-panel rather than
   to the whole figure: `phase_values` (`np.arctan2`) wraps from `+pi` to `-pi` at an essentially arbitrary branch
   cut unrelated to the field's actual smoothness there, and `gouraud` linearly interpolates that raw wrapped
