@@ -56,7 +56,7 @@ python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful o
 python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
 python3 py_scripts/radiation/plot_all_components.py [--incident]  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
-python3 py_scripts/radiation/plot_spin_angular_momentum.py [path_to_run_folder] [--incident]  # dS_z/d(omega/omega_1) heatmaps (total Faraday tensor only), see theory/numerical_calculation_of_angular_momentum.md
+python3 py_scripts/radiation/plot_angular_momentum.py [path_to_run_folder] [--incident]  # dS_z/dL_z/dJ_z / d(omega/omega_1) heatmaps + screen-integrated totals appended to run_log.txt; rectangular/circular detectors only, see theory/numerical_calculation_of_angular_momentum.md
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
@@ -677,14 +677,17 @@ constants as the conversion basis) the next time this file is touched.
   directly, so both degrade gracefully together. `detector/plot_stereographic.py` was not touched — it renders
   with `plt.scatter`, which already drops `nan` points silently rather than crashing (so a full-sphere config just
   shows a scatter plot missing the exact-pole ring, not an error).
-- **`py_scripts/radiation/plot_spin_angular_momentum.py` plots the z-component of the spin angular momentum
-  spectral density**, `dS_z/domega = (4/omega)*Im[Ex^* Ey]` — Python-only post-processing of `radiation_field.dat`/
-  `incident_field.dat`, no new C++ export, per `theory/numerical_calculation_of_angular_momentum.md` (only that
-  doc's `S_z` result is implemented; the orbital-angular-momentum piece it sketches alongside it is not). `Ex`/`Ey`
-  are read directly out of the already-exported `F10`/`F20` columns (`Ex=c*F10`, `Ey=c*F20`, the same `F^{mu
-  nu}`<->E/B convention `radiation/faraday_frame_utils.py`'s `extract_rotated_faraday_fields` documents) — no
-  rotation/frame machinery needed, unlike `plot_spherical_components.py`, since this is a lab/canonical-frame
-  Cartesian quantity, not a per-point spherical projection.
+- **`py_scripts/radiation/plot_angular_momentum.py` plots the z-components of the spin (SAM), orbital (OAM), and
+  total (TAM) angular momentum spectral densities**, per `theory/numerical_calculation_of_angular_momentum.md`'s
+  "Applications for the angular momentum density" section — Python-only post-processing of `radiation_field.dat`/
+  `incident_field.dat`, no new C++ export. Supersedes the older `plot_spin_angular_momentum.py` (S_z only, deleted
+  by this change), which the theory doc's own update found was **missing the `epsilon_0 = 1/(4*pi)` prefactor**
+  (`Core::PhysUtils::AtomicUnits::epsilon_0`, `phys_utils.hpp` — the same constant already used for `mu_0` there)
+  in front of `dS_z/domega`; fixed here (`EPSILON_0` constant, mirrored independently in Python per this project's
+  no-shared-constants-module convention) alongside adding the new `L_z`/`J_z` pieces and the screen integration.
+  `Ex`/`Ey`/`Ez` are read directly out of the already-exported `F10`/`F20`/`F30` columns (`E_i=c*F^{i0}`, the same
+  convention `radiation/faraday_frame_utils.py`'s `extract_rotated_faraday_fields` documents) — no rotation/frame
+  machinery needed, since this is a lab/canonical-frame Cartesian quantity, not a per-point spherical projection.
   **Deliberately always uses the total (LR+SR+BR) Faraday tensor** — unlike `plot_field.py`'s own
   `long`/`short`/`boundary`/`total` choice, there is no such CLI option here: a `long`-only or `short`-only field
   is an intermediate term of the derivation (see `theory/FT_Faraday_tensor-direct_and_simplified_forms.md`), not
@@ -694,20 +697,51 @@ constants as the conversion basis) the next time this file is touched.
   therefore just `[path_to_run_folder] [--incident]` (no leading range-type argument), reusing `plot_field.py`'s
   `--incident` flag and its own `emitted`/`incident` split of `png_folder/radiation/`, and its screen-geometry/
   cell-edge functions directly rather than duplicating them. Renders one single-panel (not 2x2 Re/Im/Abs/Phase —
-  `dS_z/domega` is already real-valued) diverging-colormap heatmap per frequency.
+  each quantity is already real-valued) diverging-colormap heatmap per frequency, for each of `S_z`/`L_z`/`J_z`.
+  **Restricted to rectangular/circular detectors only** (the theory doc's own "Target Screens" instruction) — a
+  spherical detector's `(theta, phi)` grid has no flat local `(x, y)` plane for the OAM operator (`x*d/dy-y*d/dx`
+  or `d/dphi`) to act on, so `detector_type=spherical` is rejected outright (a `ValueError`), unlike the old,
+  now-superseded script, which did support spherical for `S_z` alone (no spatial derivative needed there).
+  **OAM spatial derivatives**: rectangular uses `numpy.gradient` in `x`/`y` (central differences, per the theory
+  doc's own numerical-implementation instructions); circular uses an exact periodic centered difference in `phi`
+  (`_periodic_phi_derivative` — `numpy.gradient` has no periodic-boundary mode, so this is hand-implemented,
+  dropping the duplicate `phi=2*pi` column before differencing, same trick `CircularDetector`'s own equal-area
+  radial-spacing bullet documents elsewhere in this file). The `L_z` density itself is **invariant under an
+  isotropic rescaling of `x`/`y`** (`x*d/dy-y*d/dx` is the rotation generator, scale-free under `x->c*x, y->c*y`),
+  so it doesn't matter that `get_screen_coordinates` returns `x`/`y` in the config's own length unit (`lambda`)
+  rather than atomic units for the per-point density — only the screen-integrated total needs an explicit unit
+  conversion, since an area *does* scale with the unit choice (`get_screen_area_weights_au`, ported from the
+  deleted `plot_angular_momentum_flux_screen.py`'s function of the same name, converting via
+  `faraday_frame_utils.convert_unit_to_number`).
   **Frequency-normalization choice**: neither `.dat` file exports raw atomic-unit `omega`, only the dimensionless
   `omega/omega_1` ratio (see the `radiation_field.dat` `omega` column bullet above) — recovering true
   `fundamental_frequency` in Python would mean re-deriving it from `run_log.txt`'s human-readable dump, which no
   script in this repo currently parses. So this script's `1/omega` factor uses that same ratio, making the plotted
-  quantity `dS_z/d(omega/omega_1)` rather than the literal `dS_z/domega` — off by the constant factor `omega_1`
+  quantities `d.../d(omega/omega_1)` rather than the literal `d.../domega` — off by the constant factor `omega_1`
   (fundamental_frequency), which doesn't change any single frequency slice's spatial pattern or the relative
   comparison across harmonics, and keeps this consistent with every other frequency axis this project already
-  plots in `omega/omega_1` units. **Sanity-checked**: on a 20-electron `config/config.cfg` run (circular
-  polarization, `laser_type=laguerre_gauss`), `--incident total` renders a smooth, single-signed (no sign flip
-  across the beam) concentric-ring pattern matching the LG mode's own intensity rings — the expected signature of
-  spin angular momentum from circular polarization; the emitted (`radiation_field.dat`) field's map is noisier
-  (as expected from a small, incoherent-ish 20-electron sample) but the same overall sign, with no NaNs or crashes
-  on either rectangular or the incident-beam path.
+  plots in `omega/omega_1` units.
+  **Screen integration** (the theory doc's "Surface Integration" step): appends an `S_z`/`L_z`/`J_z(omega)`
+  summary table to the run's own `run_log.txt`, trapezoidal quadrature in `(x, y)` for rectangular or `(r^2, phi)`
+  for circular (matching `CircularDetector`'s own equal-area radial spacing). `append_integration_to_run_log`
+  locates and replaces only its own previously-appended section by its *exact* header text (via
+  `_find_run_log_sections`, matching `Logging::write_run_log`'s own "Title\n-----\n" section convention) —
+  **not** the "truncate everything after the first marker match" approach the deleted
+  `plot_angular_momentum_flux_screen.py`/`plot_angular_momentum_density_screen.py` scripts used, which this
+  script's own first implementation copied and which was then found, by direct testing (run on
+  `radiation_field.dat`, then `incident_field.dat`, then `radiation_field.dat` again), to silently delete the
+  *incident* section instead of leaving it alone, since the plain-run's marker also matched as a prefix of
+  content preceding the incident section and truncated everything from there on. Fixed by finding *all* section
+  boundaries first and splicing out only the one matching the target header exactly, regardless of what other
+  sections (including the other `label_suffix` variant of this same script) precede or follow it — verified by
+  running plain/`--incident`/plain/`--incident` back-to-back and confirming both sections coexist afterward.
+  **Sanity-checked** on a real 1024-electron `laser_lg_p=2, laser_lg_l=2` circularly-polarized rectangular-detector
+  run: the incident beam's `OAM/SAM` screen-integrated ratio (`L_z_total/S_z_total`) came out `~1.90`, close to the
+  mode's own topological charge `l=2` — the textbook expectation for a circularly-polarized paraxial LG beam
+  (`<L_z>/<S_z> ~ l`); the `L_z` density heatmap itself shows `p+1=3` concentric single-signed rings, matching the
+  LG(p=2,l=2) mode's own radial intensity structure. The emitted (`radiation_field.dat`) field's ratio came out
+  `~1.65` on the same run — not expected to match the incident beam's ratio exactly (Doppler shift/beam averaging/
+  scattering physics intervene), but the same order of magnitude, as a coarse consistency check.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
