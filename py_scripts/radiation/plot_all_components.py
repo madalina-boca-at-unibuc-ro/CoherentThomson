@@ -6,14 +6,11 @@ tensor components (F^{mu nu} = -F^{nu mu}, diagonal identically zero), 24 combin
 producing one PNG per configured frequency in png_folder/radiation/emitted/ (same output plot_field.py's
 own CLI produces one combination at a time).
 
-Accepts --incident, mirroring radiation/plot_angular_momentum_flux.py's own flag: plots
-incident_field.dat (Core::Radiation::export_incident_field_fourier's known-analytic incident-beam
-reference field) instead of radiation_field.dat. plot_radiation_component itself routes those PNGs
-into png_folder/radiation/incident/ instead (see its own doc comment), so they never collide with the
-real run's own plots even when looping over every combination like this.
-
-Angular-momentum flux (radiation/plot_angular_momentum_flux.py) is a separate, detector-restricted
-post-processing step and is intentionally not looped over here.
+Accepts --incident: plots incident_field.dat (Core::Radiation::export_incident_field_fourier's
+known-analytic incident-beam reference field) instead of radiation_field.dat.
+plot_radiation_component itself routes those PNGs into png_folder/radiation/incident/ instead (see
+its own doc comment), so they never collide with the real run's own plots even when looping over
+every combination like this.
 """
 import sys
 import os

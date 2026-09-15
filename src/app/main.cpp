@@ -193,28 +193,13 @@ int main(int argc, char* argv[]) {
                                     run_output_dir + "/radiation_field.dat");
 
     // Additive diagnostic export: the incident laser beam's own field (not the scattered radiation),
-    // in the same file format, for cross-checking the angular-momentum analysis scripts against a
-    // known-analytic reference field -- see Radiation::export_incident_field_fourier's doc comment.
-    // Only meaningful for rectangular/circular detectors (the angular-momentum theory docs' own
-    // flat-screen restriction); skipped with a message rather than aborting the run otherwise.
+    // in the same file format, as a clean known-analytic reference to compare the scattered field
+    // against -- see Radiation::export_incident_field_fourier's doc comment. Only meaningful for
+    // rectangular/circular detectors (the only ones with a well-defined flat local (x, y) plane);
+    // skipped with a message rather than aborting the run otherwise.
     if (detector->get_type_name() == "RectangularDetector" || detector->get_type_name() == "CircularDetector") {
       Radiation::export_incident_field_fourier(*laser, *detector, sim_par.fundamental_frequency,
                                                run_output_dir + "/incident_field.dat");
-
-      // Two more incident-field exports, at z_loc = -delta_z/+delta_z either side of the beam waist
-      // (identical screen/frequency otherwise) -- gives
-      // py_scripts/radiation/plot_angular_momentum_density_and_flux.py the three neighboring z-planes
-      // theory/angular-momentum-density-and-flux.md's divergence-correction term needs a central
-      // d/dz of, which no single-z-plane export (radiation_field.dat included) can provide. Only
-      // meaningful for the incident beam: the real scattered field has no equivalent "evaluate at a
-      // different z" knob short of re-running the whole simulation at a shifted detector distance.
-      auto [delta_z_val, delta_z_unit] =
-          IoUtils::split_value_and_unit(IoUtils::get_required(simulation_config, "incident_field_delta_z"));
-      double delta_z_au = delta_z_val * IoUtils::convert_unit_to_number(delta_z_unit, simulation_config);
-      Radiation::export_incident_field_fourier(*laser, *detector, sim_par.fundamental_frequency,
-                                               run_output_dir + "/incident_field_zminus.dat", -delta_z_au);
-      Radiation::export_incident_field_fourier(*laser, *detector, sim_par.fundamental_frequency,
-                                               run_output_dir + "/incident_field_zplus.dat", delta_z_au);
     } else {
       std::cout << "Skipping incident field export: detector_type '" << detector->get_type_name()
                 << "' has no flat local (x, y) plane (only rectangular/circular are supported).\n";

@@ -18,12 +18,11 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
                           double fundamental_frequency, const std::string& filepath);
 
 // Exports the INCIDENT laser beam's own complex ("phasor") Faraday tensor -- not the scattered
-// radiation -- in the exact same file format plot_radiation_field writes, so the same downstream
-// angular-momentum analysis (py_scripts/radiation/plot_angular_momentum_*.py) can be pointed at either
-// file. This gives a clean, exactly-known reference field (no coherent-sum noise, no far-field
-// Fresnel/aliasing issues) to validate those formulas/derivatives against, independent of the
-// scattered field's own numerical behavior -- see CLAUDE.md's "analytic incident-field cross-check"
-// note for what this was used to find.
+// radiation -- in the exact same file format plot_radiation_field writes, so it can be compared
+// directly (via py_scripts/radiation/plot_field.py's/plot_spherical_components.py's --incident flag)
+// against a run's own radiation_field.dat. This gives a clean, exactly-known reference field (no
+// coherent-sum noise, no far-field Fresnel/aliasing issues) to sanity-check the scattered field's
+// own numerical behavior against.
 //
 // Always evaluated at the laser's own canonical-frame beam waist (z_loc=0), regardless of the
 // detector's actual configured distance -- and always in the canonical frame (there is no lab-frame
@@ -34,21 +33,9 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
 // ordering to the actual radiation_field.dat from the same run -- directly comparable side by side.
 // Evaluated at the middle of the pulse's flat-top plateau (phi = (get_phi_min()+get_phi_max())/2,
 // i.e. envelope = 0, peak amplitude) -- see LaserField::get_complex_faraday_tensor's own doc comment
-// for why the exact instant chosen cannot affect any of the bilinear angular-momentum formulas
-// downstream. Only rectangular and circular detectors have a well-defined flat local (x, y) plane to
-// reuse (matching the angular-momentum theory docs' own restriction) -- throws for any other type.
-//
-// `z_offset_au` (default 0.0, atomic length units) shifts the evaluated plane along the laser's own
-// canonical-frame propagation direction (get_unity_n()) away from the beam waist -- z_loc=0+z_offset_au
-// instead of the fixed z_loc=0 every other caller uses. Added specifically so main.cpp can call this
-// three times (z_offset_au = -delta_z, 0, +delta_z) to give
-// py_scripts/radiation/plot_angular_momentum_density_and_flux.py the three neighboring z-planes
-// theory/angular-momentum-density-and-flux.md's Section 4/6 divergence-correction term needs a
-// central-difference d/dz of (no such correction is possible from a single z-plane, which is all
-// radiation_field.dat/incident_field.dat otherwise ever provide) -- see main.cpp's own call site and
-// the "incident_field_delta_z" config key.
+// for why the exact instant chosen doesn't matter. Only rectangular and circular detectors have a
+// well-defined flat local (x, y) plane to reuse -- throws for any other type.
 void export_incident_field_fourier(const Laser::LaserField& laser, const Detector::Detector_2D& detector,
-                                   double fundamental_frequency, const std::string& filepath,
-                                   double z_offset_au = 0.0);
+                                   double fundamental_frequency, const std::string& filepath);
 
 }  // namespace Core::Radiation

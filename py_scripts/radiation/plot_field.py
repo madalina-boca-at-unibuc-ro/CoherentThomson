@@ -16,8 +16,6 @@ MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 # scaling applied), not a properly Fourier-transform-normalized F(omega) like radiation_field.dat's --
 # so its absolute Re/Im/Abs scale is not on the same footing as a real scattered-radiation run's,
 # even though the phase relationships between Re/Im/Abs/Phase within one panel set remain meaningful.
-# Same caveat text (adapted) as plot_angular_momentum_density_screen.py's/plot_angular_momentum_flux_screen.py's
-# own _UNCALIBRATED_MAGNITUDE_CAVEAT.
 _UNCALIBRATED_MAGNITUDE_CAVEAT = (
     "NOTE: incident_field.dat's absolute field magnitude has no Fourier-transform normalization "
     "applied -- this plot's colorbar scale is arbitrary and NOT comparable to a real "
@@ -301,9 +299,8 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     structure in the field needs to actually look like a spiral around the vertex.
 
     `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
-    sibling (Core::Radiation::export_incident_field_fourier) -- detected by filename, mirroring
-    radiation/plot_angular_momentum_flux.py's own is_incident convention. incident_field.dat only has
-    long_range populated (short_range/boundary are identically zero -- the incident field has no such
+    sibling (Core::Radiation::export_incident_field_fourier) -- detected by filename.
+    incident_field.dat only has long_range populated (short_range/boundary are identically zero -- the incident field has no such
     split), so 'short'/'boundary' degrade gracefully to all-zero panels and 'total' reduces to 'long'
     exactly; no special-casing needed beyond the title/output-folder below. PNGs go into their own
     'emitted'/'incident' subfolder of png_folder/radiation/ (rather than a suffix on the filename), so

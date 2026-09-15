@@ -2,11 +2,10 @@
 Computes the canonical-frame (laser along Oz) spherical components of the coherently summed
 Faraday tensor -- E_r, E_theta, E_phi, B_r, B_theta, B_phi -- for a spherical-detector run's
 radiation_field.dat. Python-only post-processing, no new C++ output needed: reuses the rotation
-machinery radiation/plot_angular_momentum_flux.py already built (detector/laser direction reconstruction,
+machinery in radiation/faraday_frame_utils.py (detector/laser direction reconstruction,
 Faraday-tensor <-> Cartesian E/B column mapping).
 
-A spherical detector is the natural fit for this (unlike the flat rectangular/circular detectors
-radiation/plot_angular_momentum_flux.py is restricted to): every screen point already has its own natural
+A spherical detector is the natural fit for this: every screen point already has its own natural
 observation direction (theta, phi), so there's no shared-plane assumption to violate. Each point's
 own local (theta_local, phi_local) -- Core::Detector::SphericalDetector's own cone-point
 construction, generally relative to the detector's own axis, not necessarily canonical Oz -- is
@@ -24,7 +23,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 from plot_field import read_config_value, get_spherical_plot_grid, get_detector_geometry_label
-from plot_angular_momentum_flux import (
+from faraday_frame_utils import (
     convert_unit_to_number,
     get_detector_local_rotation,
     get_field_to_canonical_rotation,
@@ -102,11 +101,9 @@ def compute_spherical_field_components(radiation_filepath):
     Returns (result, config_path). `result` is a DataFrame with one row per radiation_field.dat row
     (i_omega, omega, i_screen), plus six complex columns per range -- 'LR_Er'/'LR_Etheta'/
     'LR_Ephi'/'LR_Br'/'LR_Btheta'/'LR_Bphi' and the 'SR_'/'BR_' equivalents -- the canonical-frame
-    spherical components of the long-range/short-range/boundary Faraday tensor. Unlike
-    radiation/plot_angular_momentum_flux.py's compute_angular_momentum_flux, this function makes no
-    long+short 'total' assumption that boundary would invalidate -- it just projects each range's
-    tensor independently, so adding 'BR' here is a plain three-way extension of the existing
-    two-way loop below.
+    spherical components of the long-range/short-range/boundary Faraday tensor. This function makes
+    no long+short 'total' assumption -- it just projects each range's tensor independently, so
+    adding 'BR' here is a plain three-way extension of the existing two-way loop below.
     """
     config_path = os.path.join(os.path.dirname(radiation_filepath), 'config.cfg')
     if not os.path.exists(config_path):

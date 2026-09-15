@@ -13,8 +13,8 @@ inline constexpr double q_0 = -1.0;                                   // the ele
 // hardcoded to the truncated 137.036; raising precision here changes every downstream physics
 // quantity built from c (mc, epsilon_0/mu_0 below, and every mc/epsilon_0-dependent formula in
 // laser_field.cpp/electron.cpp/radiation.cpp/phys_utils.hpp itself), not just this file's own SI
-// columns -- see py_scripts/particle/plot_trajectory.py and
-// py_scripts/radiation/plot_angular_momentum_flux.py's own C_LIGHT, which mirror this value
+// columns -- see py_scripts/particle/plot_trajectory.py's and
+// py_scripts/radiation/faraday_frame_utils.py's own C_LIGHT, which mirror this value
 // independently (no shared constants module between C++ and Python) and were updated to match.
 inline constexpr double c = 137.035999084;
 inline constexpr double hbar = 1.0;                                   // the reduced planck constant
