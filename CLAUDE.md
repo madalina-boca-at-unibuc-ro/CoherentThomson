@@ -1180,3 +1180,32 @@ constants as the conversion basis) the next time this file is touched.
   folded into `_RATIO_PAIRS` since it's expected to land near `m/omega_1`, not `C_LIGHT`. Confirmed on the
   same run: `L_z/u = 34.52` a.u.$^{-1}$, matching the `J_z/u` figure above (`J_z = S_z+L_z`, and `S_z` is
   numerically negligible on this run) as expected.
+- **`_ENERGY_NORMALIZED_PAIRS` switched from the density pair `L_z/u` to the flux pair `Lambda_zz/P_z`**
+  (algebraically identical to `L_z/u` since `flux = c * density` cancels in the ratio, per the `C_LIGHT`
+  checks above -- but `Lambda_zz/P_z` draws on the B-field bilinears `L_z/u` never touches, so agreement
+  with theory is an independent check on the flux formulas too), and a per-row theoretical `m/omega_N
+  (theory)` column was added alongside the numerical ratio in both the stdout printout and the
+  `run_log.txt` table (`add_theoretical_oam_energy_ratio`, reading `m` from `config.cfg`'s `laser_lg_l`
+  and computing each row's actual `omega_N = (omega/omega_1) * fundamental_frequency_au`, not just
+  quoting `m/omega_1` once in a caption -- `omega_N` scales with harmonic index, so a single caption
+  value is only valid at the fundamental).
+  **OPEN, UNRESOLVED: on the `config/config.cfg` setup matched to the Python reference (N=128 electrons,
+  `laser_lg_l=-1`, `detector_direction_theta=1.0 pi` -- a *backward*-facing detector, screen behind the
+  source), the numerical and theoretical columns agree in magnitude to ~0.6% but disagree in sign**:
+  `Lambda_zz/P_z = 0.011107` vs. `m/omega_N (theory) = -0.011170`. The close magnitude agreement is
+  strong evidence the flux formula itself is implemented correctly; the sign flip is not yet explained by
+  either the flux/density `C_LIGHT` checks (self-consistent, and algebraically cancels out of this
+  comparison regardless of propagation direction -- confirmed by hand) or the `_RATIO_PAIRS` sign for this
+  same run (`Sigma_zz/S_z` etc. all land on `-C_LIGHT`, not `+C_LIGHT`, for this backward geometry, but
+  that sign cancels identically out of `Lambda_zz/P_z` vs. `L_z/u` and can't explain the mismatch). Two
+  live, untested hypotheses: (1) the `m/omega_N` relation implicitly assumes a forward-facing detector
+  (photon momentum along `+z`) and needs a sign flip for a backward one -- an observation-direction-
+  dependent OAM/helicity-projection effect; (2) a genuine sign mismatch between `laser_lg_l`'s definition
+  (`sign_l = (l>=0) ? 1 : -1` in `laser_field.cpp`) and the OAM operator `_lz_operator` builds from the
+  screen's own `(x,y)`/`phi` coordinates. A quick ad hoc forward-facing check was tried but changed `l`,
+  electron count, and beam momentum all at once (plus a much smaller `N=16`) and gave an inconsistent,
+  ~1000x-off magnitude -- **not evidence either way**, since it wasn't a controlled comparison. Before
+  touching this again: run a controlled forward-vs-backward comparison (same `|l|`, same electron count,
+  only `detector_direction_theta` flipped between `0.0 pi` and `1.0 pi`, with `average_pz`'s sign flipped
+  to match so the beam still heads toward the detector) and check whether the sign tracks the detector
+  direction or stays fixed. Deliberately deferred, not yet investigated further.
