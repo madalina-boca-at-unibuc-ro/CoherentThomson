@@ -30,7 +30,7 @@ Running the binary directly requires a config file argument:
 ```
 
 When testing a code change (not validating physics), run with a drastically reduced
-`beam_particle_count` (e.g. `50` instead of the repo default `1024`) — simulation time scales with
+`beam_particle_count` (e.g. `50` instead of the repo default `16384`) — simulation time scales with
 the electron count and a full run can take tens of seconds to minutes, dominating iteration time for
 no benefit while just checking that something builds/runs/exports the right files. Copy the config
 rather than editing `config/config.cfg` in place, unless the task is specifically about
