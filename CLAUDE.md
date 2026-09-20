@@ -1136,3 +1136,47 @@ constants as the conversion basis) the next time this file is touched.
   Debug-vs-Release build-type footgun documented above**: after editing a widely-`#include`d header in
   this repo, prefer a `--clean-first` (or fresh `build/`) rebuild over trusting incremental `cmake --build`
   to have picked up every affected translation unit, at least until this is root-caused.
+- **FIXED: `py_scripts/radiation/plot_observables.py`'s angular-momentum density/flux quantities
+  (`S_z`/`L_z`/`J_z`/`Sigma_zz`/`Lambda_zz`/`Flux_tot`) used the exported dimensionless `omega/omega_1`
+  ratio as the divisor in their theory-doc-mandated `1/omega` prefactor, instead of the actual raw angular
+  frequency** -- found by an external review of the script that noticed
+  `int_dJz_domega / int_du_domega` came out as a bare dimensionless integer (`~2`, coincidentally close to
+  the LG mode's own topological charge `l=2`) instead of a quantity with units of inverse time
+  (`~m/omega_1`), the expected `angular momentum / energy = m/omega` relation for radiation carrying `m`
+  units of angular momentum per photon of energy `omega` (in `hbar=1` units). The `1/omega` division
+  itself was never missing -- it's applied to the entire bracketed expression in all four formulas, exactly
+  matching `theory/numerical_calculation_of_angular_momentum.md`'s derivation -- but the divisor was
+  `omega/omega_1` (the same dimensionless ratio `radiation_field.dat`'s own `omega` column stores, per the
+  bullet above), not raw `omega`. Since `d/d(omega/omega_1) = omega_1 * d/domega` by the chain rule, this
+  made `S_z`/`L_z`/`Sigma_zz`/`Lambda_zz` (and `J_z`/`Flux_tot`, built from them) equal to
+  `omega_1 * (true d.../domega)`, while `u`/`P_z` (which have no `1/omega` prefactor at all, per the theory
+  doc's sections 5-6) stayed genuine, unscaled `d.../domega` -- putting the angular-momentum family and the
+  energy family on two different frequency bases, off by the constant factor `omega_1`
+  (`fundamental_frequency`). This was invisible to every ratio check already documented above
+  (`Sigma_zz/S_z`, `Lambda_zz/L_z`, `Flux_tot/J_z`, `P_z/u`, all still landing on `C_LIGHT`) because each
+  of those pairs a flux against its *own* density, both carrying the identical `omega_1` mismatch, which
+  cancels -- exactly the caveat the external review itself flagged before it could be used to rule out the
+  bug. Fixed by adding `_read_fundamental_frequency_au` (parses the `fundamental_frequency` line
+  `Logging::write_run_log` already writes into the run's own `run_log.txt` -- `write_kv_au(file,
+  "fundamental_frequency", sim_par.fundamental_frequency * c)`, i.e. the internal omega/c-convention value
+  already converted back to a genuine raw angular frequency, atomic units) and multiplying it onto the
+  exported `omega/omega_1` ratio to recover the actual raw `omega` used as the `1/omega` divisor in all
+  four formulas; `u`/`P_z` were left untouched (correct already). `QUANTITIES`' plot panel labels were
+  also corrected from `d(\omega/\omega_1)` to `d\omega` for all eight quantities, including `u`/`P_z`,
+  which were already true `d.../domega` but had carried the wrong label the whole time.
+  **Verified** by re-running the fixed script against a real 16384-electron circular-detector
+  `laser_lg_p=2, laser_lg_l=2` run already on disk (no solver re-run needed -- this is a pure
+  post-processing fix): the four flux/density `C_LIGHT` ratios are unchanged (as expected, since the
+  `omega_1` factor cancels in each), while `int_dJz_domega/int_du_domega` moved from `~1.968`
+  (dimensionless) to `~34.5` a.u.$^{-1}$, matching `m/omega_1 = 2/0.057 ~= 35.09` a.u.$^{-1}$ to the same
+  ~1.6% relative agreement the old (dimensionless) check had against the bare integer `2` -- i.e. the fix
+  changes the quantity's units/magnitude exactly as predicted without degrading the level of agreement with
+  the expected physics.
+  **A third run_log.txt table was then added, `_ENERGY_NORMALIZED_PAIRS`/`compute_ratio_table`/
+  `append_energy_ratios_to_run_log`** (generalized from the existing `_RATIO_PAIRS`/
+  `compute_flux_density_ratios`/`append_ratios_to_run_log` machinery, now `compute_ratio_table(integrated,
+  pairs)` taking either tuple), printing `L_z/u` (currently the only entry) alongside the existing
+  `Sigma_zz/S_z`/`Lambda_zz/L_z`/`Flux_tot/J_z`/`P_z/u` table -- kept in its own table/caption rather than
+  folded into `_RATIO_PAIRS` since it's expected to land near `m/omega_1`, not `C_LIGHT`. Confirmed on the
+  same run: `L_z/u = 34.52` a.u.$^{-1}$, matching the `J_z/u` figure above (`J_z = S_z+L_z`, and `S_z` is
+  numerically negligible on this run) as expected.

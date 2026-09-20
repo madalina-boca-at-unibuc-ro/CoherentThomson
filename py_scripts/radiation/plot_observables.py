@@ -72,17 +72,23 @@ scale-free under x->c*x, y->c*y), so it does not matter that get_screen_coordina
 the config's own length unit (e.g. 'lambda') rather than atomic units -- only the screen-integrated
 totals below need an explicit unit conversion, since an area DOES scale with the unit choice.
 
-**Frequency convention**: neither .dat file exports raw atomic-unit omega, only the dimensionless
-omega/omega_1 ratio (see CLAUDE.md's radiation_field.dat 'omega' column bullet) -- recovering true
-fundamental_frequency in Python would mean re-parsing it out of run_log.txt's human-readable dump.
-So the 1/omega prefactor in S_z/L_z/Sigma_zz/Lambda_zz above uses that same ratio, making those
-plotted quantities d.../d(omega/omega_1) rather than d.../domega in raw atomic units -- consistent
-with every other frequency-axis quantity this project already plots in omega/omega_1 units, and
-differing from the true d.../domega only by the constant factor omega_1 (fundamental_frequency),
-which does not affect the spatial pattern at any given omega index or the relative comparison
-across harmonics. u/P_z have no such prefactor to rescale (see above), so this distinction doesn't
-apply to them -- they're already true du/domega, dP_z/domega in atomic units, at whatever raw
-frequency the omega/omega_1 index happens to correspond to.
+**Frequency convention (FIXED -- see CLAUDE.md's "missing 1/omega" bug note)**: neither .dat file
+exports raw atomic-unit omega, only the dimensionless omega/omega_1 ratio (see CLAUDE.md's
+radiation_field.dat 'omega' column bullet). An earlier version of this script used that ratio
+directly as the divisor in S_z/L_z/Sigma_zz/Lambda_zz's 1/omega prefactor, making those four (and
+J_z/Flux_tot, built from them) d.../d(omega/omega_1) = omega_1 * d.../domega_true -- while u/P_z
+(no 1/omega prefactor at all, per the theory doc) stayed true d.../domega_true, unscaled. That put
+the two families on different frequency bases, off by the constant factor omega_1
+(fundamental_frequency): comparing e.g. J_z/u directly gave a bare dimensionless number
+(coincidentally close to the topological charge m at the fundamental, since omega_1/omega=1 there)
+instead of a quantity with units of inverse time. Fixed by reading the run's own raw
+fundamental_frequency (atomic units, inverse time) back out of run_log.txt
+(_read_fundamental_frequency_au -- Logging::write_run_log already prints
+`sim_par.fundamental_frequency * c`, i.e. the internal omega/c-convention value converted back to a
+genuine angular frequency) and multiplying it onto the exported omega/omega_1 ratio to recover the
+actual raw omega (atomic units) used as the 1/omega divisor everywhere below -- so all eight
+QUANTITIES are now genuine d.../domega on the same basis, and e.g. int_dJz_domega/int_du_domega now
+comes out numerically close to m/omega_1 (inverse time), not the bare integer m.
 
 **Screen integration**: appends a summary table (one column per quantity below) to the run's own
 run_log.txt (theory doc's "Surface Integration" step), replacing any such table from a previous run
@@ -91,6 +97,23 @@ quadrature in (x, y) for rectangular, (r^2, phi) for circular (matching Circular
 equal-area radial spacing, so a constant-r^2-step trapezoidal rule is exact-in-area for any N_R) --
 area weights are converted to atomic-unit length^2 (get_screen_area_weights_au), unlike the density/
 flux values themselves.
+
+**Flux/density ratios**: alongside that table, also prints (stdout) and appends to run_log.txt a
+second table of each screen-integrated flux total divided by its corresponding density total
+(Sigma_zz/S_z, Lambda_zz/L_z, Flux_tot/J_z, P_z/u -- see _RATIO_PAIRS), each expected to land close to
+C_LIGHT: flux equals density times transport speed, for radiation propagating at c (same relationship
+as the Poynting vector to the EM energy density, S=c*u) -- see CLAUDE.md's own confirmation of this on
+a real run (~3e-5 relative agreement for all four pairs). A pair whose density integrates close to
+zero (e.g. S_z can nearly cancel for some polarization/mode combinations) gives a noise-dominated,
+not-necessarily-close-to-C_LIGHT ratio for that one pair -- expected, not itself a sign of a bug.
+
+**OAM-to-energy ratio**: a third table (_ENERGY_NORMALIZED_PAIRS, currently just L_z/u) divides the
+screen-integrated OAM density total by the screen-integrated energy density total, expected to land
+close to m/omega_1 (inverse time, atomic units; m = the beam's own topological charge, omega_1 =
+fundamental_frequency, read back out of run_log.txt by _read_fundamental_frequency_au) -- the
+angular-momentum/energy = m/omega relation for radiation carrying m units of angular momentum per
+photon of energy omega (hbar=1). See CLAUDE.md's "missing 1/omega" bug-fix note for why this needs
+the run's actual raw omega_1, not the dimensionless omega/omega_1 ratio the .dat files export.
 
 Reuses plot_field.py's screen-geometry/cell-edge reconstruction directly (same CLI shape:
 [path_to_run_folder] [--incident]), and the same is_incident split into
@@ -143,15 +166,15 @@ _UNCALIBRATED_MAGNITUDE_CAVEAT = (
 # different units -- kept as one list purely because every quantity here shares the same
 # plotting/integration machinery.
 QUANTITIES = (
-    ('dSz', 'spin', 'Spin angular momentum density', r'$d\mathcal{S}_z/d(\omega/\omega_1)$'),
-    ('dLz', 'orbital', 'Orbital angular momentum density', r'$d\mathcal{L}_z/d(\omega/\omega_1)$'),
-    ('dJz', 'total', 'Total angular momentum density', r'$d\mathcal{J}_z/d(\omega/\omega_1)$'),
-    ('dSigmazz', 'flux_spin', 'Spin angular momentum flux', r'$d\Sigma_{zz}/d(\omega/\omega_1)$'),
-    ('dLambdazz', 'flux_orbital', 'Orbital angular momentum flux', r'$d\Lambda_{zz}/d(\omega/\omega_1)$'),
+    ('dSz', 'spin', 'Spin angular momentum density', r'$d\mathcal{S}_z/d\omega$'),
+    ('dLz', 'orbital', 'Orbital angular momentum density', r'$d\mathcal{L}_z/d\omega$'),
+    ('dJz', 'total', 'Total angular momentum density', r'$d\mathcal{J}_z/d\omega$'),
+    ('dSigmazz', 'flux_spin', 'Spin angular momentum flux', r'$d\Sigma_{zz}/d\omega$'),
+    ('dLambdazz', 'flux_orbital', 'Orbital angular momentum flux', r'$d\Lambda_{zz}/d\omega$'),
     ('dFluxTotal', 'flux_total', 'Total angular momentum flux',
-     r'$d(\Sigma_{zz}{+}\Lambda_{zz})/d(\omega/\omega_1)$'),
-    ('du', 'energy_density', 'Electromagnetic energy density', r'$du/d(\omega/\omega_1)$'),
-    ('dPz', 'energy_flux', 'Energy flux (Poynting vector)', r'$dP_z/d(\omega/\omega_1)$'),
+     r'$d(\Sigma_{zz}{+}\Lambda_{zz})/d\omega$'),
+    ('du', 'energy_density', 'Electromagnetic energy density', r'$du/d\omega$'),
+    ('dPz', 'energy_flux', 'Energy flux (Poynting vector)', r'$dP_z/d\omega$'),
 )
 
 # Short labels for run_log.txt's table columns (same order/columns as QUANTITIES).
@@ -160,6 +183,57 @@ _RUN_LOG_LABELS = {
     'dSigmazz': 'Sigma_zz', 'dLambdazz': 'Lambda_zz', 'dFluxTotal': 'Flux_tot',
     'du': 'u', 'dPz': 'P_z',
 }
+
+# (flux column, density column, ratio label). Each pair's flux/density ratio is expected to equal
+# C_LIGHT: a flux (crossing the screen per unit time/area) equals its density (sitting on/near the
+# screen per unit area) times the transport speed, same relationship as the Poynting vector to the EM
+# energy density (S=c*u) -- see CLAUDE.md's "Flux_total_quantity / Density_total_quantity == C_LIGHT"
+# verification note, which found this to ~3e-5 relative on a real run for all four pairs below.
+_RATIO_PAIRS = (
+    ('dSigmazz', 'dSz', 'Sigma_zz/S_z'),
+    ('dLambdazz', 'dLz', 'Lambda_zz/L_z'),
+    ('dFluxTotal', 'dJz', 'Flux_tot/J_z'),
+    ('dPz', 'du', 'P_z/u'),
+)
+
+# (numerator column, denominator column, ratio label). L_z/u is the OAM-to-energy ratio: for
+# radiation carrying m units of angular momentum per photon of energy omega (hbar=1, atomic units),
+# int_dLz_domega/int_du_domega is expected to land close to m/omega_1 (inverse time, atomic units) --
+# see CLAUDE.md's "missing 1/omega" bug-fix note, whose own int_dJz_domega/int_du_domega check
+# (the sum of S_z/u and this L_z/u ratio) motivated this fix in the first place. Kept in its own
+# tuple/table rather than folded into _RATIO_PAIRS above: that table's caption specifically expects
+# C_LIGHT, which does not apply here.
+_ENERGY_NORMALIZED_PAIRS = (
+    ('dLz', 'du', 'L_z/u'),
+)
+
+
+# Matches Logging::write_run_log's own write_kv_au format ("  <label, left-padded to 28> <value, "
+# scientific> a.u.\n") for the specific "fundamental_frequency" line.
+_FUNDAMENTAL_FREQUENCY_RE = re.compile(r'(?m)^\s*fundamental_frequency\s+([+-]?[\d.]+[eE][+-]?\d+)\s+a\.u\.')
+
+
+def _read_fundamental_frequency_au(run_dir):
+    """
+    Returns the run's own raw fundamental_frequency (omega_1, atomic units, inverse time), parsed
+    out of run_log.txt -- Logging::write_run_log prints `sim_par.fundamental_frequency * c`, i.e.
+    the internal omega/c-convention value already converted back to a genuine angular frequency
+    (run_log.cpp), not the omega/c value itself. Needed to convert radiation_field.dat/
+    incident_field.dat's exported dimensionless omega/omega_1 ratio back into a real omega for the
+    1/omega prefactor in dSz/dLz/dSigmazz/dLambdazz below -- see this module's own "Frequency
+    convention" doc comment for the bug this fixes.
+    """
+    log_path = os.path.join(run_dir, "run_log.txt")
+    if not os.path.exists(log_path):
+        raise FileNotFoundError(
+            f"'{log_path}' not found -- this run predates run_log.txt (Logging::write_run_log); "
+            "re-run the solver to regenerate it.")
+    with open(log_path) as f:
+        content = f.read()
+    match = _FUNDAMENTAL_FREQUENCY_RE.search(content)
+    if not match:
+        raise ValueError(f"Could not find a 'fundamental_frequency' line in '{log_path}'.")
+    return float(match.group(1))
 
 
 def _complex_column(data, prefix, mu, nu):
@@ -254,6 +328,8 @@ def compute_observables(radiation_filepath):
               "(Core::IoUtils::copy_config_to_run_directory); re-run the solver to regenerate it.")
         sys.exit(1)
 
+    fundamental_frequency_au = _read_fundamental_frequency_au(os.path.dirname(radiation_filepath))
+
     detector_type, _ = read_config_value('detector_type', config_path)
     if detector_type not in ('rectangular', 'circular'):
         raise ValueError(
@@ -283,15 +359,16 @@ def compute_observables(radiation_filepath):
         if omega_ratio == 0.0:
             n_skipped += 1
             continue
+        omega_au = omega_ratio * fundamental_frequency_au
 
         Ex, Ey, Ez = _get_E_total(subset)
         Bx, By, Bz = _get_B_total(subset)
 
-        dSz = (4.0 * EPSILON_0 / omega_ratio) * np.imag(np.conj(Ex) * Ey)
-        dSigmazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_ratio) * np.imag(
+        dSz = (4.0 * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
+        dSigmazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
             np.conj(Bx) * Ex + np.conj(By) * Ey - np.conj(Bz) * Ez)
 
-        # No 1/omega_ratio factor here -- see this module's own doc comment: u/P_z are bilinear
+        # No 1/omega factor here -- see this module's own doc comment: u/P_z are bilinear
         # directly in E/B, never in the vector potential A, so their spectral density carries no
         # such prefactor (unlike dSz/dSigmazz above).
         du = (EPSILON_0 * (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
@@ -304,9 +381,9 @@ def compute_observables(radiation_filepath):
         LEy = _lz_operator(detector_type, Ey_grid, x_grid, y_grid, x_vals, y_vals)
         LEz = _lz_operator(detector_type, Ez_grid, x_grid, y_grid, x_vals, y_vals)
 
-        dLz = (2.0 * EPSILON_0 / omega_ratio) * np.imag(
+        dLz = (2.0 * EPSILON_0 / omega_au) * np.imag(
             np.conj(Ex_grid) * LEx + np.conj(Ey_grid) * LEy + np.conj(Ez_grid) * LEz).ravel()
-        dLambdazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_ratio) * np.imag(
+        dLambdazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
             np.conj(By_grid) * LEx - np.conj(Bx_grid) * LEy + np.conj(Bz_grid) * Ez_grid).ravel()
 
         rows.append(pd.DataFrame({
@@ -399,7 +476,27 @@ def integrate_observables(result, detector_type, config_path):
     return pd.DataFrame(rows).sort_values('i_omega').reset_index(drop=True)
 
 
+def compute_ratio_table(integrated, pairs):
+    """
+    Returns a DataFrame (one row per i_omega) of numerator/denominator ratios for each
+    (numerator column, denominator column, label) entry in `pairs` -- called with _RATIO_PAIRS
+    (flux/density, expected ~ C_LIGHT) and _ENERGY_NORMALIZED_PAIRS (OAM/energy, expected ~
+    m/omega_1). A near-zero denominator (e.g. S_z for a near-cancelling spin term at high
+    topological charge) gives a noise-dominated ratio for that one pair -- expected, not a bug.
+    """
+    rows = []
+    for _, row in integrated.iterrows():
+        entry = {'i_omega': row['i_omega'], 'omega': row['omega']}
+        for num_col, den_col, label in pairs:
+            with np.errstate(divide='ignore', invalid='ignore'):
+                entry[label] = row[num_col] / row[den_col]
+        rows.append(entry)
+    return pd.DataFrame(rows)
+
+
 _RUN_LOG_SECTION_HEADER = "Screen-integrated observables (plot_observables.py)"
+_RUN_LOG_RATIO_HEADER = "Flux/density ratios (plot_observables.py)"
+_RUN_LOG_ENERGY_RATIO_HEADER = "OAM-to-energy ratios (plot_observables.py)"
 
 # Matches Logging::write_run_log's own section-header convention: a title line immediately followed
 # by a dash-underline exactly as long as the title (see run_log.cpp/run_log.txt's own "Frequency
@@ -422,19 +519,16 @@ def _find_run_log_sections(content):
             if len(m.group(2)) == len(m.group(1))]
 
 
-def append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=""):
+def _write_run_log_section(run_dir, header, body_lines):
     """
-    Appends (or, on a re-run, replaces) a density/flux summary table (one column per QUANTITIES
-    entry) in the run's own run_log.txt -- theory/numerical_calculation_of_angular_momentum.md's
-    'Surface Integration' step, integrated over the whole screen, one row per frequency. Only this
-    script's own previously-appended section (identified by _RUN_LOG_SECTION_HEADER + label_suffix,
-    via _find_run_log_sections) is ever replaced -- in place, regardless of what other sections
-    precede or follow it. `label_suffix` (e.g. " -- incident beam", set when run on
-    incident_field.dat) keeps that table in its own section rather than overwriting the actual
-    scattered-radiation run's own logged section, and also triggers _UNCALIBRATED_MAGNITUDE_CAVEAT
-    being written into that section.
+    Splices `body_lines` into run_log.txt under a dash-underlined `header` (matching
+    Logging::write_run_log's own section convention), replacing this same header's previous section
+    in place if a prior run of this script already wrote one (via _find_run_log_sections), regardless
+    of what other sections precede or follow it -- so re-running doesn't pile up duplicates and can't
+    disturb an unrelated section (e.g. a differently-`label_suffix`d one, see _find_run_log_sections'
+    own doc comment for the bug this guards against). Shared by append_integration_to_run_log and
+    append_ratios_to_run_log, which previously duplicated this splice logic.
     """
-    header = _RUN_LOG_SECTION_HEADER + label_suffix
     log_path = os.path.join(run_dir, "run_log.txt")
     if not os.path.exists(log_path):
         raise FileNotFoundError(
@@ -451,26 +545,92 @@ def append_integration_to_run_log(run_dir, detector_type, integrated, label_suff
             content = content[:start] + content[end:]
             break
 
-    lines = [content.rstrip("\n"), "", header, "-" * len(header)]
+    lines = [content.rstrip("\n"), "", header, "-" * len(header)] + body_lines
+    with open(log_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"Appended '{header}' section to {log_path}")
+
+
+def append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=""):
+    """
+    Appends (or, on a re-run, replaces) a density/flux summary table (one column per QUANTITIES
+    entry) in the run's own run_log.txt -- theory/numerical_calculation_of_angular_momentum.md's
+    'Surface Integration' step, integrated over the whole screen, one row per frequency.
+    `label_suffix` (e.g. " -- incident beam", set when run on incident_field.dat) keeps that table in
+    its own section rather than overwriting the actual scattered-radiation run's own logged section,
+    and also triggers _UNCALIBRATED_MAGNITUDE_CAVEAT being written into that section.
+    """
+    body = []
     if label_suffix:
-        lines += [f"  {_UNCALIBRATED_MAGNITUDE_CAVEAT}", ""]
-    lines += [
+        body += [f"  {_UNCALIBRATED_MAGNITUDE_CAVEAT}", ""]
+    body += [
         "  Rough sum_p Delta_A_p * (dQ/domega)_p screen integration "
         "(theory/numerical_calculation_of_angular_momentum.md,",
         f"  'Surface Integration' step), {detector_type} detector, trapezoidal quadrature in "
         f"{'(x, y)' if detector_type == 'rectangular' else '(r^2, phi)'}, area weights in atomic units.",
     ]
     header_cells = ['i_omega', 'omega/omega_1'] + [f'{_RUN_LOG_LABELS[c]} [a.u.]' for c, *_ in QUANTITIES]
-    lines.append(f"  {header_cells[0]:>8} {header_cells[1]:>14} "
-                 + ' '.join(f'{cell:>16}' for cell in header_cells[2:]))
+    body.append(f"  {header_cells[0]:>8} {header_cells[1]:>14} "
+                + ' '.join(f'{cell:>16}' for cell in header_cells[2:]))
     for _, row in integrated.iterrows():
         cells = [f"{int(row['i_omega']):>8d}", f"{row['omega']:>14.6f}"]
         cells += [f"{row[c]:>16.6e}" for c, *_ in QUANTITIES]
-        lines.append('  ' + ' '.join(cells))
+        body.append('  ' + ' '.join(cells))
 
-    with open(log_path, "w") as f:
-        f.write("\n".join(lines) + "\n")
-    print(f"Appended screen-integrated observables to {log_path}")
+    _write_run_log_section(run_dir, _RUN_LOG_SECTION_HEADER + label_suffix, body)
+
+
+def _append_ratio_table_to_run_log(run_dir, ratios, pairs, header, caption_lines, label_suffix=""):
+    """
+    Appends (or, on a re-run, replaces) a numerator/denominator ratio table (`pairs`, as computed by
+    compute_ratio_table) in the run's own run_log.txt, one row per frequency. Shared by
+    append_ratios_to_run_log (_RATIO_PAIRS, expected ~ C_LIGHT) and append_energy_ratios_to_run_log
+    (_ENERGY_NORMALIZED_PAIRS, expected ~ m/omega_1).
+    """
+    body = list(caption_lines)
+    ratio_labels = [label for _, _, label in pairs]
+    header_cells = ['i_omega', 'omega/omega_1'] + ratio_labels
+    body.append(f"  {header_cells[0]:>8} {header_cells[1]:>14} "
+                + ' '.join(f'{cell:>16}' for cell in header_cells[2:]))
+    for _, row in ratios.iterrows():
+        cells = [f"{int(row['i_omega']):>8d}", f"{row['omega']:>14.6f}"]
+        cells += [f"{row[label]:>16.6e}" for _, _, label in pairs]
+        body.append('  ' + ' '.join(cells))
+
+    _write_run_log_section(run_dir, header + label_suffix, body)
+
+
+def append_ratios_to_run_log(run_dir, ratios, label_suffix=""):
+    """
+    Appends (or, on a re-run, replaces) the flux/density ratio table (_RATIO_PAIRS,
+    compute_ratio_table) in the run's own run_log.txt, one row per frequency -- each column
+    expected to land close to C_LIGHT, the sanity check documented in CLAUDE.md's
+    "Flux_total_quantity / Density_total_quantity == C_LIGHT" note.
+    """
+    caption_lines = [
+        f"  Each column is flux_total/density_total for one quantity pair, expected ~ C_LIGHT "
+        f"({C_LIGHT:.6f} a.u.) since flux = density * transport speed c, for radiation propagating "
+        "at c (same relationship as the Poynting vector to the EM energy density, S=c*u).",
+    ]
+    _append_ratio_table_to_run_log(run_dir, ratios, _RATIO_PAIRS, _RUN_LOG_RATIO_HEADER,
+                                    caption_lines, label_suffix=label_suffix)
+
+
+def append_energy_ratios_to_run_log(run_dir, ratios, label_suffix=""):
+    """
+    Appends (or, on a re-run, replaces) the OAM-to-energy ratio table (_ENERGY_NORMALIZED_PAIRS,
+    compute_ratio_table) in the run's own run_log.txt, one row per frequency -- expected ~ m/omega_1
+    (inverse time, atomic units) for radiation carrying m units of angular momentum per photon of
+    energy omega (hbar=1 units); see CLAUDE.md's "missing 1/omega" bug-fix note.
+    """
+    caption_lines = [
+        "  Each column is an angular-momentum density integrated over the screen divided by the "
+        "energy density integrated over the screen, expected ~ m/omega_1 (m = the beam's own "
+        "topological charge, omega_1 = fundamental_frequency, both a.u.) for radiation carrying m "
+        "units of angular momentum per photon of energy omega (hbar=1).",
+    ]
+    _append_ratio_table_to_run_log(run_dir, ratios, _ENERGY_NORMALIZED_PAIRS, _RUN_LOG_ENERGY_RATIO_HEADER,
+                                    caption_lines, label_suffix=label_suffix)
 
 
 def plot_observables(radiation_filepath):
@@ -566,9 +726,21 @@ def plot_observables(radiation_filepath):
             plt.close(fig)
 
     run_dir = os.path.dirname(radiation_filepath)
+    label_suffix = " -- incident beam" if is_incident else ""
     integrated = integrate_observables(result, detector_type, config_path)
-    append_integration_to_run_log(run_dir, detector_type, integrated,
-                                  label_suffix=" -- incident beam" if is_incident else "")
+    append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=label_suffix)
+
+    ratios = compute_ratio_table(integrated, _RATIO_PAIRS)
+    print(f"Flux/density ratios (expect ~ C_LIGHT = {C_LIGHT:.6f} a.u.):")
+    print(ratios.to_string(index=False))
+    append_ratios_to_run_log(run_dir, ratios, label_suffix=label_suffix)
+
+    fundamental_frequency_au = _read_fundamental_frequency_au(run_dir)
+    energy_ratios = compute_ratio_table(integrated, _ENERGY_NORMALIZED_PAIRS)
+    print(f"OAM-to-energy ratios (expect ~ m/omega_1 = m/{fundamental_frequency_au:.6f} a.u.^-1, "
+          "m = topological charge):")
+    print(energy_ratios.to_string(index=False))
+    append_energy_ratios_to_run_log(run_dir, energy_ratios, label_suffix=label_suffix)
 
 
 if __name__ == "__main__":
