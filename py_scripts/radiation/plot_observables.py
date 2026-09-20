@@ -107,13 +107,23 @@ a real run (~3e-5 relative agreement for all four pairs). A pair whose density i
 zero (e.g. S_z can nearly cancel for some polarization/mode combinations) gives a noise-dominated,
 not-necessarily-close-to-C_LIGHT ratio for that one pair -- expected, not itself a sign of a bug.
 
-**OAM-to-energy ratio**: a third table (_ENERGY_NORMALIZED_PAIRS, currently just L_z/u) divides the
-screen-integrated OAM density total by the screen-integrated energy density total, expected to land
-close to m/omega_1 (inverse time, atomic units; m = the beam's own topological charge, omega_1 =
-fundamental_frequency, read back out of run_log.txt by _read_fundamental_frequency_au) -- the
-angular-momentum/energy = m/omega relation for radiation carrying m units of angular momentum per
-photon of energy omega (hbar=1). See CLAUDE.md's "missing 1/omega" bug-fix note for why this needs
-the run's actual raw omega_1, not the dimensionless omega/omega_1 ratio the .dat files export.
+**OAM-to-energy ratio**: a third table (_ENERGY_NORMALIZED_PAIRS, Lambda_zz/P_z -- the orbital
+angular-momentum *flux* over the energy *flux*/Poynting vector, not the density pair L_z/u this used
+before) divides the screen-integrated orbital-AM-flux total by the screen-integrated energy-flux
+total, expected to land close to m/omega_N (inverse time, atomic units; m = the beam's own
+topological charge, i.e. config.cfg's laser_lg_l; omega_N = that row's actual raw angular frequency,
+(omega/omega_1)*fundamental_frequency_au, fundamental_frequency_au read back out of run_log.txt by
+_read_fundamental_frequency_au) -- the angular-momentum/energy = m/omega relation for radiation
+carrying m units of angular momentum per photon of energy omega (hbar=1). Since flux = c * density
+for both the numerator and denominator (see _RATIO_PAIRS' own C_LIGHT check), Lambda_zz/P_z and
+L_z/u are algebraically identical (the c cancels) -- the flux pair is used here because Lambda_zz/P_z
+draws on the B-field bilinears (never used by L_z/u, which is pure-E), so agreement between this
+ratio and the theoretical m/omega_N is an independent check on the flux formulas too, not just a
+restatement of the density one. The theoretical m/omega_N value is appended alongside the numerical
+ratio (not just quoted once in the caption) so every row can be checked directly, since omega_N
+scales with harmonic index N and a single caption value would only be valid for N=1 (see CLAUDE.md's
+"missing 1/omega" bug-fix note for why this needs the run's actual raw omega_1, not the dimensionless
+omega/omega_1 ratio the .dat files export).
 
 Reuses plot_field.py's screen-geometry/cell-edge reconstruction directly (same CLI shape:
 [path_to_run_folder] [--incident]), and the same is_incident split into
@@ -196,15 +206,17 @@ _RATIO_PAIRS = (
     ('dPz', 'du', 'P_z/u'),
 )
 
-# (numerator column, denominator column, ratio label). L_z/u is the OAM-to-energy ratio: for
+# (numerator column, denominator column, ratio label). Lambda_zz/P_z is the OAM-to-energy ratio: for
 # radiation carrying m units of angular momentum per photon of energy omega (hbar=1, atomic units),
-# int_dLz_domega/int_du_domega is expected to land close to m/omega_1 (inverse time, atomic units) --
-# see CLAUDE.md's "missing 1/omega" bug-fix note, whose own int_dJz_domega/int_du_domega check
-# (the sum of S_z/u and this L_z/u ratio) motivated this fix in the first place. Kept in its own
+# int_dLambdazz_domega/int_dPz_domega is expected to land close to m/omega_N (inverse time, atomic
+# units, omega_N the row's actual raw angular frequency -- see this module's own "OAM-to-energy
+# ratio" doc comment for why the flux pair is used instead of the algebraically-identical density
+# pair L_z/u). See CLAUDE.md's "missing 1/omega" bug-fix note, whose own int_dJz_domega/int_du_domega
+# check (the sum of S_z/u and L_z/u) motivated this fix in the first place. Kept in its own
 # tuple/table rather than folded into _RATIO_PAIRS above: that table's caption specifically expects
 # C_LIGHT, which does not apply here.
 _ENERGY_NORMALIZED_PAIRS = (
-    ('dLz', 'du', 'L_z/u'),
+    ('dLambdazz', 'dPz', 'Lambda_zz/P_z'),
 )
 
 
@@ -481,7 +493,7 @@ def compute_ratio_table(integrated, pairs):
     Returns a DataFrame (one row per i_omega) of numerator/denominator ratios for each
     (numerator column, denominator column, label) entry in `pairs` -- called with _RATIO_PAIRS
     (flux/density, expected ~ C_LIGHT) and _ENERGY_NORMALIZED_PAIRS (OAM/energy, expected ~
-    m/omega_1). A near-zero denominator (e.g. S_z for a near-cancelling spin term at high
+    m/omega_N). A near-zero denominator (e.g. S_z for a near-cancelling spin term at high
     topological charge) gives a noise-dominated ratio for that one pair -- expected, not a bug.
     """
     rows = []
@@ -492,6 +504,22 @@ def compute_ratio_table(integrated, pairs):
                 entry[label] = row[num_col] / row[den_col]
         rows.append(entry)
     return pd.DataFrame(rows)
+
+
+def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m):
+    """
+    Adds an 'm/omega_N (theory)' column to an _ENERGY_NORMALIZED_PAIRS ratio table: the theoretical
+    OAM/energy ratio m/omega_N for that row's own actual raw angular frequency omega_N =
+    (omega/omega_1)*fundamental_frequency_au -- computed per row (not once from omega_1 alone) since
+    omega_N scales with harmonic index N, so the theoretical target is only m/omega_1 at the
+    fundamental itself. Meant to sit next to the numerical Lambda_zz/P_z column so the two can be
+    compared directly row by row, rather than only quoted once in a caption.
+    """
+    ratios = ratios.copy()
+    omega_N_au = ratios['omega'].to_numpy() * fundamental_frequency_au
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ratios['m/omega_N (theory)'] = m / omega_N_au
+    return ratios
 
 
 _RUN_LOG_SECTION_HEADER = "Screen-integrated observables (plot_observables.py)"
@@ -580,21 +608,25 @@ def append_integration_to_run_log(run_dir, detector_type, integrated, label_suff
     _write_run_log_section(run_dir, _RUN_LOG_SECTION_HEADER + label_suffix, body)
 
 
-def _append_ratio_table_to_run_log(run_dir, ratios, pairs, header, caption_lines, label_suffix=""):
+def _append_ratio_table_to_run_log(run_dir, ratios, pairs, header, caption_lines, label_suffix="",
+                                   extra_value_columns=()):
     """
     Appends (or, on a re-run, replaces) a numerator/denominator ratio table (`pairs`, as computed by
     compute_ratio_table) in the run's own run_log.txt, one row per frequency. Shared by
     append_ratios_to_run_log (_RATIO_PAIRS, expected ~ C_LIGHT) and append_energy_ratios_to_run_log
-    (_ENERGY_NORMALIZED_PAIRS, expected ~ m/omega_1).
+    (_ENERGY_NORMALIZED_PAIRS, expected ~ m/omega_N). `extra_value_columns` (column name already
+    present in `ratios`, e.g. from add_theoretical_oam_energy_ratio) are printed as extra columns
+    as-is, after the `pairs` ratio columns -- not computed as a ratio of two other columns themselves.
     """
     body = list(caption_lines)
     ratio_labels = [label for _, _, label in pairs]
-    header_cells = ['i_omega', 'omega/omega_1'] + ratio_labels
+    header_cells = ['i_omega', 'omega/omega_1'] + ratio_labels + list(extra_value_columns)
     body.append(f"  {header_cells[0]:>8} {header_cells[1]:>14} "
                 + ' '.join(f'{cell:>16}' for cell in header_cells[2:]))
     for _, row in ratios.iterrows():
         cells = [f"{int(row['i_omega']):>8d}", f"{row['omega']:>14.6f}"]
         cells += [f"{row[label]:>16.6e}" for _, _, label in pairs]
+        cells += [f"{row[col]:>16.6e}" for col in extra_value_columns]
         body.append('  ' + ' '.join(cells))
 
     _write_run_log_section(run_dir, header + label_suffix, body)
@@ -616,21 +648,26 @@ def append_ratios_to_run_log(run_dir, ratios, label_suffix=""):
                                     caption_lines, label_suffix=label_suffix)
 
 
-def append_energy_ratios_to_run_log(run_dir, ratios, label_suffix=""):
+def append_energy_ratios_to_run_log(run_dir, ratios, m, label_suffix=""):
     """
     Appends (or, on a re-run, replaces) the OAM-to-energy ratio table (_ENERGY_NORMALIZED_PAIRS,
-    compute_ratio_table) in the run's own run_log.txt, one row per frequency -- expected ~ m/omega_1
+    compute_ratio_table, plus the theoretical 'm/omega_N (theory)' column from
+    add_theoretical_oam_energy_ratio) in the run's own run_log.txt, one row per frequency -- the
+    numerical Lambda_zz/P_z column is expected to match the theoretical column, both ~ m/omega_N
     (inverse time, atomic units) for radiation carrying m units of angular momentum per photon of
     energy omega (hbar=1 units); see CLAUDE.md's "missing 1/omega" bug-fix note.
     """
     caption_lines = [
-        "  Each column is an angular-momentum density integrated over the screen divided by the "
-        "energy density integrated over the screen, expected ~ m/omega_1 (m = the beam's own "
-        "topological charge, omega_1 = fundamental_frequency, both a.u.) for radiation carrying m "
-        "units of angular momentum per photon of energy omega (hbar=1).",
+        f"  m (topological charge, config.cfg's laser_lg_l) = {m}. Each row's Lambda_zz/P_z is the "
+        "angular-momentum flux integrated over the screen divided by the energy flux integrated over "
+        "the screen; 'm/omega_N (theory)' is the theoretical prediction m/omega_N for that same row's "
+        "own actual raw angular frequency omega_N (not just omega_1) -- the two columns are expected "
+        "to agree, for radiation carrying m units of angular momentum per photon of energy omega "
+        "(hbar=1).",
     ]
     _append_ratio_table_to_run_log(run_dir, ratios, _ENERGY_NORMALIZED_PAIRS, _RUN_LOG_ENERGY_RATIO_HEADER,
-                                    caption_lines, label_suffix=label_suffix)
+                                    caption_lines, label_suffix=label_suffix,
+                                    extra_value_columns=('m/omega_N (theory)',))
 
 
 def plot_observables(radiation_filepath):
@@ -736,11 +773,13 @@ def plot_observables(radiation_filepath):
     append_ratios_to_run_log(run_dir, ratios, label_suffix=label_suffix)
 
     fundamental_frequency_au = _read_fundamental_frequency_au(run_dir)
+    m = int(read_config_value('laser_lg_l', config_path)[0])
     energy_ratios = compute_ratio_table(integrated, _ENERGY_NORMALIZED_PAIRS)
-    print(f"OAM-to-energy ratios (expect ~ m/omega_1 = m/{fundamental_frequency_au:.6f} a.u.^-1, "
-          "m = topological charge):")
+    energy_ratios = add_theoretical_oam_energy_ratio(energy_ratios, fundamental_frequency_au, m)
+    print(f"OAM-to-energy ratios (m={m}; numerical Lambda_zz/P_z column expected to match the "
+          "theoretical m/omega_N column):")
     print(energy_ratios.to_string(index=False))
-    append_energy_ratios_to_run_log(run_dir, energy_ratios, label_suffix=label_suffix)
+    append_energy_ratios_to_run_log(run_dir, energy_ratios, m, label_suffix=label_suffix)
 
 
 if __name__ == "__main__":
