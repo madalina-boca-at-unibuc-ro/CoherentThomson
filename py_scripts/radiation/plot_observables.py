@@ -349,6 +349,30 @@ def compute_observables(radiation_filepath):
             "theory/numerical_calculation_of_angular_momentum.md's angular-momentum calculation is "
             "only implemented for those two (its own 'Target Screens' instruction).")
 
+    # The L_z operator (x*d/dy - y*d/dx / d/dphi, see _lz_operator) and every observable this script
+    # computes implicitly assume the screen's own local x/y axes coincide with the simulation frame's
+    # x/y -- i.e. the screen normal is along the laser's Oz axis, forward or backward. The laser
+    # itself is now always fixed along Oz (see CLAUDE.md), but detector_direction_theta/phi can still
+    # point the screen anywhere -- so that assumption isn't automatically satisfied and has to be
+    # checked explicitly, rather than silently computing a wrong L_z for a tilted screen. Checked via
+    # the direction vector's own x/y components (Core::MathUtils::create_unit_light_like_vector's
+    # convention: dir = (sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta))) rather than theta alone,
+    # so it's robust to any equivalent (theta, phi) parametrization of +-Oz.
+    theta_s, theta_unit = read_config_value('detector_direction_theta', config_path)
+    phi_s, phi_unit = read_config_value('detector_direction_phi', config_path)
+    theta = float(theta_s) * convert_unit_to_number(theta_unit, config_path)
+    phi = float(phi_s) * convert_unit_to_number(phi_unit, config_path)
+    dir_x = np.sin(theta) * np.cos(phi)
+    dir_y = np.sin(theta) * np.sin(phi)
+    transverse_tol = 1e-9
+    if abs(dir_x) > transverse_tol or abs(dir_y) > transverse_tol:
+        raise ValueError(
+            f"detector_direction_theta/phi = ({theta_s} {theta_unit}, {phi_s} {phi_unit}) does not point "
+            "along (0,0,1) or (0,0,-1) in the simulation frame -- every observable this script computes "
+            "(S_z/L_z/J_z, their fluxes, u/P_z) assumes the screen is transverse to the laser's own "
+            "propagation axis (Oz), which a tilted detector_direction violates. Not yet supported here; "
+            "use detector_direction_theta = 0.0 pi or 1.0 pi (any detector_direction_phi).")
+
     x_grid = y_grid = x_vals = y_vals = None
     if detector_type == 'rectangular':
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
