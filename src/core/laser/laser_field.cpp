@@ -11,7 +11,7 @@ namespace Core::Laser {
 
 LaserField::LaserField(double omega_in, double a0_in, double flat_duration_in, double wing_sigma_in, double delay_in,
                        double wing_sigma_cutoff_in, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in,
-                       size_t NT_in, const Core::MathUtils::RealFourVector& unity_n_in)
+                       size_t NT_in)
     : omega(omega_in),
       a0(a0_in),
       flat_duration(flat_duration_in),
@@ -20,26 +20,15 @@ LaserField::LaserField(double omega_in, double a0_in, double flat_duration_in, d
       wing_sigma_cutoff(wing_sigma_cutoff_in),
       zeta_1(zeta_1_in),
       zeta_2(zeta_2_in),
-      NT(NT_in) {
+      NT(NT_in),
+      // Propagation always along canonical Oz, polarization axes along canonical Ox/Oy -- fixed
+      // constants, not derived from a configured direction (see the doc comment on these members in
+      // laser_field.hpp).
+      unity_n(1.0, 0.0, 0.0, 1.0),
+      epsilon_1(0.0, 1.0, 0.0, 0.0),
+      epsilon_2(0.0, 0.0, 1.0, 0.0) {
   E0_c = a0 * omega * Core::PhysUtils::AtomicUnits::m_0 /
          (Core::PhysUtils::AtomicUnits::e_0);  // E0 = omega * a0 * m_e  / |e|
-  // Create the normalized 4-vector for the propagation direction (with time
-  // component fixed at 1.0 for normalization)
-  unity_n = Core::MathUtils::create_unit_light_like_vector(unity_n_in);
-
-  // Create the polarization vectors (orthogonal to n) and normalize them. For
-  // simplicity we start with two polarization vecotrs along Ox, Oy, and the
-  // apply the rotation with the polar angles of unity_n to ensure they are
-  // orthogonal to the propagation direction.
-
-  Core::MathUtils::RealFourVector pol_dir1(0.0, 1.0, 0.0, 0.0);
-  Core::MathUtils::RealFourVector pol_dir2(0.0, 0.0, 1.0, 0.0);
-
-  // Apply rotation to ensure polarization vectors are orthogonal to the
-  // propagation direction
-  rotation_matrix = Core::MathUtils::rotation_four_tensor_from_direction(unity_n[1], unity_n[2], unity_n[3]);
-  epsilon_1 = Core::MathUtils::contract(rotation_matrix, pol_dir1);
-  epsilon_2 = Core::MathUtils::contract(rotation_matrix, pol_dir2);
   delay = wing_sigma_cutoff *
           wing_sigma;  // set delay such that the simulation starts form zero.
                        // TO DO: To improve the choice, to make is consisten with the initial simulation time
@@ -193,10 +182,9 @@ std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> PlaneWave
 LaguerreGaussLaser::LaguerreGaussLaser(double angular_freq, double a0_in, double pulse_flat_phase,
                                        double wing_sigma_phase, double delay_in, double wing_cutoff_sigmas,
                                        MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in, size_t NT_in,
-                                       const Core::MathUtils::RealFourVector& n_dir_in, int p_in, int l_in,
-                                       double w0_in)
+                                       int p_in, int l_in, double w0_in)
     : LaserField(angular_freq, a0_in, pulse_flat_phase, wing_sigma_phase, delay_in, wing_cutoff_sigmas, zeta_1_in,
-                 zeta_2_in, NT_in, n_dir_in),
+                 zeta_2_in, NT_in),
       p(p_in),
       l(l_in),
       w0(w0_in) {
@@ -214,16 +202,14 @@ LaguerreGaussLaser::LaguerreGaussLaser(double angular_freq, double a0_in, double
 // derivatives rather than polar-coordinate expressions that are singular on-axis.
 std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> LaguerreGaussLaser::complex_amplitude(
     const MathUtils::RealFourVector& x_mu) const {
-  // Carrier + temporal-envelope phase -- identical construction to the plane-wave case; the Minkowski
-  // contraction is invariant under rotating x_mu and unity_n together, so this is exactly the on-axis
-  // phase phi = omega*t - k*z regardless of frame.
+  // Carrier + temporal-envelope phase -- identical construction to the plane-wave case: phi = omega*t
+  // - k*z, with unity_n = Oz.
   double phi = omega / Core::PhysUtils::AtomicUnits::c * Core::MathUtils::contract(x_mu, unity_n);
 
-  // Transverse position and longitudinal distance from the beam waist, in the laser's own canonical
-  // frame (propagation along local +Z); the waist is assumed to sit at the canonical-frame origin.
-  // epsilon_1/epsilon_2/unity_n are the canonical frame's x/y/z axes expressed in the lab frame (the
-  // same columns that used to make up the now-removed spatial_rotation matrix), so dotting x_mu's
-  // spatial part against each is equivalent to rotating x_mu into that frame.
+  // Transverse position and longitudinal distance from the beam waist (propagation along Oz); the
+  // waist is assumed to sit at the origin. epsilon_1/epsilon_2/unity_n are just the fixed Ox/Oy/Oz
+  // axes here, so these dot products reduce to x_mu[1]/x_mu[2]/x_mu[3] -- written generically rather
+  // than indexed directly since that's what epsilon_1/epsilon_2/unity_n mean physically.
   double x_loc = Core::MathUtils::dot3(x_mu, epsilon_1);
   double y_loc = Core::MathUtils::dot3(x_mu, epsilon_2);
   double z_loc = Core::MathUtils::dot3(x_mu, unity_n);

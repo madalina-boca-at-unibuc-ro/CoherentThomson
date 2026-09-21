@@ -57,14 +57,9 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
 
   MathUtils::RealFourVector p(p0, px, py, pz);
 
-  // k1, p, and n2 are all evaluated in the canonical frame (laser along Oz), rather than the true lab
-  // frame: since the beam and detector are rotated into the lab frame by the same shared rotation as the
-  // laser, and non_linear_Thomson_formula only ever combines these through Minkowski contractions (which
-  // are invariant under a common rotation of all their arguments), the result is identical either way --
-  // and the canonical frame needs no rotation at all. k1 is therefore fixed along canonical Oz (theta=0,
-  // phi=0) rather than laser.get_unity_n() (the laser's actual, rotated direction), and n2 is the
-  // detector's own canonical-frame direction (detector_direction_theta/phi) rather than the electron's
-  // own direction of motion. The actual spectrum depends on the observation direction, but in the code we
+  // k1 is fixed along canonical Oz (theta=0, phi=0) -- the laser's only propagation direction -- and
+  // n2 is the detector's own direction (detector_direction_theta/phi), not the electron's own
+  // direction of motion. The actual spectrum depends on the observation direction, but in the code we
   // calculate it at the same set of values for the entire screen. Hard coded to be N_harmonics
   // consecutive harmonics starting at N_harmonics_min by default; the omega_min/omega_max limits in
   // the input file are only honored when dense_frequency_spectrum is true (see CLAUDE.md).
@@ -250,31 +245,13 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   // diagonal are ever filled in, once per screen point/frequency (via MathUtils::unpack_bivector)
   // instead of on every trajectory point of every electron. Everything downstream (plotting,
   // observable calculations) consumes this, not the packed representation.
-  //
-  // compute_radiation builds E/B (and hence F) straight in the lab frame, using n_R0/u vectors that
-  // already carry the laser's actual (rotated) orientation -- but plots are usually meant to be read in
-  // the laser's own canonical frame (laser along Oz), the same convention init_simulation_parameters
-  // uses for k1/p/n2 above. Rotating back with the inverse of the laser's rotation_matrix
-  // (MathUtils::inverse_rotation_tensor + rotate_tensor) once here, rather than per trajectory point, is
-  // gated behind the "print_field_in_canonical_frame" config key so the lab-frame field (as actually
-  // computed, matching laser_nx/ny/nz) can still be inspected when that's what's wanted.
-  bool print_field_in_canonical_frame = IoUtils::get_required(config, "print_field_in_canonical_frame") == "true";
-  MathUtils::RealFourTensor inverse_rotation = MathUtils::inverse_rotation_tensor(laser.get_rotation_matrix());
   RadiationField result{std::vector<std::vector<Faraday>>(N_omega, std::vector<Faraday>(N_screen))};
   for (size_t i_omega = 0; i_omega < N_omega; ++i_omega) {
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {
       const PackedFaraday& packed = packed_result.field[i_omega][i_screen];
-      MathUtils::ComplexFourTensor long_range = MathUtils::unpack_bivector(packed.long_range);
-      MathUtils::ComplexFourTensor short_range = MathUtils::unpack_bivector(packed.short_range);
-      MathUtils::ComplexFourTensor boundary = MathUtils::unpack_bivector(packed.boundary);
-      if (print_field_in_canonical_frame) {
-        long_range = MathUtils::rotate_tensor(inverse_rotation, long_range);
-        short_range = MathUtils::rotate_tensor(inverse_rotation, short_range);
-        boundary = MathUtils::rotate_tensor(inverse_rotation, boundary);
-      }
-      result.field[i_omega][i_screen].long_range = long_range;
-      result.field[i_omega][i_screen].short_range = short_range;
-      result.field[i_omega][i_screen].boundary = boundary;
+      result.field[i_omega][i_screen].long_range = MathUtils::unpack_bivector(packed.long_range);
+      result.field[i_omega][i_screen].short_range = MathUtils::unpack_bivector(packed.short_range);
+      result.field[i_omega][i_screen].boundary = MathUtils::unpack_bivector(packed.boundary);
     }
   }
 

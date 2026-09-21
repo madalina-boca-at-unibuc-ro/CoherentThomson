@@ -109,9 +109,8 @@ int main(int argc, char* argv[]) {
 
     Simulation::simulation_parameters sim_par = Simulation::init_simulation_parameters(simulation_config, *laser);
 
-    auto electron_beam =
-        Particle::generate_cylinder_beam(simulation_config, laser->get_rotation_matrix(), sim_par.tau_0_traj,
-                                         sim_par.d_tau_traj, sim_par.simulation_length);
+    auto electron_beam = Particle::generate_cylinder_beam(simulation_config, sim_par.tau_0_traj, sim_par.d_tau_traj,
+                                                          sim_par.simulation_length);
 
     if (IoUtils::get_required(simulation_config, "plot_beam_scatter") == "true") {
       std::string beam_axes_unit = "lambda";
@@ -129,7 +128,7 @@ int main(int argc, char* argv[]) {
 
     Particle::plot_particle_trajectory(electron_beam, trajectory_electron_indices, run_output_dir + "/electron.dat");
 
-    auto detector = Detector::create_detector(simulation_config, *laser);
+    auto detector = Detector::create_detector(simulation_config);
     std::string detector_axes_unit = "lambda";
     auto detector_axes_scale = IoUtils::convert_unit_to_number(detector_axes_unit, simulation_config);
     Detector::plot_detector(*detector, "stereographic_plot", run_output_dir, detector_axes_scale, detector_axes_unit);

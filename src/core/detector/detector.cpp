@@ -12,12 +12,8 @@ namespace Core::Detector {
 // BASE CLASS DETECTOR_2D DEFINITIONS (This fixes the missing vtable!)
 // =========================================================================
 
-Detector_2D::Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, double dir_z,
-                         const MathUtils::RealFourTensor& laser_rotation)
-    : N1(n1),
-      N2(n2),
-      local_rotation(MathUtils::rotation_matrix_from_direction(dir_x, dir_y, dir_z)),
-      lab_rotation(laser_rotation) {
+Detector_2D::Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, double dir_z)
+    : N1(n1), N2(n2), local_rotation(MathUtils::rotation_matrix_from_direction(dir_x, dir_y, dir_z)) {
   points.reserve(n1 * n2);
   MathUtils::RealFourVector normal_dir_4 = to_lab_frame(0.0, 0.0, 1.0);
   normal_dir = {normal_dir_4[1], normal_dir_4[2], normal_dir_4[3]};
@@ -26,9 +22,8 @@ Detector_2D::Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, doubl
 Detector_2D::~Detector_2D() {}  // Explicitly defines the virtual destructor anchor point
 
 MathUtils::RealFourVector Detector_2D::to_lab_frame(double x_local, double y_local, double z_local) const {
-  std::array<double, 3> p_canonical = MathUtils::rotate3d(local_rotation, {x_local, y_local, z_local});
-  MathUtils::RealFourVector v_canonical(0.0, p_canonical[0], p_canonical[1], p_canonical[2]);
-  return MathUtils::contract(lab_rotation, v_canonical);
+  std::array<double, 3> p = MathUtils::rotate3d(local_rotation, {x_local, y_local, z_local});
+  return MathUtils::RealFourVector(0.0, p[0], p[1], p[2]);
 }
 
 void Detector_2D::print_info() const {
@@ -45,8 +40,8 @@ void Detector_2D::print_info() const {
 
 SphericalDetector::SphericalDetector(size_t N_theta, size_t N_phi, double R, double theta_cone_min,
                                      double theta_cone_max, double phi_cone_min, double phi_cone_max, double dir_x,
-                                     double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation)
-    : Detector_2D(N_theta, N_phi, dir_x, dir_y, dir_z, laser_rotation),
+                                     double dir_y, double dir_z)
+    : Detector_2D(N_theta, N_phi, dir_x, dir_y, dir_z),
       radius(R),
       phi_cone_min(phi_cone_min),
       phi_cone_max(phi_cone_max) {
@@ -95,9 +90,8 @@ void SphericalDetector::print_info() const {
 // =========================================================================
 
 RectangularDetector::RectangularDetector(size_t Nx, size_t Ny, double D, double x1, double x2, double y1, double y2,
-                                         double dir_x, double dir_y, double dir_z,
-                                         const MathUtils::RealFourTensor& laser_rotation)
-    : Detector_2D(Nx, Ny, dir_x, dir_y, dir_z, laser_rotation),
+                                         double dir_x, double dir_y, double dir_z)
+    : Detector_2D(Nx, Ny, dir_x, dir_y, dir_z),
       distance(D),
       x_min(x1),
       x_max(x2),
@@ -135,8 +129,8 @@ void RectangularDetector::print_info() const {
 // =========================================================================
 
 CircularDetector::CircularDetector(size_t N_R, size_t N_phi, double D, double r_min, double r_max, double dir_x,
-                                   double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation)
-    : Detector_2D(N_R, N_phi, dir_x, dir_y, dir_z, laser_rotation), distance(D), R_min(r_min), R_max(r_max) {
+                                   double dir_y, double dir_z)
+    : Detector_2D(N_R, N_phi, dir_x, dir_y, dir_z), distance(D), R_min(r_min), R_max(r_max) {
   // Equal-area radial spacing (r_i^2 linear in i), not equal-distance -- see the class comment in detector.hpp.
   dR_sq = (N_R > 1) ? (R_max * R_max - R_min * R_min) / static_cast<double>(N_R - 1) : 0.0;
   d_phi = (N_phi > 1) ? 2.0 * MathUtils::pi / static_cast<double>(N_phi - 1) : 0.0;

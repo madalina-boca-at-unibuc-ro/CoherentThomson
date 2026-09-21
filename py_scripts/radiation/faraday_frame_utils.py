@@ -1,7 +1,7 @@
 """
 Shared frame/rotation helpers for turning radiation_field.dat's stored Faraday tensor into
-Cartesian E/B components in a chosen frame (canonical, lab, or a detector's own local frame).
-Used by radiation/plot_spherical_components.py to project the field onto spherical components.
+Cartesian E/B components projected onto a detector's own local direction. Used by
+radiation/plot_spherical_components.py to project the field onto spherical components.
 """
 import numpy as np
 
@@ -69,36 +69,12 @@ def get_detector_local_rotation(config_path):
     return rotation_matrix_from_direction(dir_x, dir_y, dir_z)
 
 
-def get_laser_lab_rotation(config_path):
-    """
-    Returns the 3x3 rotation R such that v_lab = R @ v_canonical -- a Python mirror of
-    Core::Laser::LaserField's own rotation_matrix, built from laser_nx/ny/nz.
-    """
-    nx = float(read_config_value('laser_nx', config_path)[0])
-    ny = float(read_config_value('laser_ny', config_path)[0])
-    nz = float(read_config_value('laser_nz', config_path)[0])
-    return rotation_matrix_from_direction(nx, ny, nz)
-
-
-def get_field_to_canonical_rotation(config_path):
-    """
-    Returns the 3x3 rotation R such that v_canonical = R @ v_field, where v_field is however
-    radiation_field.dat's Faraday tensor is actually stored: the canonical frame itself (identity)
-    if this run's config has print_field_in_canonical_frame=true (the default), or the lab frame
-    otherwise, in which case the laser's own rotation (get_laser_lab_rotation) is undone.
-    """
-    canonical_frame = read_config_value('print_field_in_canonical_frame', config_path)[0]
-    if canonical_frame.lower() == 'true':
-        return np.eye(3)
-    return get_laser_lab_rotation(config_path).T
-
-
-def extract_rotated_faraday_fields(data, R):
+def extract_rotated_faraday_fields(data):
     """
     Returns a dict of six complex numpy arrays per range (Ex/Ey/Ez/Bx/By/Bz, suffixed '_l' for
-    long-range, '_s' for short-range, '_b' for boundary), read out of radiation_field.dat's
-    F^{mu nu} columns and rotated by R into whatever target frame the caller needs. '_b' is
-    identically zero when the run used radiation_formula="direct" -- see
+    long-range, '_s' for short-range, '_b' for boundary), read directly out of radiation_field.dat's
+    F^{mu nu} columns (the laser always propagates along canonical Oz, so no rotation is needed).
+    '_b' is identically zero when the run used radiation_formula="direct" -- see
     theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
 
     Column mapping mirrors Core::Laser::LaserField::get_faraday_tensor's F^{mu nu} <-> E/B sign
@@ -109,10 +85,8 @@ def extract_rotated_faraday_fields(data, R):
         def col(mu, nu):
             return (data[f'{prefix}_F{mu}{nu}_re'] + 1j * data[f'{prefix}_F{mu}{nu}_im']).to_numpy()
 
-        E_stored = np.stack([col(1, 0), col(2, 0), col(3, 0)])
-        B_stored = np.stack([col(3, 2), col(1, 3), col(2, 1)])
-        Ex, Ey, Ez = R @ E_stored
-        Bx, By, Bz = R @ B_stored
+        Ex, Ey, Ez = col(1, 0), col(2, 0), col(3, 0)
+        Bx, By, Bz = col(3, 2), col(1, 3), col(2, 1)
         fields[f'Ex_{suffix}'], fields[f'Ey_{suffix}'], fields[f'Ez_{suffix}'] = Ex, Ey, Ez
         fields[f'Bx_{suffix}'], fields[f'By_{suffix}'], fields[f'Bz_{suffix}'] = Bx, By, Bz
     return fields

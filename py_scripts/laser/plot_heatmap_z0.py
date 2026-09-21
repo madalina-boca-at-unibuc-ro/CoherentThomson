@@ -13,7 +13,7 @@ def read_header_comments(filepath):
     """
     Peeks at the file's leading '# ...' comment lines (written by
     Core::Laser::export_field_heatmap_z0): the 'axes_unit <name>' line and the
-    'canonical-frame z=0 snapshot at ...' description line.
+    'z=0 snapshot at ...' description line.
     """
     axes_unit = None
     snapshot_description = None
@@ -26,7 +26,7 @@ def read_header_comments(filepath):
             parts = comment.split()
             if len(parts) == 2 and parts[0] == 'axes_unit':
                 axes_unit = parts[1]
-            elif comment.startswith('canonical-frame'):
+            elif comment.startswith('z=0'):
                 snapshot_description = comment
     return axes_unit, snapshot_description
 

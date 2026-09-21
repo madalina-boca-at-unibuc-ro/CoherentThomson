@@ -130,8 +130,8 @@ All core-library code lives under `Core`; subdirectories of `src/core/` map to s
 | `phys_utils/` | `Core::PhysUtils::AtomicUnits` | Physical constants in atomic units |
 | `io_utils/` | `Core::IoUtils` (`ConfigMap` alias lives in `Core`) | Config parsing, unit conversion, per-key laser/beam accessors, `CylinderBeamParams`, `make_run_output_directory` |
 | `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, always records its trajectory), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
-| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular — caches a 4x4 `rotation_matrix`, from which `epsilon_1`/`epsilon_2`/`unity_n` are derived as its columns; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each implementing `complex_amplitude`, already scaled by `E0_c`, returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser` has no transverse profile so its derivatives are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`, `export_field_heatmap_z0` (canonical-frame z=0 transverse snapshot — see "Known gaps") |
-| `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own canonical-frame direction, then rotated together with the laser via its shared 4x4 `rotation_matrix`), `create_detector` (takes the `LaserField`), `plot_detector` |
+| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular; the laser always propagates along canonical Oz, so `unity_n`/`epsilon_1`/`epsilon_2` are fixed constants, not derived from any configured direction; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each implementing `complex_amplitude`, already scaled by `E0_c`, returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser` has no transverse profile so its derivatives are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`, `export_field_heatmap_z0` (z=0 transverse snapshot — see "Known gaps") |
+| `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own configured direction via `local_rotation`), `create_detector`, `plot_detector` |
 | `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
 | `radiation/` | `Core::Radiation` | `compute_radiation` — one electron's contribution to `Simulation::PackedRadiationField` (packed antisymmetric Faraday bivector, long/short-range amplitudes, summed over trajectory points/screen points/frequencies); `plot_radiation_field` exporter |
 | `debug/` | `Core::Debug` | `export_radiation_integrand`/`export_radiation_phase` — diagnostic-only, deliberately duplicated (not shared) reimplementation of `compute_radiation`'s per-tau math; see "Debug mode" below |
@@ -177,7 +177,7 @@ omega/c` units, not raw `omega` — see the `radiation_field.dat` `omega` bullet
 `dense_frequency_spectrum`/`N_harmonics`/`N_harmonics_min`/`N_omega`. Purely additive: the normal pipeline (including
 `run_simulation`/`radiation_field.dat`) still runs, so the integrand's own tau-sum can be cross-checked against
 the coherently-summed field (confirmed to agree to the file's printed precision, both long-range and short-range,
-once `general_factor` and any canonical-frame rotation are accounted for).
+once `general_factor` is accounted for).
 
 Two output files, both one row per trajectory point (`tau`), for the single electron/screen point:
 - `debug_integrand.dat` (`export_radiation_integrand`): the 6 independent upper-triangle Faraday bivector
@@ -233,8 +233,8 @@ constants as the conversion basis) the next time this file is touched.
   matching this project's own convention, not the standard `sqrt(2*p!/(pi*(p+|l|)!))` LG normalization. The
   azimuthal factor is built as the exact polynomial `(x_loc + i*sign(l)*y_loc)^|l|` (equal to `rho^|l| *
   exp(i*l*azimuth)`) so amplitude and derivatives stay smooth exactly on-axis instead of hitting a removable but
-  awkward `1/rho` singularity. `x_loc`/`y_loc`/`z_loc` are the electron's position rotated into the laser's
-  canonical frame, assuming the beam waist sits at that frame's `z=0` origin (tied to the `tau_0_traj=0.0`
+  awkward `1/rho` singularity. `x_loc`/`y_loc`/`z_loc` are just the electron's own `x`/`y`/`z` (the laser always
+  propagates along canonical Oz), assuming the beam waist sits at the origin (tied to the `tau_0_traj=0.0`
   hardcode below) — check that the beam actually starts near the waist for whatever config you're using.
 - **`get_faraday_tensor` builds genuine `Ez`/`Bz` from the `dx`/`dy` amplitude derivatives** (the `div(E)=0`/
   `div(B)=0` condition), consistent with `complex_amplitude`'s `exp(-i*phi)` carrier-sign convention (flipping one
@@ -255,14 +255,9 @@ constants as the conversion basis) the next time this file is touched.
   representation.** For every `(tau, screen_point)` pair it builds the null vector `n0` from the electron-to-screen
   separation, then per frequency accumulates `amp_long`/`amp_short` times the six independent bivector terms
   `n^alpha u^beta - n^beta u^alpha` into a `Simulation::PackedRadiationField` (`ComplexBivector`, 6-element packed
-  form) — real amplitude physics, just stored packed until reduction. Built in the **lab frame** (matching
-  `laser_nx/ny/nz`), not the canonical frame `init_simulation_parameters` uses (see the `k1`/`p`/`n2` bullet
-  below). `run_simulation` gives each thread its own accumulator, sums them once all threads join, then unpacks
-  each summed `PackedFaraday` into a full 4x4 `Faraday` tensor via `MathUtils::unpack_bivector`. When the config
-  key `print_field_in_canonical_frame` is `true` (default), the tensor is then rotated back into the laser's
-  canonical frame via `rotate_tensor(inverse_rotation_tensor(laser.get_rotation_matrix()), ...)`, so plots don't
-  depend on `laser_nx/ny/nz`; `false` leaves it in the lab frame instead. Either way the final tensors are scaled
-  by `general_factor` (`= 1/(2*pi*c)`). `MathUtils::mirror_antisymmetric_in_place` is dead code (predates
+  form) — real amplitude physics, just stored packed until reduction. `run_simulation` gives each thread its own
+  accumulator, sums them once all threads join, then unpacks each summed `PackedFaraday` into a full 4x4 `Faraday`
+  tensor via `MathUtils::unpack_bivector`, scaled by `general_factor` (`= 1/(2*pi*c)`). `MathUtils::mirror_antisymmetric_in_place` is dead code (predates
   `unpack_bivector`, nothing calls it). `num_threads` (config key, default `0` = all hardware threads) controls
   `run_simulation`'s beam partitioning.
 - **`run_simulation` times each thread's chunk individually** (`std::chrono::steady_clock`, one `thread_start` per
@@ -534,15 +529,11 @@ constants as the conversion basis) the next time this file is touched.
   negligible, so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam, an off-axis detector
   direction, or a strong pulse. Both `radiation/plot_field.py` and `radiation/plot_point_spectrum.py` label this axis
   `$\omega/\omega_1$` accordingly.
-- **`k1`, `p`/`q`, and `n2` in `init_simulation_parameters` are deliberately evaluated in the canonical frame**
-  (laser along `Oz`), not the rotated lab frame — `non_linear_Thomson_formula` only combines its arguments through
-  Minkowski contractions, invariant under a *common* rotation, so evaluating pre-rotation gives the same result
-  without rotating anything. (Different from the radiated field itself, which *is* built in the lab frame by
-  `compute_radiation` and rotated back explicitly — see above.) `k1` is fixed along canonical `Oz` scaled by
-  `laser.get_omega() / c`; `n2` is the detector's own canonical-frame direction via
-  `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — building `k1` from
-  `laser.get_unity_n()` or `n2` from `average_px/py/pz` directly would mix frames and give wrong frequencies
-  whenever the laser's configured direction isn't along `Oz`. **`q` is a ponderomotively-dressed momentum**,
+- **`k1` and `n2` in `init_simulation_parameters` are fixed along canonical `Oz`/the detector's own
+  configured direction respectively.** `k1` is fixed along canonical `Oz` (the laser's only propagation
+  direction) scaled by `laser.get_omega() / c`; `n2` is the detector's own direction via
+  `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — using
+  `average_px/py/pz` for `n2` directly would give the wrong observation direction. **`q` is a ponderomotively-dressed momentum**,
   computed by `PhysUtils::dressed_momentum(p, k1, xi)` (`phys_utils.hpp` — moved there from an inline computation
   in `init_simulation_parameters` so there is exactly one place `q` is built; the full derivation comment below
   lives with the function, not here), `q = p + (mc)^2*<a^2>/(2*contract(p, k1)) * k1` with `mc = m_0*c` — used both
@@ -590,10 +581,8 @@ constants as the conversion basis) the next time this file is touched.
   and the Python cross-check above) that `xi^2/2` is the correct cycle-averaged `<a^2>`, not `xi^2`. `<a^2> =
   xi^2/2` is the setting to keep going forward.
 - **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
-  laser's, but shares the laser's rotation.** `create_detector` passes both the laser's 4x4 `rotation_matrix` and
-  the detector's own local direction into `Detector_2D`, which builds a 3x3 `local_rotation` orthogonal to that
-  direction and composes the two per-point in `to_lab_frame` (local → shared canonical frame → lab frame) — so
-  the detector rotates together with the laser instead of being locked to point exactly along it. `(0.0 pi, 0.0
+  laser's (Oz) direction.** `create_detector` builds a 3x3 `local_rotation` (`Detector_2D`) orthogonal to that
+  direction, and `to_lab_frame` applies it to each local grid point. `(0.0 pi, 0.0
   pi)` (the config default) points the detector straight along the laser.
 - **`CircularDetector`'s radial grid is spaced in equal-*area* steps, not equal-distance**: `r_i = sqrt(R_min^2 +
   i*(R_max^2-R_min^2)/(N_R-1))`, so each ring encloses the same annular area despite fixed `N_phi` per ring —
@@ -610,15 +599,31 @@ constants as the conversion basis) the next time this file is touched.
   momentum is numerically zero) — a beam whose mean momentum isn't along canonical `Oz` gets different
   per-electron realizations, not just different statistics, than a naive canonical-`Oz` cylinder would.
   `beam_center_x/y/z` (config keys, `lambda` units) offset each electron's raw cylindrical-Cartesian point
-  (`generate_electron`, `electron_factory.cpp`) **before** both this mean-momentum rotation and the laser rotation
+  (`generate_electron`, `electron_factory.cpp`) **before** this mean-momentum rotation
   — so the configured center is itself expressed in, and rotates along with, the same canonical frame as
-  `beam_cylinder_radius`/`height`, not a fixed lab-frame shift applied after the beam is built. Translating
+  `beam_cylinder_radius`/`height`, not a fixed shift applied after the beam is built. Translating
   before `beam_axis_rotation` rather than after is intentional, not an oversight: since that rotation is built to
   map local `+Oz` exactly onto the mean momentum direction, `beam_center_z` alone already lands as a pure
   translation along the beam's direction of motion (useful for staging the beam upstream so it reaches the laser
   focus region in sync with the pulse) — but this whole arrangement (including its interaction with the
   hardcoded `tau_0_traj=0.0` and the `laser_delay` bug below) is planned for revisiting, so don't assume the
   current scheme is final.
+- **REMOVED: arbitrary laser propagation direction (`laser_nx/ny/nz`) and the canonical-vs-lab-frame
+  distinction it drove.** The solver used to support the laser pointing anywhere, with a `LaserField::rotation_matrix`
+  (canonical Oz → lab) shared with the detector (`Detector_2D::lab_rotation`) and the beam generator
+  (`generate_electron`'s final `contract(rotation_matrix, ...)` step), plus a `print_field_in_canonical_frame`
+  config key controlling whether `run_simulation` rotated the accumulated radiation field back to canonical
+  before export. This was found to be unused generality (every tracked config already had
+  `laser_nx=0,ny=0,nz=1`) and a latent correctness gap (`plot_observables.py`'s `L_z` operator already assumed
+  screen `(x,y)` aligns with canonical Oz with no rotation check), so it was removed: the laser now always
+  propagates along canonical Oz, `LaserField::unity_n/epsilon_1/epsilon_2` are fixed constants, and "lab frame"
+  and "canonical frame" are the same single frame everywhere. `MathUtils::rotation_four_tensor_from_direction`/
+  `inverse_rotation_tensor`/`rotate_tensor` (and the already-dead `multiply`) were deleted along with it. **Not**
+  touched: the detector's own direction (`detector_direction_theta/phi` + `Detector_2D::local_rotation`) and the
+  beam's own mean-momentum-axis rotation (`beam_axis_rotation` in `electron_factory.cpp`) — both independent
+  features that happen to reuse `MathUtils::rotation_matrix_from_direction`/`rotate3d`, which are still used and
+  not deleted. The pre-removal implementation (full generality, arbitrary laser direction) is preserved on the
+  `general-laser-direction-legacy` git branch if ever needed again.
 - **A rectangular detector and a spherical detector covering "the same" angular window will *not* generally show
   the same radiation pattern — this is real physics, not a bug.** `compute_radiation` uses the *exact*
   electron-to-screen distance `R` (no far-field linearization) in both amplitude falloff and phase. A rectangular
@@ -638,18 +643,17 @@ constants as the conversion basis) the next time this file is touched.
   isn't a useful diagnostic here). The fundamental (`i_omega=0`) also isn't a useful test this close to the beam
   axis — its angular variation is ~6 orders of magnitude below its constant offset, below the double-precision
   noise floor.
-- **`py_scripts/radiation/plot_spherical_components.py` projects the exported Faraday tensor onto canonical-frame
+- **`py_scripts/radiation/plot_spherical_components.py` projects the exported Faraday tensor onto
   spherical components** (`E_r`/`E_theta`/`E_phi`/`B_r`/`B_theta`/`B_phi`), for `spherical`-detector runs only —
   Python-only post-processing of `radiation_field.dat`, no C++ output involved. A spherical detector is the
   natural fit for this: every screen point already has its own observation direction, obtained by rotating its
   local (`theta`, `phi`) — `Core::Detector::SphericalDetector`'s own cone-point construction, generally relative
   to the detector's own axis via `detector_direction_theta/phi`, not necessarily canonical `Oz` — into the
   canonical frame via `get_detector_local_rotation`, then building the standard orthonormal
-  `(r_hat, theta_hat, phi_hat)` basis at that direction and dotting it into the (already-canonical, or
-  canonical-ized from lab frame via `get_field_to_canonical_rotation`) Cartesian `E`/`B`. This rotation machinery
-  (`get_detector_local_rotation`, `get_laser_lab_rotation`, `get_field_to_canonical_rotation`,
-  `extract_rotated_faraday_fields`) lives in its own shared module, `radiation/faraday_frame_utils.py`, imported
-  by `radiation/plot_spherical_components.py` rather than duplicated.
+  `(r_hat, theta_hat, phi_hat)` basis at that direction and dotting it into the Cartesian `E`/`B` (read directly
+  off the exported columns, no rotation needed there since the laser always propagates along Oz). This rotation
+  machinery (`get_detector_local_rotation`, `extract_rotated_faraday_fields`) lives in its own shared module,
+  `radiation/faraday_frame_utils.py`, imported by `radiation/plot_spherical_components.py` rather than duplicated.
   **Non-obvious physics sanity check surfaced while validating this script**: `compute_radiation`'s per-`(tau,
   screen point)` bivector term is built once from `n0`/`u` and shared, unscaled, between the long-range and
   short-range complex amplitude prefactors (`radiation.cpp`'s `add_bivector_term`) — so for a single contribution,
@@ -692,8 +696,8 @@ constants as the conversion basis) the next time this file is touched.
   in front of `dS_z/domega`; fixed here (`EPSILON_0` constant, mirrored independently in Python per this project's
   no-shared-constants-module convention) alongside adding the new `L_z`/`J_z` pieces and the screen integration.
   `Ex`/`Ey`/`Ez` are read directly out of the already-exported `F10`/`F20`/`F30` columns (`E_i=c*F^{i0}`, the same
-  convention `radiation/faraday_frame_utils.py`'s `extract_rotated_faraday_fields` documents) — no rotation/frame
-  machinery needed, since this is a lab/canonical-frame Cartesian quantity, not a per-point spherical projection.
+  convention `radiation/faraday_frame_utils.py`'s `extract_rotated_faraday_fields` documents) — no rotation
+  machinery needed, since this is a plain Cartesian quantity, not a per-point spherical projection.
   **Deliberately always uses the total (LR+SR+BR) Faraday tensor** — unlike `plot_field.py`'s own
   `long`/`short`/`boundary`/`total` choice, there is no such CLI option here: a `long`-only or `short`-only field
   is an intermediate term of the derivation (see `theory/FT_Faraday_tensor-direct_and_simplified_forms.md`), not
@@ -951,7 +955,7 @@ constants as the conversion basis) the next time this file is touched.
   `direct`-formula run's exported `BR_*` columns are exactly `0.0` for every row), since the direct form was
   derived without integration by parts and needs no such term. **Threaded through the full pipeline**: `boundary`
   fields added to `Simulation::PackedFaraday`/`Faraday` alongside `long_range`/`short_range` (summed across
-  threads, `unpack_bivector`'d, canonical-frame-rotated, and `general_factor`-scaled identically to the other
+  threads, `unpack_bivector`'d, and `general_factor`-scaled identically to the other
   two — harmless for `direct` since it's already zero there); `radiation_field.dat` gained matching `BR_F<mu><nu>`
   columns; `debug/debug_radiation.cpp`'s `export_radiation_integrand` (simplified-formula-only, per "Debug mode"
   above) gained matching `BR_F<alpha><beta>` columns, with the same "zero except at the two endpoint rows"

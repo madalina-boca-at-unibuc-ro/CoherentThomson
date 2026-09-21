@@ -13,10 +13,6 @@ std::unique_ptr<LaserField> create_laser(const ConfigMap& config) {
     double wing_cutoff_sigmas = IoUtils::get_laser_wing_sigma_cutoff(config);
     // TO DO: the delay here should be transferred to the initial time in simulation : to be written in CLAUDE.md
 
-    // 2. Parse the 3D propagation direction vector components
-    Core::MathUtils::RealFourVector unit_n_in = IoUtils::get_laser_direction(config);  // Temporarily store as a
-                                                                                       // 4-vector for normalization
-
     auto [zeta_1_in, zeta_2_in] = IoUtils::get_laser_zeta(config);
 
     // Normalize so |zeta_1|^2 + |zeta_2|^2 = 1, regardless of what magnitude the raw config values
@@ -33,15 +29,15 @@ std::unique_ptr<LaserField> create_laser(const ConfigMap& config) {
 
     size_t NT_in = IoUtils::get_laser_NT(config);
 
-    // 3. Dispatch on the laser's wave type
+    // 2. Dispatch on the laser's wave type
     std::string laser_type = IoUtils::get_required(config, "laser_type");
     if (laser_type == "plane_wave") {
       return std::make_unique<PlaneWaveLaser>(omega, a0, flat_duration_val, wing_sigma_val, delay_val,
-                                              wing_cutoff_sigmas, zeta_1_in, zeta_2_in, NT_in, unit_n_in);
+                                              wing_cutoff_sigmas, zeta_1_in, zeta_2_in, NT_in);
     } else if (laser_type == "laguerre_gauss") {
       auto [p_val, l_val, w0_val] = IoUtils::get_laser_lg_params(config);
       return std::make_unique<LaguerreGaussLaser>(omega, a0, flat_duration_val, wing_sigma_val, delay_val,
-                                                  wing_cutoff_sigmas, zeta_1_in, zeta_2_in, NT_in, unit_n_in, p_val,
+                                                  wing_cutoff_sigmas, zeta_1_in, zeta_2_in, NT_in, p_val,
                                                   l_val, w0_val);
     } else {
       throw std::runtime_error("LaserFactory Error: Unknown laser_type \"" + laser_type + "\"");

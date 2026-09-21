@@ -30,10 +30,14 @@ protected:
   size_t NT, N_phi;         // number of points per cycle / total number of points used in laser plotting only
                             // NT is read from the .cfg file d_phi = 2 * pi /NT, N_phi = (phi_max-phi_min)/d_phi
 
-  Core::MathUtils::RealFourVector unity_n;               // Normalized propagation direction 4-vector (n)
-  Core::MathUtils::RealFourVector epsilon_1, epsilon_2;  // Normalized polarization direction vectors (\hat{\epsilon});
-                                                         // they must be orthogonal on k
-  Core::MathUtils::RealFourTensor rotation_matrix;
+  // The laser always propagates along canonical Oz -- unity_n/epsilon_1/epsilon_2 are therefore
+  // fixed constants ((1,0,0,1), (0,1,0,0), (0,0,1,0) respectively), set once in the constructor, not
+  // derived from any configured direction. Kept as named members (rather than inlining literals at
+  // every use site) since get_faraday_tensor, LaguerreGaussLaser::complex_amplitude, and
+  // Radiation::export_incident_field_fourier all read them generically.
+  Core::MathUtils::RealFourVector unity_n;               // Propagation direction 4-vector (n)
+  Core::MathUtils::RealFourVector epsilon_1, epsilon_2;  // Polarization direction vectors (\hat{\epsilon}),
+                                                         // orthogonal to n
 
   // Internal helper to calculate the temporal envelope factor g(\phi); shared by every derived laser
   // type -- the Gaussian-flat-top pulse shape in time is the same regardless of the transverse mode.
@@ -48,10 +52,9 @@ protected:
 
 public:
   // Constructor initializing the baseline laser characteristics shared by every wave type: temporal
-  // envelope, propagation direction, polarization, and the resulting rotation matrices.
+  // envelope and polarization (propagation is always along canonical Oz, see unity_n above).
   LaserField(double angular_freq, double a0, double pulse_flat_phase, double wing_sigma_phase, double delay_in,
-             double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in, size_t NT_in,
-             const Core::MathUtils::RealFourVector& n_dir_in);
+             double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in, size_t NT_in);
   virtual ~LaserField() = default;
 
   // Computes and returns the complete F^{\mu\nu} tensor at a given 4-vector position, from the
@@ -83,7 +86,6 @@ public:
   const Core::MathUtils::RealFourVector get_unity_n() const { return unity_n; }
   const Core::MathUtils::RealFourVector get_epsilon_1() const { return epsilon_1; }
   const Core::MathUtils::RealFourVector get_epsilon_2() const { return epsilon_2; }
-  const Core::MathUtils::RealFourTensor get_rotation_matrix() const { return rotation_matrix; }
 };
 
 // The original plane-wave laser: a spatially uniform transverse profile modulated only by the temporal
@@ -118,7 +120,7 @@ private:
 public:
   LaguerreGaussLaser(double angular_freq, double a0, double pulse_flat_phase, double wing_sigma_phase, double delay_in,
                      double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in,
-                     size_t NT_in, const Core::MathUtils::RealFourVector& n_dir_in, int p_in, int l_in, double w0_in);
+                     size_t NT_in, int p_in, int l_in, double w0_in);
 
   int get_lg_p() const { return p; }
   int get_lg_l() const { return l; }

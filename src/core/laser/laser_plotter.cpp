@@ -57,18 +57,12 @@ void export_field_heatmap_z0(const LaserField& laser, double t, double x_min, do
     throw std::runtime_error("Failed to open file for field heatmap export: " + filepath);
   }
 
-  // get_faraday_tensor expects a lab-frame 4-vector (it builds phi from n_unity, which is already
-  // rotated to match laser_nx/ny/nz), so a canonical-frame point has to be rotated into the lab frame
-  // before evaluating, and the resulting field rotated back afterwards -- the same round trip
-  // Simulation::run_simulation now applies to the radiation field (see CLAUDE.md).
-  MathUtils::RealFourTensor rotation = laser.get_rotation_matrix();
-  MathUtils::RealFourTensor inverse_rotation = MathUtils::inverse_rotation_tensor(rotation);
   double omega = laser.get_omega();
   double phi_at_t = omega * t;
 
   file << std::scientific << std::setprecision(6);
   file << "# axes_unit " + axes_scale_string + "\n";
-  file << "# canonical-frame z=0 snapshot at t=" << t << " (phi=omega*t=" << phi_at_t
+  file << "# z=0 snapshot at t=" << t << " (phi=omega*t=" << phi_at_t
        << " rad = " << phi_at_t / (2 * MathUtils::pi) << " cycles)\n";
   file << "x y Ex Ey Ez Bx By Bz intensity\n";
 
@@ -80,11 +74,8 @@ void export_field_heatmap_z0(const LaserField& laser, double t, double x_min, do
     for (size_t j = 0; j < Ny; ++j) {
       double y = y_min + static_cast<double>(j) * dy;
 
-      MathUtils::RealFourVector x_canonical(PhysUtils::AtomicUnits::c * t, x, y, 0.0);
-      MathUtils::RealFourVector x_lab = MathUtils::contract(rotation, x_canonical);
-
-      FaradayTensor F_lab = laser.get_faraday_tensor(x_lab);
-      FaradayTensor F = MathUtils::rotate_tensor(inverse_rotation, F_lab);
+      MathUtils::RealFourVector x_mu(PhysUtils::AtomicUnits::c * t, x, y, 0.0);
+      FaradayTensor F = laser.get_faraday_tensor(x_mu);
 
       // Same F^{mu nu} -> E/B extraction convention as export_field_vs_phase above.
       double Ex = F[1][0];

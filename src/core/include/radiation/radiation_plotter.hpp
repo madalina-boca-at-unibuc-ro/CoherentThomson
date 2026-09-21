@@ -24,12 +24,10 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
 // coherent-sum noise, no far-field Fresnel/aliasing issues) to sanity-check the scattered field's
 // own numerical behavior against.
 //
-// Always evaluated at the laser's own canonical-frame beam waist (z_loc=0), regardless of the
-// detector's actual configured distance -- and always in the canonical frame (there is no lab-frame
-// counterpart, since the detector's actual distance/orientation is intentionally bypassed; unlike
-// plot_radiation_field's output this is independent of print_field_in_canonical_frame). Reuses the
-// detector's own local 2D grid (get_row_coordinate/get_col_coordinate, ignoring to_lab_frame's
-// rotation/distance entirely) so the incident-field screen has identical size/resolution/i_screen
+// Always evaluated at the laser's own beam waist (z_loc=0), regardless of the detector's actual
+// configured distance -- the detector's actual distance/orientation is intentionally bypassed.
+// Reuses the detector's own local 2D grid (get_row_coordinate/get_col_coordinate, ignoring
+// to_lab_frame's rotation/distance entirely) so the incident-field screen has identical size/resolution/i_screen
 // ordering to the actual radiation_field.dat from the same run -- directly comparable side by side.
 // Evaluated at the middle of the pulse's flat-top plateau (phi = (get_phi_min()+get_phi_max())/2,
 // i.e. envelope = 0, peak amplitude) -- see LaserField::get_complex_faraday_tensor's own doc comment

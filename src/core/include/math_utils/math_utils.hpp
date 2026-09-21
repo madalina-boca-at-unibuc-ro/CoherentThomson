@@ -438,20 +438,6 @@ inline constexpr std::array<double, 3> rotate3d(const RotationMatrix3x3& R, cons
 }
 
 // =========================================================================
-// Compose two 3D rotations: the result applies B first, then A, i.e.
-// rotate3d(multiply(A, B), v) == rotate3d(A, rotate3d(B, v))
-// =========================================================================
-inline constexpr RotationMatrix3x3 multiply(const RotationMatrix3x3& A, const RotationMatrix3x3& B) {
-  RotationMatrix3x3 result{};
-  for (size_t i = 0; i < 3; ++i) {
-    for (size_t j = 0; j < 3; ++j) {
-      result[i][j] = A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j];
-    }
-  }
-  return result;
-}
-
-// =========================================================================
 // Factorial n!, for small non-negative integer n (e.g. Laguerre-Gauss mode normalization).
 // =========================================================================
 inline constexpr double factorial(int n) {
@@ -519,110 +505,6 @@ inline constexpr double hypergeometric_1F1_neg_int_a_derivative(int a, double b,
   if (a == 0) return 0.0;
   return (static_cast<double>(a) / b) * hypergeometric_1F1_neg_int_a(a + 1, b + 1.0, z);
 }
-
-// =========================================================================
-// 4x4 Rotation Tensor: Natively stored as Up-Up (T^{\mu\nu})
-// =========================================================================
-template <typename T = double>
-inline constexpr FourTensor<T> rotation_four_tensor_from_direction(double nx, double ny, double nz) {
-  // 1. Get the standard 3x3 rotation matrix (which acts as a mixed R^\mu_\nu)
-  RotationMatrix3x3 R3 = rotation_matrix_from_direction(nx, ny, nz);
-
-  // 2. Build the 4x4 layout, explicitly multiplying the spatial columns
-  //    by g[nu] (which is -1) to raise the second index from R^\mu_\nu to
-  //    R^{\mu\nu}.
-  std::array<std::array<T, 4>, 4> mat4 = {
-      {{T(1.0) * g[0], T(0.0) * g[1], T(0.0) * g[2], T(0.0) * g[3]},
-       {T(0.0) * g[0], T(R3[0][0]) * g[1], T(R3[0][1]) * g[2], T(R3[0][2]) * g[3]},
-       {T(0.0) * g[0], T(R3[1][0]) * g[1], T(R3[1][1]) * g[2], T(R3[1][2]) * g[3]},
-       {T(0.0) * g[0], T(R3[2][0]) * g[1], T(R3[2][1]) * g[2], T(R3[2][2]) * g[3]}}};
-
-  // Because g = {1.0, -1.0, -1.0, -1.0}, this cleanly injects the minus signs
-  // into the spatial columns, making the object a true, fully contravariant
-  // FourTensor
-  return FourTensor<T>(mat4);
-};
-
-// =========================================================================
-// Inverts a pure-rotation FourTensor built by rotation_four_tensor_from_direction (e.g. a laser's
-// rotation_matrix, which maps canonical-frame components -> lab-frame components when used with
-// contract()/rotate_tensor() below). A spatial rotation is orthogonal, so its mixed-index form R^mu_nu
-// inverts via plain transpose: (R^{-1})^mu_nu = R^nu_mu. R.ud() recovers that ordinary (metric-free)
-// mixed matrix (see the comment above rotation_four_tensor_from_direction); the result is re-embedded
-// in the same contravariant storage convention as the input so it composes with contract()/
-// rotate_tensor() the same way the forward rotation does.
-// =========================================================================
-template <typename T>
-inline constexpr FourTensor<T> inverse_rotation_tensor(const FourTensor<T>& R) {
-  auto R_ud = R.ud();
-  std::array<std::array<T, 4>, 4> inv_uu{};
-  for (size_t mu = 0; mu < 4; ++mu) {
-    for (size_t nu = 0; nu < 4; ++nu) {
-      inv_uu[mu][nu] = R_ud[nu][mu] * g[nu];  // transpose, then re-lower nu to restore T^{mu nu} storage
-    }
-  }
-  return FourTensor<T>(inv_uu);
-}
-
-// =========================================================================
-// Applies the full rank-2 tensor transformation law T'^{alpha beta} = R^alpha_mu R^beta_nu T^{mu nu}
-// to a (possibly complex) contravariant tensor, for a rotation FourTensor R in the same convention as
-// rotation_four_tensor_from_direction. Pass a laser's own rotation_matrix to rotate canonical -> lab
-// (matching contract()'s convention for vectors), or inverse_rotation_tensor(rotation_matrix) to rotate
-// lab -> canonical -- e.g. to express a field computed in the lab frame back in the laser's own
-// canonical frame (laser along Oz) for plotting.
-// =========================================================================
-template <typename T, typename U>
-inline FourTensor<T> rotate_tensor(const FourTensor<U>& R, const FourTensor<T>& tensor) {
-  auto Lambda = R.ud();  // ordinary mixed rotation matrix R^mu_nu, metric factors already cancelled
-  auto raw = tensor.uu();
-
-  std::array<std::array<T, 4>, 4> temp{};  // temp^{alpha nu} = R^alpha_mu T^{mu nu}
-  for (size_t alpha = 0; alpha < 4; ++alpha) {
-    for (size_t nu = 0; nu < 4; ++nu) {
-      T sum(0);
-      for (size_t mu = 0; mu < 4; ++mu)
-        sum += static_cast<T>(Lambda[alpha][mu]) * raw[mu][nu];
-      temp[alpha][nu] = sum;
-    }
-  }
-
-  std::array<std::array<T, 4>, 4> result{};  // T'^{alpha beta} = temp^{alpha nu} R^beta_nu
-  for (size_t alpha = 0; alpha < 4; ++alpha) {
-    for (size_t beta = 0; beta < 4; ++beta) {
-      T sum(0);
-      for (size_t nu = 0; nu < 4; ++nu)
-        sum += temp[alpha][nu] * static_cast<T>(Lambda[beta][nu]);
-      result[alpha][beta] = sum;
-    }
-  }
-
-  return FourTensor<T>(result);
-}
-
-// =========================================================================
-// Create a unit light-like 4-vector from an arbitrary input 4-vector by
-// normalizing the spatial components and setting the time component to 1.0
-// =========================================================================
-template <typename T>
-inline constexpr FourVector<T> create_unit_light_like_vector(const FourVector<T> vec) {
-  FourVector<T> new_vec = vec.copy();  // Create a copy to avoid mutating the original input vector
-
-  double norm = std::sqrt(std::abs(new_vec[1]) * std::abs(new_vec[1]) + std::abs(new_vec[2]) * std::abs(new_vec[2]) +
-                          std::abs(new_vec[3]) * std::abs(new_vec[3]));
-  if (norm < Core::MathUtils::small_constant) {
-    new_vec[0] = 0.0;
-    new_vec[1] = 0.0;
-    new_vec[2] = 0.0;
-    new_vec[3] = 0.0;
-  } else {
-    new_vec[1] /= norm;
-    new_vec[2] /= norm;
-    new_vec[3] /= norm;
-    new_vec[0] = 1.0;
-  }
-  return new_vec;
-};
 
 // =========================================================================
 // Create a unit light-like 4-vector from a direction given by two angles

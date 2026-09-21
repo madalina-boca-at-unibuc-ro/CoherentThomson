@@ -1,18 +1,16 @@
 """
-Computes the canonical-frame (laser along Oz) spherical components of the coherently summed
-Faraday tensor -- E_r, E_theta, E_phi, B_r, B_theta, B_phi -- for a spherical-detector run's
-radiation_field.dat. Python-only post-processing, no new C++ output needed: reuses the rotation
-machinery in radiation/faraday_frame_utils.py (detector/laser direction reconstruction,
-Faraday-tensor <-> Cartesian E/B column mapping).
+Computes the spherical components of the coherently summed Faraday tensor -- E_r, E_theta, E_phi,
+B_r, B_theta, B_phi -- for a spherical-detector run's radiation_field.dat. Python-only
+post-processing, no new C++ output needed: reuses the detector-direction rotation machinery in
+radiation/faraday_frame_utils.py (Faraday-tensor <-> Cartesian E/B column mapping).
 
 A spherical detector is the natural fit for this: every screen point already has its own natural
 observation direction (theta, phi), so there's no shared-plane assumption to violate. Each point's
 own local (theta_local, phi_local) -- Core::Detector::SphericalDetector's own cone-point
 construction, generally relative to the detector's own axis, not necessarily canonical Oz -- is
 first rotated by the detector's local_rotation (detector_direction_theta/phi) into a canonical
-observation direction (theta_c, phi_c); the field (already rotated into the canonical frame, or
-rotated there from the lab frame if print_field_in_canonical_frame=false) is then projected onto
-the standard orthonormal (r_hat, theta_hat, phi_hat) basis at that direction.
+observation direction (theta_c, phi_c); the field is then projected onto the standard orthonormal
+(r_hat, theta_hat, phi_hat) basis at that direction.
 """
 import sys
 import os
@@ -26,7 +24,6 @@ from plot_field import read_config_value, get_spherical_plot_grid, get_detector_
 from faraday_frame_utils import (
     convert_unit_to_number,
     get_detector_local_rotation,
-    get_field_to_canonical_rotation,
     extract_rotated_faraday_fields,
 )
 from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
@@ -100,7 +97,7 @@ def compute_spherical_field_components(radiation_filepath):
     """
     Returns (result, config_path). `result` is a DataFrame with one row per radiation_field.dat row
     (i_omega, omega, i_screen), plus six complex columns per range -- 'LR_Er'/'LR_Etheta'/
-    'LR_Ephi'/'LR_Br'/'LR_Btheta'/'LR_Bphi' and the 'SR_'/'BR_' equivalents -- the canonical-frame
+    'LR_Ephi'/'LR_Br'/'LR_Btheta'/'LR_Bphi' and the 'SR_'/'BR_' equivalents -- the
     spherical components of the long-range/short-range/boundary Faraday tensor. This function makes
     no long+short 'total' assumption -- it just projects each range's tensor independently, so
     adding 'BR' here is a plain three-way extension of the existing two-way loop below.
@@ -126,8 +123,7 @@ def compute_spherical_field_components(radiation_filepath):
     i_screen = data['i_screen'].to_numpy()
     r_hat, theta_hat, phi_hat = r_hat[:, i_screen], theta_hat[:, i_screen], phi_hat[:, i_screen]
 
-    R_to_canonical = get_field_to_canonical_rotation(config_path)
-    f = extract_rotated_faraday_fields(data, R_to_canonical)
+    f = extract_rotated_faraday_fields(data)
 
     result = data[['i_omega', 'omega', 'i_screen']].copy()
     for prefix, suffix in (('LR', 'l'), ('SR', 's'), ('BR', 'b')):

@@ -83,9 +83,6 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  a0                          " << laser.get_a0() << "\n";
   file << "  zeta_1                      (" << laser.get_zeta_1().real() << ", " << laser.get_zeta_1().imag() << ")\n";
   file << "  zeta_2                      (" << laser.get_zeta_2().real() << ", " << laser.get_zeta_2().imag() << ")\n";
-  MathUtils::RealFourVector laser_dir = IoUtils::get_laser_direction(config);
-  file << "  direction (nx,ny,nz)        (" << laser_dir[1] << ", " << laser_dir[2] << ", " << laser_dir[3]
-       << ")  [raw, pre-normalization]\n";
   write_kv_au(file, "flat_duration (phase)", laser.get_flat_duration());
   file << "  flat_duration (cycles)      " << laser.get_flat_duration() / (2.0 * MathUtils::pi) << "\n";
   write_kv_au(file, "wing_sigma (phase)", IoUtils::get_laser_wing_sigma(config));
@@ -191,8 +188,6 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     file << "    last  = " << last << "  (" << last / sim_par.fundamental_frequency << " omega_1)\n";
     file << "    step  = " << step << "  (evenly spaced)\n";
   }
-  file << "  print_field_in_canonical_frame  " << IoUtils::get_required(config, "print_field_in_canonical_frame")
-       << "\n";
 
   write_section(file, "Run");
   file << "  num_threads (resolved)      " << num_threads << "\n";

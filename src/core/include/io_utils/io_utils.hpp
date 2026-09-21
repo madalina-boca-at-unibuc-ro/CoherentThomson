@@ -145,14 +145,6 @@ inline double get_laser_wing_sigma_cutoff(const ConfigMap& config) {
   return std::stod(get_required(config, "laser_wing_sigma_cutoff"));
 }
 
-// Raw (unnormalized) propagation direction, as a 4-vector with a zero time component.
-inline MathUtils::RealFourVector get_laser_direction(const ConfigMap& config) {
-  double nx = std::stod(get_required(config, "laser_nx"));
-  double ny = std::stod(get_required(config, "laser_ny"));
-  double nz = std::stod(get_required(config, "laser_nz"));
-  return MathUtils::RealFourVector(0.0, nx, ny, nz);
-}
-
 // Reads a complex-valued config entry stored as two keys, "<base_key>_re" and "<base_key>_im".
 inline MathUtils::Complex get_complex_config_value(const ConfigMap& config, const std::string& base_key) {
   double re = std::stod(get_required(config, (base_key + "_re").c_str()));
@@ -177,8 +169,8 @@ inline std::tuple<int, int, double> get_laser_lg_params(const ConfigMap& config)
   return {p, l, w0};
 }
 
-// Detector's own normal direction, as {theta, phi} in radians, given in the canonical frame where the
-// laser propagates along Oz (independent of laser_nx/ny/nz) — shared by Detector::create_detector and
+// Detector's own normal direction, as {theta, phi} in radians, given in the simulation frame (the
+// laser always propagates along Oz) — shared by Detector::create_detector and
 // Simulation::init_simulation_parameters so both read the same direction.
 inline std::pair<double, double> get_detector_direction_angles(const ConfigMap& config) {
   auto [theta_val, theta_unit] = split_value_and_unit(get_required(config, "detector_direction_theta"));

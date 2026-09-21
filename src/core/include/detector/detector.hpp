@@ -12,21 +12,18 @@ protected:
   size_t N1, N2;  // Grid dimensions (Nx, Ny) or (N_theta, N_phi)
   std::vector<MathUtils::RealFourVector> points;
 
-  // The detector's own local rotation, orthogonal to its canonical-frame direction (dir_x/y/z), and the laser's
-  // full 4x4 rotation tensor that carries it into the lab frame -- kept as two physically distinct steps rather
-  // than pre-combined into one matrix.
+  // The detector's own local rotation, orthogonal to its own configured direction (dir_x/y/z) within
+  // the simulation frame (the laser always propagates along Oz).
   MathUtils::RotationMatrix3x3 local_rotation;
-  MathUtils::RealFourTensor lab_rotation;
   std::array<double, 3> normal_dir;  // detector's own normal direction, in the lab frame
 
-  // Rotates a point given in the detector's local canonical frame into the lab frame: first the local 3x3
-  // rotation orthogonal to the detector's own direction, then the laser's full 4x4 rotation tensor.
+  // Rotates a point given in the detector's own local frame into the lab frame via local_rotation.
   MathUtils::RealFourVector to_lab_frame(double x_local, double y_local, double z_local) const;
 
 public:
-  // dir_x/y/z is the detector's own normal direction in the canonical frame (as if the laser pointed along Oz).
-  Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, double dir_z,
-              const MathUtils::RealFourTensor& laser_rotation);
+  // dir_x/y/z is the detector's own normal direction in the simulation frame (the laser always
+  // propagates along Oz).
+  Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, double dir_z);
   virtual ~Detector_2D();
 
   size_t get_cols() const { return N1; }
@@ -66,8 +63,7 @@ private:
 
 public:
   SphericalDetector(size_t N_theta, size_t N_phi, double R, double theta_cone_min, double theta_cone_max,
-                    double phi_cone_min, double phi_cone_max, double dir_x, double dir_y, double dir_z,
-                    const MathUtils::RealFourTensor& laser_rotation);
+                    double phi_cone_min, double phi_cone_max, double dir_x, double dir_y, double dir_z);
   std::string get_type_name() const override { return "SphericalDetector"; }
   double get_row_coordinate(size_t i) const override;
   double get_col_coordinate(size_t j) const override;
@@ -84,7 +80,7 @@ private:
 
 public:
   RectangularDetector(size_t Nx, size_t Ny, double D, double x1, double x2, double y1, double y2, double dir_x,
-                      double dir_y, double dir_z, const MathUtils::RealFourTensor& laser_rotation);
+                      double dir_y, double dir_z);
 
   std::string get_type_name() const override { return "RectangularDetector"; }
   double get_row_coordinate(size_t i) const override;
@@ -106,7 +102,7 @@ public:
   // annulus instead of diverging as 1/r near the center (linear r spacing would even collapse all N_phi points
   // onto a single point at r=0 when R_min=0).
   CircularDetector(size_t N_R, size_t N_phi, double D, double r_min, double r_max, double dir_x, double dir_y,
-                   double dir_z, const MathUtils::RealFourTensor& laser_rotation);
+                   double dir_z);
 
   std::string get_type_name() const override { return "CircularDetector"; }
   double get_row_coordinate(size_t i) const override;
