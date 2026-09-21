@@ -19,6 +19,11 @@ Build (out-of-source build enforced by CMake):
 ```
 cmake -B build/ && cmake --build build/
 ```
+`CMakePresets.json` (`release`/`debug`) is available as an explicit alternative
+(`cmake --preset release && cmake --build --preset release`) — useful because a bare `cmake -B build/` on an
+*existing* cache doesn't reset `CMAKE_BUILD_TYPE`, so a `build/` dir that ever got configured as `Debug` (e.g. by
+an IDE's CMake integration) stays stuck there silently; see the Debug-vs-Release footgun documented at length
+under "Known gaps" below (~12-13x slowdown, previously misattributed to an algorithmic issue).
 
 Configure, build, and run in one step (binary lands at `bin/coherent_thomson_solver`):
 ```
