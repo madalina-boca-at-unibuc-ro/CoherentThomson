@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../include/phys_utils/phys_utils.hpp"
+
 namespace Core::Radiation {
 
 // ComplexBivector aliases std::array, whose only associated namespace (for ADL) is std -- pull
@@ -23,14 +25,13 @@ inline double bivector_element(const MathUtils::RealFourVector& n, const MathUti
 // Accumulates amp_long*term_long / amp_short*term_short into slot `index` (0..5, in the fixed
 // (0,1),(0,2),(0,3),(1,2),(1,3),(2,3) order -- see MathUtils::ComplexBivector) of
 // `long_bivector`/`short_bivector`. term_long/term_short are frequency-independent geometric
-// factors precomputed once per (tau, screen point) and shared across every frequency -- the
-// simplified form (see below) shares one bare n^alpha u^beta - n^beta u^alpha factor between both,
-// but the direct form's long-range term needs a different combined (n, u, w) factor, hence the two
-// separate parameters rather than one shared `term`. Only the 6 independent upper-triangle
-// elements of the corresponding Faraday tensor are ever accumulated -- the antisymmetric lower
-// triangle and zero diagonal are filled in once, after all contributions (from every tau,
-// electron, and thread) have been summed, via MathUtils::unpack_bivector, called once in
-// Simulation::run_simulation on the final reduced field.
+// factors precomputed once per (tau, screen point) and shared across every frequency. They differ
+// in both forms: the simplified form's short-range term uses the (s, u) bivector with s = (0, n_R0)
+// (short_range_bivector_element), and the direct form's long-range term a combined (n, u, w)
+// factor (direct_long_range_tensor_term), hence two separate parameters rather than one `term`. Only the 6 independent
+// upper-triangle elements of the corresponding Faraday tensor are ever accumulated -- the antisymmetric lower triangle
+// and zero diagonal are filled in once, after all contributions (from every tau, electron, and thread) have been
+// summed, via MathUtils::unpack_bivector, called once in Simulation::run_simulation on the final reduced field.
 inline void add_bivector_term(MathUtils::ComplexBivector& long_bivector, MathUtils::ComplexBivector& short_bivector,
                               size_t index, double term_long, double term_short, const MathUtils::Complex& amp_long,
                               const MathUtils::Complex& amp_short) {
@@ -51,7 +52,7 @@ inline void add_boundary_term(MathUtils::ComplexBivector& boundary_bivector, siz
 //
 // The per-(tau, screen point, frequency) integrand factors into an exponential phase term
 // (radiation_phase_argument) and two PREFACT terms (long_range_prefactor/short_range_prefactor)
-// that each multiply the shared geometric bivector term. The current PREFACT formulas were
+// that each multiply their own geometric bivector term. The current PREFACT formulas were
 // obtained by integrating the standard radiation integral by parts, and are the piece most
 // likely to change if a different derivation is adopted (see CLAUDE.md's "OPEN VALIDATION GAP"
 // note) -- isolated into their own functions below for exactly that reason, so a new formula can
@@ -73,14 +74,24 @@ inline MathUtils::Complex long_range_prefactor(double freq, double inv_R) {
   return MathUtils::Complex{0.0, -freq * inv_R};
 }
 
-// Short-range PREFACT term (multiplies the same shared bivector term). Frequency-independent in
-// the current formula. Negative sign: d/dtau(1/|R_0|) = +(n_R0.u)/|R_0|^2 (three-vector dot), so
-// the integration-by-parts term -integral(f' * B) that produces this piece carries an overall
-// minus -- see theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Sign bug (fixed)" note
-// under Form 2.
-inline double short_range_prefactor(const MathUtils::RealFourVector& n_R0, const MathUtils::RealFourVector& u, double R,
-                                    double n_R0_contract_u) {
-  return -MathUtils::dot3(n_R0, u) / (R * R * n_R0_contract_u);
+// Short-range PREFACT term: 1/R^2, frequency-independent (theory/
+// FT_Faraday_tensor-direct_and_simplified_forms-v2.md, Form 2, Eq. IV.1.2.15). Multiplies the
+// short-range bivector short_range_bivector_element(n_R0, u, ...) below, NOT the (n_R0, u) bivector
+// F_l/F_b use. This replaces the v1 kernel -(n_R0.u)_3 / (R^2 (n_R0.u)) * (n_R0, u)-bivector, which came
+// from treating Jackson's fixed-event d/dtau as a derivative along the retarded observation path
+// and so lost finite-distance terms. The v2 kernel instead follows from differentiating the
+// Fourier-transformed Lienard-Wiechert potential A^beta ~ int dtau e^{ik Phi} u^beta/|R_0|: the
+// spatial gradient of the 1/|R_0| amplitude is the only source of 1/|R_0|^2, hence s = (0, n_R0).
+inline double short_range_prefactor(double inv_R) { return inv_R * inv_R; }
+
+// One element of the simplified form's short-range bivector s^alpha u^beta - s^beta u^alpha, for
+// alpha < beta, with s = (0, n_R0_x, n_R0_y, n_R0_z) (theory doc v2, Form 2). Equal to
+// bivector_element(n_R0, u, ...) for spatial (alpha, beta); for (0, beta) it is -n_R0^beta u^0
+// instead of u^beta - n_R0^beta u^0, since s^0 = 0. beta is never 0 because alpha < beta.
+inline double short_range_bivector_element(const MathUtils::RealFourVector& n, const MathUtils::RealFourVector& u,
+                                           size_t alpha, size_t beta) {
+  double s_alpha = alpha == 0 ? 0.0 : n[alpha];
+  return s_alpha * u[beta] - n[beta] * u[alpha];
 }
 
 // ---- Boundary term (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, "Form 2's boundary
@@ -93,9 +104,9 @@ inline double short_range_prefactor(const MathUtils::RealFourVector& n_R0, const
 // share. This is only negligible for an integral over all of tau in (-infinity, infinity); since
 // compute_radiation integrates each electron over a *finite* recorded trajectory, F_b is generally
 // significant and is not optional -- see the theory doc's "On-axis F^03 cancellation" section, which
-// shows it can be as large as F_l itself near the beam axis. F_b's prefactor shares the shared
-// bivector term T^{alpha beta} = term_{alpha beta}/n_R0_contract_u with F_s's short-range term
-// above, so only n_R0_contract_u's reciprocal is new here; the endpoint sign (+1 at tau_max, -1 at
+// shows it can be as large as F_l itself near the beam axis. F_b multiplies the same (n_R0, u)
+// bivector as F_l (T^{alpha beta} = term_{alpha beta}/n_R0_contract_u); unchanged by the v2
+// correction of the theory doc, which only replaced F_s. The endpoint sign (+1 at tau_max, -1 at
 // tau_min) is applied by the caller, which is the only place that knows a given tau is an endpoint.
 inline double boundary_prefactor(double inv_R, double n_R0_contract_u) { return inv_R / n_R0_contract_u; }
 
@@ -117,14 +128,14 @@ inline double long_range_prefactor_direct(double R, double n_R0_contract_u) {
   return 1.0 / (R * n_R0_contract_u * n_R0_contract_u);
 }
 
-// Direct-form short-range PREFACT term: 1 / (R^2 * (n_R0.u)^2). No longer carries an explicit c^2
-// factor: the same Jacobian fix that drops the denominator power to 2 (see
-// long_range_prefactor_direct above) also folds what used to be this term's separate c^2 into the
-// overall e/(4 pi eps0 c^2) normalization constant now shared uniformly by F_l and F_s -- applied
-// once, for every formula, via Simulation::run_simulation's general_factor, rather than baked in
-// here per formula as before.
+// Direct-form short-range PREFACT term: c^2 / (R^2 * (n_R0.u)^2). The theory doc's F_s carries a
+// bare q/(2 pi) (atomic units), while Simulation::run_simulation's general_factor applies
+// q/(2 pi c^2) uniformly to every term, so the c^2 must be restored here. Commit be8cccd dropped it
+// (reading the doc's "F_s loses its separate c^2" as removing it from the code as well), which made
+// the direct F_s ~c^2 = 1.9e4 times too small -- found by the simplified-vs-direct near-field
+// cross-check that validated the v2 simplified F_s.
 inline double short_range_prefactor_direct(double R, double n_R0_contract_u) {
-  return 1.0 / (R * R * n_R0_contract_u * n_R0_contract_u);
+  return PhysUtils::AtomicUnits::c * PhysUtils::AtomicUnits::c / (R * R * n_R0_contract_u * n_R0_contract_u);
 }
 
 // Direct-form long-range geometric factor: (n_R0.u)*(n_R0^alpha w^beta - n_R0^beta w^alpha) -
@@ -221,8 +232,8 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
 
       // The bare (n_R0, u) bivector terms depend only on n_R0 and u, not on frequency, so they're
       // computed once per (tau, screen point) here rather than once per frequency below. Used
-      // directly as the short-range term in both formulas, and as the long-range term in the
-      // simplified formula (see long_term01..23 below for the direct formula's own long-range
+      // as the short-range term in the direct formula, and as the long-range and boundary terms in
+      // the simplified formula (see long_term01..23 below for the direct formula's own long-range
       // factor).
       double term01 = bivector_element(n_R0, u, 0, 1);
       double term02 = bivector_element(n_R0, u, 0, 2);
@@ -244,6 +255,11 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       double prefactor_s_direct = 0.0;
       double long_term01 = term01, long_term02 = term02, long_term03 = term03;
       double long_term12 = term12, long_term13 = term13, long_term23 = term23;
+      // Short-range geometric factor: the bare (n_R0, u) bivector for the direct formula, the
+      // (s, u) bivector (s = (0, n_R0)) for the simplified formula -- see
+      // short_range_bivector_element.
+      double short_term01 = term01, short_term02 = term02, short_term03 = term03;
+      double short_term12 = term12, short_term13 = term13, short_term23 = term23;
 
       if (use_direct_formula) {
         const MathUtils::RealFourVector& w = trajectory[i_tau].acceleration;
@@ -257,7 +273,13 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         long_term13 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 1, 3);
         long_term23 = direct_long_range_tensor_term(n_R0, u, w, n_R0_contract_u, n_R0_contract_w, 2, 3);
       } else {
-        amp_short_0 = short_range_prefactor(n_R0, u, R, n_R0_contract_u);
+        amp_short_0 = short_range_prefactor(inv_R);
+        short_term01 = short_range_bivector_element(n_R0, u, 0, 1);
+        short_term02 = short_range_bivector_element(n_R0, u, 0, 2);
+        short_term03 = short_range_bivector_element(n_R0, u, 0, 3);
+        short_term12 = short_range_bivector_element(n_R0, u, 1, 2);
+        short_term13 = short_range_bivector_element(n_R0, u, 1, 3);
+        short_term23 = short_range_bivector_element(n_R0, u, 2, 3);
       }
 
       // Boundary term only exists for the simplified formula (see boundary_prefactor's doc comment
@@ -316,12 +338,12 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
         amp_long *= tau_weight;
         amp_short *= tau_weight;
 
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 0, long_term01, term01, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 1, long_term02, term02, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 2, long_term03, term03, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 3, long_term12, term12, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 4, long_term13, term13, amp_long, amp_short);
-        add_bivector_term(local_long[i_freq], local_short[i_freq], 5, long_term23, term23, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 0, long_term01, short_term01, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 1, long_term02, short_term02, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 2, long_term03, short_term03, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 3, long_term12, short_term12, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 4, long_term13, short_term13, amp_long, amp_short);
+        add_bivector_term(local_long[i_freq], local_short[i_freq], 5, long_term23, short_term23, amp_long, amp_short);
 
         // Only the two endpoint tau values ever reach this (has_boundary_contribution is false,
         // hence amp_boundary needs never be formed, for every interior tau) -- negligible added

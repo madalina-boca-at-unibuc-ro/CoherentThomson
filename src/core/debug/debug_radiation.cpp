@@ -71,8 +71,9 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
     double R = MathUtils::create_unit_light_like_vector_in_place(n_R0);
 
     double n_R0_contract_u = MathUtils::contract(n_R0, u);
-    double n_R0_dot3_u = MathUtils::dot3(n_R0, u);
-    double amp_short_0 = n_R0_dot3_u / (R * R * n_R0_contract_u);
+    // v2 short-range kernel (theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md, Form 2):
+    // 1/R^2 times the (s, u) bivector, s = (0, n_R0) -- see the short-range loop below.
+    double amp_short_0 = 1.0 / (R * R);
 
     double phase_base = x[0] + R;
     MathUtils::Complex cexp = std::polar(1.0, phase_base * k);
@@ -102,7 +103,9 @@ void export_radiation_integrand(const Particle::Electron& electron, const MathUt
       file << " " << long_term.real() << " " << long_term.imag();
     }
     for (auto [alpha, beta] : kBivectorIndex) {
-      MathUtils::Complex short_term = amp_short * bivector_element(n_R0, u, alpha, beta);
+      // s^alpha u^beta - s^beta u^alpha with s^0 = 0 (alpha < beta, so only alpha can be 0).
+      double s_alpha = alpha == 0 ? 0.0 : n_R0[alpha];
+      MathUtils::Complex short_term = amp_short * (s_alpha * u[beta] - n_R0[beta] * u[alpha]);
       file << " " << short_term.real() << " " << short_term.imag();
     }
     for (auto [alpha, beta] : kBivectorIndex) {

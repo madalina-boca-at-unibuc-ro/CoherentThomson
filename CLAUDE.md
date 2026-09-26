@@ -6,1215 +6,268 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Simulates coherent (nonlinear) Thomson scattering of an intense laser pulse off a relativistic electron beam.
 
-End-to-end today (`src/app/main.cpp`): build a config-driven laser pulse and detector screen, generate an electron
-beam, integrate the first up to 10 electrons' trajectories for plotting, then run the coherent radiation spectrum
-calculation (`Simulation::run_simulation`) over the whole beam and export `.dat` files for plotting. The
-per-electron physics `run_simulation` delegates to, `Radiation::compute_radiation`, accumulates the full
-antisymmetric Faraday bivector tensor (long-range and short-range amplitude terms, normalized) per
-frequency/screen point — see "Known gaps" below for what's still missing.
+Pipeline (`src/app/main.cpp`): build a config-driven laser pulse and detector screen, generate an electron beam,
+integrate the first up-to-10 electrons' trajectories for `electron.dat`, run the coherent radiation calculation
+(`Simulation::run_simulation`) over the whole beam, and export `.dat` files plus `run_log.txt` into a per-run
+directory `~/<output_folder>/YYYYMMDD_HHMMSS/`. Python scripts in `py_scripts/` plot those outputs.
+
+**Open issues** (see "Physics notes" below and `theory/dev_notes.md` for detail):
+- The single-electron Thomson-dipole benchmark (electron at rest, full-4π spherical detector, weak field →
+  `1+cos²θ` for circular polarization) has **not** been reproduced yet. Don't trust absolute intensities/angular
+  patterns for more complex setups until it is.
+- `plot_observables.py`'s `Lambda_zz/P_z` matches the theoretical `m/omega_N` in magnitude (~0.6%) but has the
+  **opposite sign** on the backward-detector config. Planned check: a controlled forward-vs-backward comparison
+  (flip only `detector_direction_theta` 0↔1 π and the sign of `average_pz`, same `|l|` and electron count).
+- `LaguerreGaussLaser`'s mode formula isn't physics-reviewed against the literature (Allen et al. PRA 45, 8185
+  (1992); Siegman ch. 17), though its derivatives match finite differences. `PhysUtils::non_linear_Thomson_formula`
+  is flagged in-code as still needing review.
 
 ## Commands
 
-Build (out-of-source build enforced by CMake):
 ```
-cmake -B build/ && cmake --build build/
-```
-`CMakePresets.json` (`release`/`debug`) is available as an explicit alternative
-(`cmake --preset release && cmake --build --preset release`) — useful because a bare `cmake -B build/` on an
-*existing* cache doesn't reset `CMAKE_BUILD_TYPE`, so a `build/` dir that ever got configured as `Debug` (e.g. by
-an IDE's CMake integration) stays stuck there silently; see the Debug-vs-Release footgun documented at length
-under "Known gaps" below (~12-13x slowdown, previously misattributed to an algorithmic issue).
-
-Configure, build, and run in one step (binary lands at `bin/coherent_thomson_solver`):
-```
-python3 py_scripts/compile_and_run.py [config_file]
-```
-Running the binary directly requires a config file argument:
-```
-./bin/coherent_thomson_solver config/config.cfg
+cmake -B build/ && cmake --build build/                    # build (out-of-source enforced)
+cmake --preset release && cmake --build --preset release  # same, but forces CMAKE_BUILD_TYPE=Release
+python3 py_scripts/compile_and_run.py [config_file]        # configure + build + run
+./bin/coherent_thomson_solver config/config.cfg            # run (config argument required)
 ```
 
-When testing a code change (not validating physics), run with a drastically reduced
-`beam_particle_count` (e.g. `50` instead of the repo default `16384`) — simulation time scales with
-the electron count and a full run can take tens of seconds to minutes, dominating iteration time for
-no benefit while just checking that something builds/runs/exports the right files. Copy the config
-rather than editing `config/config.cfg` in place, unless the task is specifically about
-changing the default config.
+Build types: `Release` (default, `-O3 -march=native -mtune=native`), `Debug` (`-g`, no `-O`), `RelWithDebInfo`,
+`MinSizeRel`. C++20; `-Wall -Wextra -Wpedantic` except on `RelWithDebInfo`/`MinSizeRel`.
 
-Visualize `.dat` outputs (no arguments — each locates the most recent `<output_folder>/YYYYMMDD_HHMMSS` run via
-`py_scripts/utils/run_output_utils.py`, so plotting always targets the last solver run). Every script also accepts
-an optional trailing **run folder** argument (not a specific `.dat` file path) — it joins its own known filename
-(e.g. `radiation_field.dat` for every `radiation/` script) onto that folder itself and errors clearly if the file
-isn't there:
+**Build traps, check these first:**
+- **The build type sticks in the cache.** `cmake -B build/` and `compile_and_run.py` (which never passes
+  `-DCMAKE_BUILD_TYPE`) keep whatever `build/CMakeCache.txt` already holds, and an IDE can silently set it to
+  `Debug`. A Debug build is ~12–13x slower. Before trusting any timing, run `grep CMAKE_BUILD_TYPE
+  build/CMakeCache.txt`, or use the `release` preset.
+- **Incremental rebuilds have missed header dependencies.** After editing a widely-`#include`d header (e.g.
+  `phys_utils.hpp`), rebuild with `cmake --build build/ --clean-first`. Not root-caused.
+
+**Iterating on code changes:** copy a config (don't edit `config/config.cfg` in place unless the task is about the
+default config) and drop `beam_particle_count` to e.g. `50` (default `16384`); run time scales with electron
+count. Configs: `config/config.cfg` (default; parameter-matched to the Python reference, so use it for
+cross-checks), `config/debug.cfg` (debug mode, see below), `config/config_initial_momentum.cfg`.
+
+Formatting: `clang-format -i` on touched files (`.clang-format`: Google style, 120 cols, 2-space indent).
+`py_scripts/` is type-checked against `.venv` via `pyrefly.toml`/`pyrightconfig.json` (editor config only, no
+enforced lint command). **There is no test suite.**
+
+### Plotting
+
+With no arguments, every script plots the latest run (`utils/run_output_utils.find_latest_output_file`). The
+optional trailing argument is a **run folder**, not a `.dat` path: each script appends its own filename and fails
+clearly if it's missing. PNGs go to `<run>/png_folder/<module>/`. Each script sets `MODULE_NAME` from its own
+folder name; don't hardcode it.
+
 ```
 python3 py_scripts/laser/plot_field.py
+python3 py_scripts/laser/plot_heatmap_z0.py        # needs plot_field_heatmap=true
 python3 py_scripts/detector/plot_stereographic.py
+python3 py_scripts/detector/plot_scatter.py        # needs plot_detector_scatter=true
 python3 py_scripts/particle/plot_trajectory.py
-python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [path_to_run_folder] [--incident]
-# --incident (before the optional run-folder arg) analyzes incident_field.dat (the incident laser beam's own
-# analytic field, Core::Radiation::export_incident_field_fourier) instead of radiation_field.dat
-python3 py_scripts/detector/plot_scatter.py       # only has output if plot_detector_scatter=true in the config
-python3 py_scripts/particle/plot_beam_scatter.py  # only has output if plot_beam_scatter=true in the config
-python3 py_scripts/laser/plot_heatmap_z0.py       # only has output if plot_field_heatmap=true in the config
-python3 py_scripts/radiation/plot_point_spectrum.py <long|short> <mu> <nu>  # meaningful output only if dense_frequency_spectrum=true
-python3 py_scripts/debug/plot_integrand.py <long|short> <mu> <nu> # meaningful output only if debug=true
-python3 py_scripts/debug/plot_exponent.py                        # meaningful output only if debug=true
-python3 py_scripts/radiation/plot_spherical_components.py <long|short> <E|B> <r|theta|phi>  # spherical detectors only
-python3 py_scripts/radiation/plot_all_components.py [--incident]  # loops plot_field.py's plot_radiation_component over all 4 range types x 6 (mu,nu) pairs
-python3 py_scripts/radiation/plot_observables.py [path_to_run_folder] [--incident]  # dS_z/dL_z/dJ_z density + dSigma_zz/dLambda_zz/dFlux_tot flux + du/dP_z energy density/flux heatmaps / d(omega/omega_1), + screen-integrated totals appended to run_log.txt; rectangular/circular detectors only, see theory/numerical_calculation_of_angular_momentum.md; formerly plot_angular_momentum.py
+python3 py_scripts/particle/plot_beam_scatter.py   # needs plot_beam_scatter=true
+python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
+python3 py_scripts/radiation/plot_all_components.py [--incident]   # plot_field over all 4 ranges x 6 (mu,nu)
+python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
+python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
+python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular only
+python3 py_scripts/debug/plot_integrand.py <long|short|boundary> <mu> <nu>   # debug=true
+python3 py_scripts/debug/plot_exponent.py                                    # debug=true
 ```
-
-Build types (`-DCMAKE_BUILD_TYPE=...`, default `Release`): `Release` (`-O3 -march=native -mtune=native`), `Debug`
-(`-g`), `RelWithDebInfo`, `MinSizeRel`. C++20. `-Wall -Wextra -Wpedantic` on all types except
-`RelWithDebInfo`/`MinSizeRel`.
-
-Run `clang-format -i` on touched files before committing (`.clang-format` at repo root: Google style, 120 cols,
-2-space indent). `py_scripts/` is type-checked against a `.venv` interpreter via `pyrefly.toml`/`pyrightconfig.json`
-(no enforced lint command yet, just editor/CLI type-checker config).
-
-There is no test suite yet.
+`--incident` analyzes `incident_field.dat` (the incident laser's own analytic field, from
+`Radiation::export_incident_field_fourier`, written only for rectangular/circular detectors) instead of
+`radiation_field.dat`. For `mu > nu` the scripts use `F^{nu mu} = -F^{mu nu}`; `mu == nu` is rejected.
 
 ## Architecture
 
-### Directory / module strategy
+### Layout
 
-- `src/app/` — the executable. Owns `main.cpp` only; all logic lives in the core library it links against.
-- `src/core/` — built as static library `coherent_thomson_core`. Public headers under `src/core/include/`, mirrored
-  by a `.cpp` under `src/core/<module>/` for types needing out-of-line definitions.
-  - `math_utils/`, `phys_utils/`, `io_utils/` are **header-only** (no `.cpp`).
-  - `laser/`, `detector/` follow a **class + factory** split: `<thing>.hpp`/`.cpp` declares/defines the class,
-    `<thing>_factory.hpp` only *declares* `create_<thing>` (defined in `<thing>_factory.cpp`, where all config-key
-    parsing and unit handling happens). `particle/` mostly follows this, but its factory
-    (`generate_cylinder_beam`) takes a precomputed rotation matrix + `tau_0`/`d_tau`/`N_tau` as scalars instead of
-    a built object, and returns a `std::vector<Electron>`.
-  - Each module with plottable output has a matching `<module>_plotter.hpp`/`.cpp` exporter, called from
-    `main.cpp` after the object is built, writing into the same per-run directory from
-    `IoUtils::make_run_output_directory`.
-  - `simulation/` is a single free-function module (no class+factory pattern): `init_simulation_parameters(config,
-    laser)` and `run_simulation(config, laser, detector, electron_beam, frequencies_list, num_threads)`.
-  - `radiation/` holds `compute_radiation(electron, laser, frequencies_list, detector, field)`, called once per
-    electron from inside `run_simulation`'s per-thread loop, plus a `radiation_plotter.hpp`/`.cpp` exporter
-    (`plot_radiation_field`) following the same plottable-output pattern as the other modules.
-- Adding a new physics component: follow the class + `.cpp` + `create_<thing>(const ConfigMap&)` factory pattern
-  above, add the new `.cpp` to `add_library(...)` in `src/core/CMakeLists.txt`, and wire the factory call into
-  `main.cpp`.
-- `py_scripts/` mirrors this same module layout in its own subfolders (`laser/`, `detector/`, `particle/`,
-  `radiation/`, `debug/`), one plotting script per `.dat` file that module's C++ side exports; `utils/` holds the
-  two shared helpers (`run_output_utils.py`, `w0_axes_utils.py`) every plotting script needs regardless of module.
-  `compile_and_run.py` stays at `py_scripts/` root — it's the build/run driver, not a plotter. Each moved script
-  still runs directly as `python3 py_scripts/<module>/<script>.py` (not as a package): it inserts its own parent
-  directory (`py_scripts/`) onto `sys.path` before importing from `utils.*`, so `utils/` resolves as an implicit
-  namespace package (no `__init__.py` needed) without requiring `python -m`. Sibling scripts within the same
-  module folder (e.g. `radiation/plot_spherical_components.py` importing from `radiation/faraday_frame_utils.py`
-  or `radiation/plot_field.py`) import each other directly by filename with no shim, same as before the move.
-- **CLI convention**: every plotting script's optional trailing argument is a run *folder* (e.g.
-  `~/output/20260912_105244`), not a specific `.dat` file path — the script already knows its own one required
-  filename (`radiation_field.dat` for every `radiation/` script, `electron.dat` for `particle/plot_trajectory.py`,
-  ...), so it just joins that onto the given folder and errors clearly if the file isn't there. Omitting the
-  argument still falls back to `find_latest_output_file` (auto-discovering the latest run), unchanged.
-- **PNG output convention**: every plotting script writes into a per-module subfolder of the run directory's
-  `png_folder/` — `png_folder/laser/`, `png_folder/detector/`, `png_folder/particle/`, `png_folder/radiation/`,
-  `png_folder/debug/` — mirroring `py_scripts/`'s own module layout, instead of one flat `png_folder/`. Each
-  script derives its own subfolder name automatically as `MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))`
-  (a module-level constant near its imports) rather than hardcoding the string, so it can't drift from the
-  script's actual location.
+- `src/app/main.cpp`: the executable, which only orchestrates. All logic is in the static library
+  `coherent_thomson_core` (`src/core/`). Public headers live in `src/core/include/<module>/`, with `.cpp` files in
+  `src/core/<module>/`.
+- `math_utils/`, `phys_utils/`, `io_utils/` are header-only.
+- **Class + factory pattern** (`laser/`, `detector/`): `<thing>.hpp/.cpp` holds the class; `<thing>_factory.hpp`
+  declares `create_<thing>(const ConfigMap&, ...)`, defined in `<thing>_factory.cpp`, where *all* config-key
+  parsing and unit handling lives. `particle/`'s factory is `generate_cylinder_beam(config, tau_0, d_tau, N_tau)`,
+  which returns `std::vector<Electron>`. `simulation/` is plain free functions (`init_simulation_parameters`,
+  `run_simulation`).
+- Each module with output has a `<module>_plotter.hpp/.cpp` exporter, called from `main.cpp`.
+- **Adding a physics component:** class + factory as above, add the `.cpp` to `add_library(...)` in
+  `src/core/CMakeLists.txt`, and wire the factory into `main.cpp`.
+- `py_scripts/<module>/` mirrors the C++ modules, with one plotting script per exported `.dat`. Scripts run as
+  plain files (not `python -m`): each inserts `py_scripts/` onto `sys.path` and imports `utils.*`, an implicit
+  namespace package with no `__init__.py`. Scripts in the same folder import each other by filename. There is no
+  shared constants module between C++ and Python: `C_LIGHT = 137.035999084`, `EPSILON_0 = 1/(4π)` etc. are
+  duplicated in the scripts, so keep them in sync with `phys_utils.hpp`.
 
-### Namespace structure
+### Namespaces (`Core::<CamelCase of folder>`)
 
-All core-library code lives under `Core`; subdirectories of `src/core/` map to sub-namespaces
-(lower_snake_case folder → CamelCase namespace):
+| Module | Key contents |
+|---|---|
+| `MathUtils` | `FourVector<T>`/`FourTensor<T>` (`Real*`/`Complex*` aliases; `Complex = std::complex<double>`), Minkowski contractions, `unpack_bivector`, 3D rotation helpers |
+| `PhysUtils` | `AtomicUnits::` constants (`c = 137.035999084`, `q_0 = -1` signed charge, `e_0 = +1` magnitude, `epsilon_0 = 1/(4π)`, SI conversions); `dressed_momentum`, `non_linear_Thomson_formula` |
+| `IoUtils` (`ConfigMap` is in `Core`) | config parsing, `convert_unit_to_number`, per-key accessors, `make_run_output_directory`, `copy_config_to_run_directory` |
+| `Particle` | `Electron` (RK4 Lorentz-force integrator; every `State` records position, momentum, and 4-acceleration), beam generation, trajectory export |
+| `Laser` | `LaserField` base + `PlaneWaveLaser`/`LaguerreGaussLaser`; `create_laser` dispatches on `laser_type` |
+| `Detector` | `Detector_2D` base + `Rectangular`/`Circular`/`SphericalDetector`; `create_detector` |
+| `Simulation` | `init_simulation_parameters` (frequency list, fundamental, dressed `q`, trajectory grid), `run_simulation`, `PackedFaraday`/`Faraday` field containers |
+| `Radiation` | `compute_radiation` (per-electron hot path), `plot_radiation_field`, `export_incident_field_fourier` |
+| `Debug` | per-tau integrand diagnostics (see "Debug mode") |
+| `Logging` | `write_run_log` → `run_log.txt` |
 
-| Directory | Namespace | Contents |
-|---|---|---|
-| `math_utils/` | `Core::MathUtils` | `FourVector<T>`/`FourTensor<T>` (+ `Real*`/`Complex*` aliases), Minkowski contractions, 3D rotation helpers, constants |
-| `phys_utils/` | `Core::PhysUtils::AtomicUnits` | Physical constants in atomic units |
-| `io_utils/` | `Core::IoUtils` (`ConfigMap` alias lives in `Core`) | Config parsing, unit conversion, per-key laser/beam accessors, `CylinderBeamParams`, `make_run_output_directory` |
-| `particle/` | `Core::Particle` | `Electron` (RK4 Lorentz-force integrator, always records its trajectory), `generate_cylinder_beam`/`generate_electron`, `plot_particle_trajectory` |
-| `laser/` | `Core::Laser` | `LaserField` base (Gaussian-flat-top temporal envelope, direction/polarization — `zeta_1`/`zeta_2` are complex, e.g. `(1,0)`/`(0,1)` for circular; the laser always propagates along canonical Oz, so `unity_n`/`epsilon_1`/`epsilon_2` are fixed constants, not derived from any configured direction; `get_faraday_tensor` is a single non-virtual implementation shared by every derived type, built on the pure-virtual `complex_amplitude` customization point) + `PlaneWaveLaser`/`LaguerreGaussLaser` derived types (each implementing `complex_amplitude`, already scaled by `E0_c`, returning `std::tuple<Complex, Complex, Complex>` — `{amplitude, d/dx_loc, d/dy_loc}`; `PlaneWaveLaser` has no transverse profile so its derivatives are always `{0, 0}` — see "Known gaps"), `create_laser` (returns `std::unique_ptr<LaserField>`, dispatches on `laser_type`), `export_field_vs_phase`, `export_field_heatmap_z0` (z=0 transverse snapshot — see "Known gaps") |
-| `detector/` | `Core::Detector` | `Detector_2D` base + `RectangularDetector`/`SphericalDetector`/`CircularDetector` (each built orthogonal to its own configured direction via `local_rotation`), `create_detector`, `plot_detector` |
-| `simulation/` | `Core::Simulation` | `init_simulation_parameters`, `Faraday`/`RadiationField` (full 4x4 tensor, post-reduction) + `PackedFaraday`/`PackedRadiationField` (6-element packed bivector, accumulation-time) + `run_simulation` (multithreaded, partitions beam across `num_threads`) |
-| `radiation/` | `Core::Radiation` | `compute_radiation` — one electron's contribution to `Simulation::PackedRadiationField` (packed antisymmetric Faraday bivector, long/short-range amplitudes, summed over trajectory points/screen points/frequencies); `plot_radiation_field` exporter |
-| `debug/` | `Core::Debug` | `export_radiation_integrand`/`export_radiation_phase` — diagnostic-only, deliberately duplicated (not shared) reimplementation of `compute_radiation`'s per-tau math; see "Debug mode" below |
-| `logging/` | `Core::Logging` | `write_run_log` — writes `run_log.txt`, a human-readable parameter/derived-quantity summary of the run; see "Run log" below |
+### Frames and geometry
 
-### Config file format
+- The laser **always propagates along Oz**; `unity_n`/`epsilon_1`/`epsilon_2` are constants. (Arbitrary laser
+  direction was removed in `d04bb89`; the old implementation is on the `general-laser-direction-legacy` branch.)
+  There is a single frame everywhere, with no lab/canonical distinction.
+- The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = along the laser, i.e.
+  forward). `Detector_2D::local_rotation` orients the screen orthogonal to it.
+- The beam cylinder's axis follows the beam's mean momentum (`average_px/py/pz`), not Oz. `beam_center_x/y/z`
+  offsets are applied **before** that rotation, so `beam_center_z` translates along the direction of motion.
+- `CircularDetector` spaces its radial grid by **equal area**: `r_i = sqrt(R_min² + i*(R_max²-R_min²)/(N_R-1))`.
+  Anything reconstructing `r` from `i` must use this formula.
+- Every detector type collapses to one exact point when its grid counts are `1`.
+  `Detector_2D::restrict_to_first_point` exists for the dense-spectrum case below.
 
-`config/config.cfg` is a flat `key value [unit]` text format covering detector geometry, laser
-frequency/envelope/direction/polarization, beam particle count/geometry, initial momentum distribution, radiation
-spectrum range, and a trajectory-print-frequency knob. Numeric values may carry a unit suffix (`lambda`, `pi`,
-`mc`, `cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...) resolved by `IoUtils::convert_unit_to_number` against the
-laser's own wavelength/frequency — check that function before adding a new unit keyword; an unrecognized suffix
-falls through to a `std::cerr` warning and an assumed value of `1.0` rather than throwing, so a typo'd unit fails
-silently (only visible as a startup warning) instead of erroring out. A key with a blank value (nothing but a
-trailing comment) is dropped entirely by the parser rather than stored empty, so `config.at(...)` throws
-`std::out_of_range` for it — always give every key a real value, even a placeholder.
+### Radiation calculation (the hot path)
 
-**`w0` unit** (e.g. `circular_detector_R_max  3.0  w0`) is only valid for `laser_type=laguerre_gauss` configs — it
-reads `laser_lg_w0` (itself given in an already-supported unit, conventionally `lambda`) and recurses through
-`convert_unit_to_number` on that unit, rather than assuming atomic units directly, so `w0` is still ultimately
-expressed in `lambda`, not an independent length scale. Throws (via `get_required`) if `laser_lg_w0` isn't present
-in the config, i.e. for any other `laser_type`.
+- `compute_radiation` sums, per `(screen point, tau, frequency)`, prefactor × bivector
+  `n0^α u^β − n0^β u^α` × `exp(i·freq·(x⁰+R))`. Values accumulate in the packed 6-component form
+  (`PackedFaraday`) and are unpacked to a 4x4 tensor after the per-thread accumulators are summed.
+  `run_simulation` splits electrons across `num_threads` (`0` = all hardware threads) and scales the result by
+  `general_factor = q_0 / (2π · 4πε₀c²)`, where `q_0` is the signed charge, not `e_0`.
+- **Three terms**, exported separately as `LR_`/`SR_`/`BR_F<mu><nu>` columns in `radiation_field.dat`: long-range
+  `F_l`, short-range `F_s`, and boundary `F_b`. **Only the sum `F_l+F_s+F_b` is physical.** Individual terms are
+  artifacts of the integration-by-parts derivation; e.g. on-axis `F_l^{03}` and `F_b^{03}` are individually large
+  and cancel. The plotting scripts' `total` range and `plot_observables.py` always use the sum.
+- **Current formulas: `theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md`**, which supersedes the
+  unsuffixed v1 doc for the simplified `F_s`. Simplified form: `F_l ∝ (-ik/R)(nᵅuᵝ−nᵝuᵅ)`,
+  `F_s ∝ (sᵅuᵝ−sᵝuᵅ)/R²` with `s = (0, 𝐧)` (its own bivector, `short_range_bivector_element`; not the `(n, u)`
+  one), `F_b ∝ [(nᵅuᵝ−nᵝuᵅ)/(R(n·u))]` evaluated between the two endpoints. The direct `F_s` carries an explicit
+  `c²` in `short_range_prefactor_direct`, because the doc's direct `F_s` has a bare `q` while `general_factor`
+  applies `q/c²` to everything.
+- `radiation_formula` selects `simplified` (default: velocity-only integrand plus the boundary term `F_b`) or
+  `direct` (Liénard–Wiechert FT that needs the stored 4-acceleration; `F_b ≡ 0`). Cross-checking the two
+  formulas against each other is the main correctness tool. With the v2 `F_s` they agree to the trapezoid's
+  `O(dτ²)` error (4x smaller per doubling of `trajectory_NT`) down to a 1 λ screen distance. A mismatch of order
+  `1/(kR)` means a short-range bug. Simplified `F03` near the axis is a ~1000x cancellation of `F_l` and `F_b`,
+  so it needs a finer `trajectory_NT` than the other components to reach the same accuracy.
+- **Quadrature:** trapezoidal weights (`d_tau`, halved at the endpoints) apply to `F_l`/`F_s` only. `F_b` is an
+  exact endpoint evaluation (nonzero only at the first/last tau, opposite signs) and gets **no** weight.
+- The prefactors are isolated in `radiation.cpp`'s anonymous namespace (`long_range_prefactor`,
+  `short_range_prefactor`, `*_direct`, `boundary_prefactor`, `radiation_phase_argument`) so they can be swapped
+  independently. `radiation_phase_argument` must stay **frequency-independent**, because of the recurrence below.
+- **Performance tuning (keep it):** the loops run screen point outer, tau inner, so each screen point accumulates
+  in local tensors and `field` is written once per `(i_d, i_freq)`. Because `frequencies_list` is always evenly
+  spaced, the phase factor is computed by recurrence (`cexp *= cexp_step`) instead of a `std::polar` call per
+  frequency. This is guarded by a per-electron evenly-spaced check. Loops are deliberately left uninstrumented.
+  On a matched config the Release build is ~4x faster than the Python reference. An older "C++ is 3x slower"
+  result came from a Debug build.
+- `run_simulation` prints per-thread timings and aggregate CPU-seconds per electron (per screen point), computed
+  from the **sum of per-thread times**, not wall-clock time.
+- The whole beam is generated upfront and held in memory (a deliberate simplification for now).
 
-One exception to the single-number-plus-unit convention: the laser's polarization coefficients are complex
-(`Core::MathUtils::Complex`), so each is split into two plain-number keys instead of one `key value [unit]` line —
-`laser_zeta_1_re`/`laser_zeta_1_im` and `laser_zeta_2_re`/`laser_zeta_2_im` — read via
-`IoUtils::get_complex_config_value`/`get_laser_zeta` (`io_utils.hpp`), not `convert_unit_to_number`.
+### Frequencies
 
-### Debug mode (per-tau radiation integrand diagnostics)
+- Default: `frequencies_list[i] = non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i)` for `N_harmonics`
+  harmonics. `k1` is along Oz, `n2` is the detector direction (not the electron's), and `q` is the
+  **ponderomotively dressed** momentum `PhysUtils::dressed_momentum`, with cycle-averaged `<a²> = a0²/2` for
+  every polarization. **Do not change it to `a0²`.** That was a real bug, and the `/2` has been confirmed three
+  independent ways (see dev notes).
+- `dense_frequency_spectrum=true`: a linear scan of `N_omega` points from `omega_min` to `omega_max`, meant for a
+  single screen point (resolving a line shape). The bounds accept only `omega_laser` (raw multiple of the incident
+  frequency) or `first_harmonic_frequency` (multiple of the emitted, Doppler-shifted fundamental). If the detector
+  has more than one point, `main.cpp` warns and restricts it to point 0.
+- Internally frequencies are `omega/c` (`k`). `radiation_field.dat`'s `omega` column is **`omega/omega_1`**
+  (normalized to `fundamental_frequency`, the N=1 harmonic of `q`), not raw omega. `run_log.txt` records
+  `fundamental_frequency` in raw atomic units, and `plot_observables.py` reads it from there to recover true
+  `omega` for its `1/omega` factors.
 
-`config/debug.cfg` is a ready-made config satisfying the constraints below (`debug=true`,
-`beam_particle_count=1`, single-point rectangular detector) — use it (or a copy) instead of hand-editing the
-default config when exercising this path.
+### Laser
 
-`debug/` (`Core::Debug`, `debug_radiation.hpp`/`.cpp`) is a diagnostic-only module, deliberately kept isolated from
-`radiation.cpp`'s production accumulation path: `export_radiation_integrand`/`export_radiation_phase`
-**reimplement (duplicate, not share) `compute_radiation`'s per-tau `n0`/`R`/`amp_long`/`amp_short`/bivector-term
-math**, so this path can never be affected by, or accidentally affect, the real simulation. Enabled via the
-`debug` config key (default `false`); when `true`, `main.cpp` requires (and throws at startup otherwise)
-`beam_particle_count=1`, `detector_type=rectangular`, and `rectangular_detector_Nx=rectangular_detector_Ny=1`, and
-forces the diagnostic to evaluate at the fundamental only (`sim_par.fundamental_frequency`, already in `k =
-omega/c` units, not raw `omega` — see the `radiation_field.dat` `omega` bullet below), independent of
-`dense_frequency_spectrum`/`N_harmonics`/`N_harmonics_min`/`N_omega`. Purely additive: the normal pipeline (including
-`run_simulation`/`radiation_field.dat`) still runs, so the integrand's own tau-sum can be cross-checked against
-the coherently-summed field (confirmed to agree to the file's printed precision, both long-range and short-range,
-once `general_factor` is accounted for).
+- `get_faraday_tensor` is a single non-virtual implementation built on the pure-virtual `complex_amplitude`,
+  which returns `{amplitude, d/dx, d/dy}` already scaled by `E0_c` (`{0, 0}` derivatives for `PlaneWaveLaser`).
+  `Ez`/`Bz` are built from those derivatives: this is first-order paraxial, with a `div E` residual of ~1e-6 for
+  the fundamental Gaussian and up to ~1e-2 for higher `p`/`|l|`. That is expected. The carrier sign `exp(-iφ)` and
+  the `+i/k` coefficient must flip together.
+- Polarization `zeta_1`/`zeta_2` are complex (`laser_zeta_{1,2}_{re,im}` keys) and **normalized in
+  `create_laser`**, so `a0` alone sets the field strength. Linear: `(1,0),(0,0)`. Circular: `(1,0),(0,1)`.
+- LG: the radial profile uses `hypergeometric_1F1_neg_int_a` (`generalized_laguerre` exists but is unused). `Npn`
+  is a deliberately custom normalization. The azimuthal factor is the polynomial `(x + i·sign(l)·y)^|l|` to stay
+  smooth on-axis. The beam waist is at the origin.
+- Envelope: Gaussian wings `exp(-Δφ²/wing_sigma²)` (not `/(2σ²)`, which was a fixed bug) around a flat top.
+- **Known bugs/hardcodes:** `laser_delay` has no effect (the constructor overwrites it with
+  `wing_sigma_cutoff * wing_sigma`). `tau_0_traj` is hardcoded to `0.0` in `init_simulation_parameters`. The
+  heatmap snapshot time is keyed off `wing_sigma_cutoff*wing_sigma` for that reason. Revisit all three together.
+- `export_field_heatmap_z0`'s window is `±beam_cylinder_radius` and ignores `beam_center_x/y`. Only when the
+  radius is `0` does it fall back to `field_heatmap_*` (plane wave) or `±2 w0` (LG).
 
-Two output files, both one row per trajectory point (`tau`), for the single electron/screen point:
-- `debug_integrand.dat` (`export_radiation_integrand`): the 6 independent upper-triangle Faraday bivector
-  components' long-range/short-range contribution at that tau — the raw terms `compute_radiation` sums over tau,
-  before the final reduction. Visualize with `py_scripts/debug/plot_integrand.py <long|short> <mu> <nu>` (`mu >
-  nu` resolved via `F^{nu mu} = -F^{mu nu}`; `mu == nu` rejected, since the diagonal is identically zero).
-- `debug_exponent.dat` (`export_radiation_phase`): the phase factor `exp(i*(x[0]+R)*k)` common to every component
-  in `debug_integrand.dat` (all 6 x long/short) — factored out into its own file rather than repeated 12x per row.
-  Visualize with `py_scripts/debug/plot_exponent.py`.
+## Config file format
 
-Both of those plotting scripts, and `particle/plot_trajectory.py`, plot against `tau/T` rather than raw `tau` (`T
-= 2*pi/omega`, the laser period) — `utils.run_output_utils.get_laser_period(run_dir)` reads `laser_frequency` back out
-of that specific run's own `config.cfg` (written by `IoUtils::copy_config_to_run_directory`), not the live repo
-config, so the axis stays correct even if `config/config.cfg` has since changed. `debug/plot_integrand.py`
-still plots against raw `tau`, not `tau/T`.
+Flat `key value [unit]` lines. `IoUtils::convert_unit_to_number` resolves units (`lambda`, `pi`, `mc`,
+`cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...) against the laser's own wavelength and frequency. Check that
+function before adding a unit.
+- **An unrecognized unit only warns** on stderr and assumes `1.0`, so a typo fails silently.
+- **A key with a blank value is dropped**, so `config.at(...)` then throws `std::out_of_range`. Always give every
+  key a real value.
+- `w0` is valid only with `laser_type=laguerre_gauss` (it resolves through `laser_lg_w0`'s own unit).
+- Unknown keys are ignored, so stale keys from old configs (e.g. `laser_nx`, `print_field_in_canonical_frame`)
+  don't error.
 
-### Run log
+## Debug mode
 
-`main.cpp` writes `run_log.txt` into every run directory, right after `radiation_field.dat`
-(`Logging::write_run_log`, `logging/run_log.hpp`/`.cpp`) — a human-readable summary of the run's full parameter set
-and everything derived/computed from it, meant as a richer companion to the verbatim `config.cfg` snapshot
-`IoUtils::copy_config_to_run_directory` already writes: `config.cfg` has everything needed to *reproduce* a run,
-`run_log.txt` has everything needed to *understand what was actually computed* without re-deriving units/derived
-quantities by hand (laser/beam/detector geometry in both atomic units and `lambda`/`w0`, the resolved detector
-type and its type-specific extent, `dense_frequency_spectrum`/`N_harmonics` settings, the actual
-`fundamental_frequency` and its Doppler/nonlinear shift ratio against the bare incident `laser_omega`, the dressed
-momentum `q`, and the numeric `frequencies_list` values themselves — all of it, not just first/last, when there
-are 20 or fewer). Deliberately re-reads geometry/beam config keys the same way `detector_factory.cpp`/
-`electron_factory.cpp` already do (see `read_scaled` in `run_log.cpp`) rather than adding new getters to
-`Detector`/`Electron`, so this stays purely additive and cannot affect the physics classes it describes.
-`Simulation::simulation_parameters` gained a `q` field (`PhysUtils::dressed_momentum`'s result, previously computed
-in `init_simulation_parameters` but not returned) specifically so this log reads the same dressed momentum the run
-actually used rather than recomputing it separately — see the `k1`/`p`/`q`/`n2` bullet below for what `q` is.
+`debug=true` (use `config/debug.cfg`) requires `beam_particle_count=1`, a 1x1 rectangular detector, and
+`radiation_formula=simplified`; `main.cpp` throws otherwise. It evaluates at the fundamental only and writes
+`debug_integrand.dat` (per-tau `LR`/`SR`/`BR` bivector terms, trapezoid weights applied as in production) and
+`debug_exponent.dat` (the shared phase factor). The normal pipeline still runs, so the tau-sum can be
+cross-checked against `radiation_field.dat` once `general_factor` is divided out. Compare at the exact
+fundamental (`dense_frequency_spectrum=false`, `N_harmonics=1`, row 0): the sums then agree to print precision
+(~1e-7). A dense-scan row that is only near `ω/ω₁ = 1` differs by O(1) because of the long-trajectory phase.
 
-**TODO: `run_log.txt` only expresses physical quantities in atomic units and, where relevant, `lambda`/`w0`
-multiples — it has no SI-unit column (meters, seconds, Hz, Joules, Tesla, ...).** Atomic units are what the whole
-solver computes in internally, and `lambda`/`w0` are the natural units for laser-driven problems, but neither is
-immediately meaningful to a reader trying to place a run in real-world terms (e.g. "what wavelength/pulse
-duration/intensity is `laser_frequency=0.057`, `laser_a0=0.10` actually describing in nm/fs/W/cm^2?") without a
-separate unit-conversion step. Worth adding a per-quantity SI conversion (using `PhysUtils::AtomicUnits`' existing
-constants as the conversion basis) the next time this file is touched.
+**`debug/debug_radiation.cpp` deliberately duplicates `compute_radiation`'s per-tau math instead of sharing it.
+Any change to the prefactors, weights, or boundary term must be mirrored there**, or the cross-check silently goes
+stale.
 
-### Known gaps / TODOs worth knowing before touching related code
+`debug/plot_exponent.py` and `particle/plot_trajectory.py` plot against `tau/T`, reading the laser period from
+that run's own `config.cfg` snapshot via `get_laser_period`. `debug/plot_integrand.py` uses raw `tau`.
 
-- **`LaguerreGaussLaser`'s transverse-mode physics still isn't physics-reviewed against the reference formula**
-  (Allen, Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman, "Lasers", ch. 17).
-  `complex_amplitude` (`laser_field.cpp`) returns `{amplitude, d/dx_loc, d/dy_loc}` via the product rule on
-  `amplitude = prefactor * V * C_n * hypergeometric_val`; derivatives were verified against finite differences
-  (~`1e-8` to `1e-14` relative error) across several `p`/`l` combinations. The radial profile uses
-  `MathUtils::hypergeometric_1F1_neg_int_a(-p, n+1, u)` (`n = |l|`) via the identity `L_p^n(x) = binom(p+n,p) *
-  1F1(-p; n+1; x)` — **not** `MathUtils::generalized_laguerre`, which remains implemented and tested via its own
-  recurrence but is unused elsewhere. `Npn`'s normalization is a **deliberately custom (non-unit-power) constant**
-  matching this project's own convention, not the standard `sqrt(2*p!/(pi*(p+|l|)!))` LG normalization. The
-  azimuthal factor is built as the exact polynomial `(x_loc + i*sign(l)*y_loc)^|l|` (equal to `rho^|l| *
-  exp(i*l*azimuth)`) so amplitude and derivatives stay smooth exactly on-axis instead of hitting a removable but
-  awkward `1/rho` singularity. `x_loc`/`y_loc`/`z_loc` are just the electron's own `x`/`y`/`z` (the laser always
-  propagates along canonical Oz), assuming the beam waist sits at the origin (tied to the `tau_0_traj=0.0`
-  hardcode below) — check that the beam actually starts near the waist for whatever config you're using.
-- **`get_faraday_tensor` builds genuine `Ez`/`Bz` from the `dx`/`dy` amplitude derivatives** (the `div(E)=0`/
-  `div(B)=0` condition), consistent with `complex_amplitude`'s `exp(-i*phi)` carrier-sign convention (flipping one
-  without the other breaks the `+i/k_wave` coefficient's sign). This is only a first-order paraxial construction
-  (Lax et al. 1975; Davis 1979): the `div(E)` residual is `~1e-6` relative for the fundamental Gaussian but grows
-  to `~1e-4`–`3e-2` for higher-order `p`/`|l|` modes (worst on/near axis) — an expected limitation, not a bug, but
-  it does impart a small spurious force on off-axis electrons during RK4 trajectory integration for higher-order
-  modes.
-- **Polarization coefficients `zeta_1`/`zeta_2` are complex, not real.** `get_faraday_tensor` computes `E =
-  Real(epsilon_1*zeta_1*amplitude + epsilon_2*zeta_2*amplitude)`. Linear polarization along `epsilon_1` is
-  `zeta_1=(1,0)`, `zeta_2=(0,0)`; circular is `zeta_1=(1,0)`, `zeta_2=(0,1)`. **`create_laser`
-  (`laser_factory.cpp`) normalizes `zeta_1`/`zeta_2` right after reading them from the config**, so `|zeta_1|^2 +
-  |zeta_2|^2 = 1` always holds regardless of the raw values' sum (e.g. the circular convention above sums to `2`
-  unnormalized) — without this, switching polarization would silently change the field's amplitude/intensity as a
-  side effect of the polarization choice, instead of `a0` alone controlling field strength. Throws if `zeta_1`/
-  `zeta_2` are both exactly zero.
-- **`Radiation::compute_radiation` accumulates the full per-electron radiation physics into a packed
-  representation.** For every `(tau, screen_point)` pair it builds the null vector `n0` from the electron-to-screen
-  separation, then per frequency accumulates `amp_long`/`amp_short` times the six independent bivector terms
-  `n^alpha u^beta - n^beta u^alpha` into a `Simulation::PackedRadiationField` (`ComplexBivector`, 6-element packed
-  form) — real amplitude physics, just stored packed until reduction. `run_simulation` gives each thread its own
-  accumulator, sums them once all threads join, then unpacks each summed `PackedFaraday` into a full 4x4 `Faraday`
-  tensor via `MathUtils::unpack_bivector`, scaled by `general_factor` (`= 1/(2*pi*c)`). `MathUtils::mirror_antisymmetric_in_place` is dead code (predates
-  `unpack_bivector`, nothing calls it). `num_threads` (config key, default `0` = all hardware threads) controls
-  `run_simulation`'s beam partitioning.
-- **`run_simulation` times each thread's chunk individually** (`std::chrono::steady_clock`, one `thread_start` per
-  thread, written to its own slot of a `thread_elapsed`/`thread_electron_count` vector pair — no synchronization
-  needed since each thread only ever writes its own index) and prints one `Thread <idx>: <N> electrons in <T> s
-  (<T/N> s/electron, <T/N/N_screen> s/screen pt)` line per thread once every thread has joined (never from inside
-  a still-running thread — only thread 0's separate progress indicator, above, is allowed to print concurrently,
-  since it's the sole writer to `std::cout` while others are still running). Surfaces load imbalance directly: the
-  last chunk is smaller than the others whenever `num_electrons` isn't evenly divisible by `num_threads`, so its
-  thread finishes sooner — visible in the per-thread lines, not in any single aggregate number.
-  `run_simulation` then prints two aggregate lines, `Time per electron`/`Total CPU-seconds per Electron per Screen
-  Point`, computed from
-  `total_cpu_seconds` — the **sum of every thread's own elapsed time** (`thread_elapsed`, already measured above),
-  not `main.cpp`'s wall-clock `simulation_elapsed`. This distinction matters: dividing wall-clock time by
-  electron/screen-point count would understate the true per-unit cost by roughly `num_threads`, since electrons
-  are processed in parallel, not sequentially — and approximating the correction as `wall_time * num_threads`
-  would itself be inexact, since it implicitly assumes every thread ran equally long, which the load-imbalance
-  case above already shows isn't true. Summing the actual per-thread times (already available from the per-thread
-  loop) avoids both problems, with no extra measurement needed — though `total_cpu_seconds` itself is still an
-  aggregate over *concurrently*-running threads (each `thread_elapsed` entry was measured while every other thread
-  was also running, competing for cache/memory bandwidth), not a true isolated single-thread measurement, so it's
-  best read as "CPU-seconds consumed" (analogous to `/usr/bin/time`'s `user` field) rather than a guaranteed
-  prediction of what an actual single-thread run would take (contention can make it a slight overestimate of
-  that). No per-tau or per-frequency timing is
-  exposed anywhere: `compute_radiation`'s inner loops are the documented performance-critical hot path (see the
-  loop-order bullet below), and were deliberately left uninstrumented to avoid adding timer overhead there.
-- **`compute_radiation`'s loop order and phase-factor evaluation are deliberately tuned for performance** — this
-  is the dominant cost of a run. The loop nests screen point (`i_d`) outer, trajectory point (`i_tau`) inner,
-  reversed from the naive order, so each screen point's tau-sum accumulates in cache/register-resident local
-  tensors and the (potentially tens-of-MB) `field` array is written once per `(i_d, i_freq)` instead of once per
-  `(i_tau, i_d, i_freq)` triple. Since `frequencies_list` is always built as an evenly-spaced (arithmetic
-  progression) list — consecutive harmonics by default (see the `omega_min`/`omega_max` bullet below), or a
-  linear scan when `dense_frequency_spectrum=true` — the phase factor `exp(i*phase*freq)` for `frequencies_list[0]`
-  and for the constant spacing between entries are each computed via one `std::polar` call, and every other
-  entry's phase factor follows from cheap complex multiplications (guarded by a per-electron
-  `frequencies_are_evenly_spaced` check, falling back to per-frequency `std::polar` otherwise) — keep this in sync
-  with the `omega_min`/`omega_max` gap below if you touch either.
-  Measured ~2.6x wall-clock speedup from these two changes together on a fine-detector-grid config.
-  **OPEN PERFORMANCE QUESTION (for later discussion, not yet profiled/confirmed): this C++ solver has been
-  observed running ~3x *slower* than the independent Python reference
-  (`~/Dropbox/work/bin/python/Superradiant_Thomson`) for matched parameters, with most of the time attributed to
-  this same trapezoidal-sum/FT loop** — surprising, since a compiled `-O3 -march=native` loop should generally
-  beat Python/numpy on the same arithmetic. Leading hypothesis: the `i_freq` loop's phase-recurrence optimization
-  just described (`cexp *= cexp_step` each iteration) is a **serial dependency chain** — each frequency's phase
-  needs the previous frequency's phase — which a compiler cannot auto-vectorize (SIMD), no matter how aggressive
-  the flags. A numpy-based Python implementation that instead builds the whole frequency axis as an array and
-  evaluates `exp(i*omega_array*phase)` in one vectorized call has no such dependency (every frequency is
-  independent), so it can process several frequencies per SIMD instruction — the "naive" full evaluation doing
-  *more* raw transcendental-function work can still win in wall-clock terms over the "clever" O(1)-per-step
-  recurrence, because the recurrence's serial chain is the actual bottleneck, not FLOP count. Compounding
-  candidate: `MathUtils::Complex` is `std::complex<double>`, and this repo's `CMakeLists.txt` Release flags
-  (`-O3 -march=native -mtune=native`) include no `-ffast-math`/`-fcx-limited-range`, so `std::complex`
-  multiply/divide keeps its full IEEE/C99-Annex-G-mandated NaN/Inf edge-case handling — a well-known blocker for
-  GCC/Clang auto-vectorizing loops of `std::complex<double>` arithmetic, whereas numpy's complex128 elementwise
-  kernels don't carry the same correctness overhead. Two more candidates worth ruling out cheaply before
-  trusting either hypothesis above: confirm the timed C++ binary was actually built `Release` (an accidental
-  `Debug`/`RelWithDebInfo` build alone would produce a multi-x slowdown unrelated to any of this); and note that
-  `run_simulation` parallelizes across *electrons* (`num_threads`), so for a modest `beam_particle_count` its
-  effective parallel/SIMD utilization per electron may be lower than a numpy implementation that vectorizes
-  across the full `(tau, screen, freq)` array regardless of electron count.
-  **UPDATE: the first "cheap to rule out" candidate above was checked and found true.** This repo's own `build/`
-  directory (the one `py_scripts/compile_and_run.py` reconfigures/reuses on every run, since it never passes
-  `-DCMAKE_BUILD_TYPE`) had its CMake cache stuck at `CMAKE_BUILD_TYPE=Debug` (flags `-g -Wall -Wextra -Wpedantic`,
-  no `-O` at all — effectively `-O0`), not `Release` — plausibly from VS Code's CMake Tools extension, which
-  defaults new configurations to `Debug`; `cmake -S . -B build` without an explicit `-DCMAKE_BUILD_TYPE` keeps
-  whatever build type is already cached rather than resetting to the `CMakeLists.txt` default, so this goes
-  unnoticed indefinitely once it happens once. Measured directly: same reduced-`beam_particle_count=100` copy of
-  `config/coherent_thomson.cfg` (a legacy config file, since deleted in favor of `config/config.cfg` — see the
-  note below on which config is correct for this comparison), same machine, 24 hardware threads,
-  `num_threads=0` (all of them) — Debug gave
-  `Simulation time: 54.7 s` (`9.95 s`/electron, `0.00972` CPU-s/electron/screen-pt); a `Release`
-  (`-O3 -march=native -mtune=native -DNDEBUG`) rebuild of the identical source and config gave `Simulation time:
-  4.53 s` (`0.77 s`/electron, `0.00075` CPU-s/electron/screen-pt) — **~12-13x**, dwarfing the ~3x gap against the
-  Python reference this whole bullet is about. `build/` has since been reconfigured to `Release`
-  (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`) and rebuilt, so this specific trap is fixed for this repo's
-  own `build/` going forward — but it does **not** by itself confirm or rule out either hypothesis above: it is
-  not yet established whether the original "~3x slower than Python" comparison was itself run against a Debug
-  build (plausible, given how easily this cache gets stuck, but unverified) or a genuinely `Release` one. **Nothing
-  here has been profiled yet, and the Python-vs-C++ comparison itself has not been re-run** — before spending more
-  effort on the phase-recurrence/`std::complex`-vectorization hypotheses above, first re-run the original
-  Python-vs-C++ comparison with `build/`'s cache now confirmed `Release` (and `cmake --build build --clean-first`
-  or a fresh `build/` if in doubt) to see how much of the ~3x gap survives; if a Debug build was the whole
-  explanation, that gap may already be gone. **General footgun worth remembering beyond this one repo**: after
-  any complaint of unexpectedly slow C++ performance, checking the actual build type in use (e.g.
-  `grep CMAKE_BUILD_TYPE build/CMakeCache.txt`, or the compiler flags a build system actually invoked with) is
-  close to free and should be the very first thing ruled out, before reaching for a profiler or reasoning about
-  vectorization/algorithmic hypotheses.
-  **RESOLVED: the Debug-build cache was in fact the whole explanation.** Re-ran the actual C++-vs-Python
-  comparison with `build/` confirmed `Release`, using `config/config.cfg` — the config already parameter-matched
-  to `~/Dropbox/work/bin/python/Superradiant_Thomson/main.py`'s own `INPUTS` defaults (confirmed field-by-field:
-  `laser.omega`/`laser_frequency=0.057`, `laser.a_0`/`laser_a0=0.10`, `p=0`/`laser_lg_p=0`, `m=1`/`laser_lg_l=1`,
-  `w_0`/`laser_lg_w0=75 lambda`, `R_beam=1.5*w_0`/`beam_cylinder_radius=112.5 lambda`, `pz_beam=-1.0*c`/
-  `average_pz=-1.0 mc`, `sigma_l=2T`/`laser_wing_sigma=2 cycles_adim`, `flat_top_periods=10`/
-  `laser_flat_duration=10 cycles_adim`, `wing_factor=5`/`laser_wing_sigma_cutoff=5`, `NT=100`/`trajectory_NT=100`,
-  `zeta_x=1,zeta_y=i`/circular polarization, `screen.z_screen=-144000 lambda`/`rectangular_detector_distance=
-  144000 lambda` with `detector_direction_theta=1.0 pi` (backward), `screen.width/height=400 lambda`/
-  `rectangular_detector_x/y_min/max=-200/+200 lambda`, `Nx=Ny=64`, `N_min=1,N_max=3`/`N_harmonics=3` — this is why
-  `config/config.cfg`, not the legacy (now-deleted) `config/coherent_thomson.cfg`, is the correct config for any
-  future cross-check against the Python reference). Both sides' only change from their tracked defaults was reducing the electron count to
-  100 (`beam_particle_count=100` in a scratch copy of `config/config.cfg`; `'electron.N': 100` edited directly in
-  `main.py`'s `INPUTS` and reverted immediately after the run — no other code or parameter touched on either
-  side), run back-to-back on the same 24-core machine, same 4096-point rectangular screen, 3 harmonics:
-  | | C++ (`Release`) | Python reference |
-  |---|---|---|
-  | Wall-clock (`Simulation time` / `Computation wall-clock time`) | 8.21 s | 34.42 s |
-  | CPU-seconds / electron / screen point | 0.000361 s | 0.002017 s |
+## Outputs and plotting conventions
 
-  **The C++ solver is ~4.2x *faster* than Python end-to-end (wall-clock) and ~5.6x more CPU-efficient per unit of
-  work (electron x screen point) — the opposite sign from the old "~3x slower" claim.** This confirms the Debug
-  build was the entire explanation for the old result; the phase-recurrence serial-dependency-chain and
-  `std::complex`-vectorization hypotheses above were never actually tested against real evidence and can be set
-  aside unless a *future*, confirmed-`Release` comparison reopens the question. **Practical takeaway**: always
-  double check `build/`'s cached `CMAKE_BUILD_TYPE` before trusting any timing measurement in this repo, since
-  `compile_and_run.py` silently preserves whatever type is already cached rather than resetting to the
-  `CMakeLists.txt` default.
-- **`tau_0_traj` is hardcoded to `0.0`** in `Simulation::init_simulation_parameters` rather than derived from the
-  pulse's actual physical start — every electron starts its proper-time grid at `tau=0` regardless of the pulse's
-  leading Gaussian wing / `laser_delay` shift. Flagged in-code with `// hardcoded, to be modified`.
-- **`laser_delay` currently has no effect**: `LaserField`'s constructor unconditionally overwrites `delay` with
-  `wing_sigma_cutoff * wing_sigma`, discarding the parsed `laser_delay`. Because of this,
-  `export_field_heatmap_z0`'s snapshot time (`t = wing_sigma_cutoff * wing_sigma / omega`, computed in
-  `main.cpp`) is deliberately keyed off `wing_sigma_cutoff`/`wing_sigma` rather than `laser_delay` — revisit both
-  together if the delay bug is fixed. **The heatmap's x/y window is sized to the electron beam's own transverse
-  extent** (`main.cpp`, `+-beam_cylinder_radius`, read via `IoUtils::parse_cylinder_beam_params` straight from the
-  config — `generate_cylinder_beam` hasn't run yet at this point in `main`, so this reads the same
-  `beam_cylinder_radius` key it would use, not the generated beam itself), independent of `laser_type` — the point
-  of the heatmap is to see the field where the beam actually sits. Deliberately **ignores
-  `beam_center_x`/`beam_center_y`** (window stays axis-centered, not beam-centered): those offsets are applied in
-  the beam's own local frame, before the mean-momentum rotation `generate_cylinder_beam` performs (see the beam
-  cylinder's spatial axis bullet below), which generally does *not* land back on this heatmap's canonical
-  (laser-along-`Oz`) frame unless the beam's mean momentum has zero transverse component — centering the window
-  correctly in the general case would need reproducing that rotation here. Falls back to the previous
-  laser-type-dependent windowing only when `beam_cylinder_radius == 0` (a single on-axis point beam, e.g.
-  `config/debug.cfg`, where a zero-radius window would otherwise collapse the heatmap to a single
-  point): `plane_wave` (no transverse profile) uses the configured `field_heatmap_x/y_min/max`; `laguerre_gauss`
-  ignores those and uses `+-2 * laser_lg_w0` instead, since `w0` sets the mode's actual transverse scale.
-  **Every heatmap-producing script adds secondary top/right axes in units of `w0`** (`x/w0`, `y/w0`) alongside the
-  primary bottom/left axes (still in `axes_unit`, i.e. `lambda`) — both shown at once via matplotlib's
-  `ax.secondary_xaxis`/`secondary_yaxis` with a `lambda(x) = x/w0` forward transform, rather than replacing one
-  labeling with the other. `get_laser_lg_w0_in_axes_units`/`add_w0_secondary_axes` live in their own leaf module,
-  **`py_scripts/utils/w0_axes_utils.py`** (no imports of `radiation/plot_field.py`'s `plot_field` module, so every
-  caller — including `radiation/plot_field.py` itself — can import it without a circular-import issue; it
-  duplicates, rather than imports, `plot_field.read_config_value`'s small `key value [unit]` line reader for this
-  reason), used
-  by `laser/plot_heatmap_z0.py` (originally the only consumer, before this module existed),
-  `radiation/plot_field.py`, and `radiation/plot_spherical_components.py`.
-  `get_laser_lg_w0_in_axes_units` reads the run's own `config.cfg` snapshot and returns `None` — skipping the
-  secondary axes entirely, not mislabeling them — whenever `laser_type != laguerre_gauss` (no `w0` to label with)
-  or `laser_lg_w0`'s own config unit doesn't match the `.dat` file's `axes_unit` header (both are always `lambda`
-  by this project's convention, so this defensive check should never actually trigger, but a real unit conversion
-  was deliberately not implemented for a case that shouldn't occur in practice) — also `None` for
-  `radiation/plot_field.py`/`radiation/plot_spherical_components.py`'s spherical-detector angular `(theta, phi)`
-  fallback grid (see the stereographic-projection bullet below), which has no length scale for `w0` to
-  supplement. `add_w0_secondary_axes` is a no-op when passed `None` or a non-positive `w0`.
-- All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
-  `compute_radiation`); `main.cpp` additionally runs it once more directly on the first `min(10,
-  electron_beam.size())` electrons (indices `0..N-1`) purely to export their trajectories to `electron.dat`.
-  `Particle::plot_particle_trajectory` now takes `(electron_beam, electron_indices, filepath)` and writes every
-  selected electron's rows into one file tagged with a leading `electron_id` column (blank-line-separated blocks;
-  `pandas.read_csv` skips blank lines automatically). `particle/plot_trajectory.py` groups by `electron_id` and
-  encodes electron identity by color (fixed `tab10` order, never cycled past its 10 slots — matching the `main.cpp`
-  cap). Renders **two separate figures** (`<basename>_position_profile.png`/`_momentum_profile.png`, via the
-  shared `_plot_four_vector_figure` helper), one for the position four-vector (`x0..x3`) and one for the momentum
-  four-vector (`p0..p3`), each a 2x2 grid with **one panel per component** rather than overlaying `x1`/`x2`/`x3`
-  (or `p1`/`p2`/`p3`) on one shared panel distinguished by linestyle, as an earlier version did. That overlay had
-  a real readability bug: components with very different absolute magnitudes on one shared linear y-axis (e.g. a
-  beam electron's large-but-nearly-constant transverse starting offset in `x1`/`x2` vs. `x3`'s genuine large
-  excursion from `0`) made the smaller-*looking* one appear flat/constant even when it was actually varying
-  substantially, purely because the axis had to stretch to fit the other components too — confirmed on a real run
-  where `x3` swept `187,644` a.u. (matching a roughly constant `p3 ~ -mc`) but looked like a flat line next to
-  `x1`/`x2`'s `~2e6`-scale offsets, which themselves barely moved (range `~25`). Splitting into one independently-
-  scaled panel per component fixes this for any future run/config, not just that one.
-  **Both figures' y-axes are unit-converted, not raw atomic units**: position panels (`x0..x3`, `x0=ct` included
-  since it's a length too) are divided by `lambda_au = T * C_LIGHT` (`T` is the same `get_laser_period` value
-  already used for the x-axis — a time; multiplying by `c` converts it to the wavelength, a length, mirroring
-  `Core::IoUtils::convert_unit_to_number`'s own `'lambda'` branch, `2*pi/omega*c`); momentum panels (`p0..p3`,
-  `p0=E/c` included since it's momentum-like too) are divided by `C_LIGHT` alone (`= 137.035999084`, the same
-  constant other Python scripts already hardcode from `Core::PhysUtils::AtomicUnits::c`), since `m_0 = 1.0` in these atomic
-  units so `mc = c` exactly. `_plot_four_vector_figure`'s `scale`/`ylabel` parameters carry this through generically
-  for both figures rather than hardcoding the conversion twice.
-- **Each recorded `Electron::State` also carries the electron's exact 4-acceleration** (`du^mu/dtau =
-  (q_0/m_0) F^{mu nu} u_nu`), exported as `electron.dat`'s trailing `a0 a1 a2 a3` columns (not currently
-  plotted by `particle/plot_trajectory.py`). `Electron::update_state`'s RK4 stage `k1` is already the exact
-  derivative at the state being stepped away from (`trajectory.back()` on entry), so it's reused to fill in
-  that state's acceleration at no extra `Faraday`-tensor-evaluation cost; the very last state in a trajectory
-  has no following `update_state()` call to supply its `k1`, so `Electron::compute_trajectory` fills it with
-  one extra explicit `compute_derivative()` call after the loop — the only additional evaluation this scheme
-  costs for the whole trajectory. Any `State` read back before `compute_trajectory()` has run holds a
-  zero-initialized, not physically meaningful, acceleration.
-- The whole beam is generated and held in memory upfront rather than per-thread/on-the-fly inside
-  `run_simulation`; a deliberate temporary simplification until the radiation calculation is validated,
-  with on-the-fly generation planned as a later memory optimization.
-- **`PhysUtils::non_linear_Thomson_formula` (`phys_utils.hpp`) itself is flagged in-code as still needing review**
-  (`// TO BE DOCUMENTED IN CLAUDE.md ; the agreement with the implementation should be checked`). It computes the
-  lab-frame frequency of the `N`-th relativistic-Doppler harmonic radiated by a particle of four-momentum `p1`,
-  seen along direction `n2`, for incident light of four-momentum `k1`: `omega2 = omega1 * N * contract(p1,
-  n1)/contract(p1, n2)` where `omega1 = k1[0]*c` and `n1 = k1/k1[0]`; the return value is `omega2/c` (an `omega/c`
-  convention, not raw angular frequency — see the `omega_min`/`omega_max` bullet below). It is exactly linear in
-  `N`, which is what makes the `radiation_field.dat` `omega`-column normalization (see below) exact once both the
-  harmonics and the fundamental share the same momentum argument.
-- **`omega_min`/`omega_max` are only honored when `dense_frequency_spectrum` (config key, default `false`) is
-  `true`.** By default `init_simulation_parameters` still builds `frequencies_list` as `N_harmonics` consecutive
-  harmonics of the nonlinear Thomson formula (`PhysUtils::non_linear_Thomson_formula`) starting at harmonic index
-  `N_harmonics_min` (config key; `1`, the fundamental, reproduces the old "first `N_harmonics` harmonics"
-  behavior — `IoUtils::get_number_of_harmonics_min`), ignoring `omega_min`/`omega_max` entirely — appropriate for
-  imaging over a whole detector screen, where you want the harmonic peaks' locations, not fine resolution between
-  them. `N_harmonics_min` only shifts which harmonics are computed; it has no effect on `fundamental_frequency`
-  (always the true, dressed-momentum fundamental at `N=1`, see the `k1`/`q`/`n2` bullet below), so
-  `radiation_field.dat`'s exported `omega` column still reads e.g. `5.0` for the first row when
-  `N_harmonics_min=5` — see that bullet's normalization note. `Radiation::compute_radiation`'s fast phase-factor
-  recurrence (see the loop-order bullet above) was generalized to any evenly-spaced `frequencies_list` (constant
-  step between consecutive entries, checked from `frequencies_list[0]`/`frequencies_list[1]`, not that the list
-  start at harmonic `1`), so it stays in effect for `N_harmonics_min != 1` and, incidentally, for
-  `dense_frequency_spectrum=true`'s linear scan too — verified to reproduce the direct per-frequency evaluation
-  bit-for-bit in both cases. When `dense_frequency_spectrum=true`, `frequencies_list` is instead
-  a plain linear scan of `N_omega` points from `omega_min` to `omega_max` (`IoUtils::get_omega_range`, real omega,
-  divided by `c` to match `non_linear_Thomson_formula`'s own `omega/c` return convention) — `N_harmonics` and
-  `N_omega` are deliberately separate config keys (`IoUtils::get_number_of_harmonics`/`get_number_of_frequencies`)
-  so switching `dense_frequency_spectrum` doesn't silently reinterpret whichever count was already configured for
-  the other mode. This mode is meant for probing the *shape* of a single Thomson line (its width, not just its
-  peak position) at one screen point. **`omega_min`/`omega_max` accept exactly two units, each with different
-  handling** (`IoUtils::OmegaRangeUnit`, `IoUtils::get_omega_range`/`get_omega_bound`, `io_utils.hpp`; enforced via
-  `convert_unit_to_number`'s `allowed_units` parameter, so any other unit throws rather than silently falling
-  through): `"omega_laser"` means the value is a raw multiple of the *incident* laser frequency and is used as-is,
-  unscaled; `"first_harmonic_frequency"` means the value is a multiple of the *emitted*, possibly
-  nonlinearly-Doppler-shifted N=1 fundamental (see the `k1`/`q`/`n2` bullet below) and gets multiplied by
-  `frequency_scaling_factor = fundamental_frequency * c / laser.get_omega()` in
-  `Simulation::init_simulation_parameters` before building the linear scan — the useful choice for a relativistic
-  beam where the emitted frequency isn't close to any simple multiple of `omega_laser`, since it re-centers the
-  configured range on the actual fundamental instead of the incident one. Each of `omega_min`/`omega_max` is
-  scaled independently based on its own unit (mixing units between the two, while unusual, is not rejected).
-  Both units parse to the identical raw numeric value inside `convert_unit_to_number` — the rescaling can't happen
-  there since it needs `fundamental_frequency`, which depends on the dressed momentum `q` and isn't available from
-  a bare `ConfigMap`; `get_omega_range` instead reports which unit was used, and `init_simulation_parameters`
-  applies the extra factor conditionally, per bound — no new `Detector` type or plotting
-  machinery: `Radiation::compute_radiation`/`Simulation::run_simulation`/`Radiation::plot_radiation_field` are
-  already fully generic over both the frequency list's spacing and the detector's point count (every `Detector_2D`
-  subclass already guards `N==1` and collapses to one exact point when its grid counts are set to `1`), so getting
-  "one point, many frequencies" is purely a config choice — set the configured detector's grid to a single point
-  (e.g. a `spherical` detector with `spherical_detector_N_theta=spherical_detector_N_phi=1` and matching
-  `_min`/`_max` angles) and turn on `dense_frequency_spectrum`. If `dense_frequency_spectrum=true` but the detector
-  has more than one point (a dense scan over a full imaging grid is a very expensive footgun, not something to fail
-  silently into), `main.cpp` prints a non-fatal `std::cerr` error and then calls `detector->restrict_to_first_point()`
-  (`Detector_2D::restrict_to_first_point`, `detector.hpp`) to collapse it to just index 0 before `run_simulation`
-  runs — safe post-construction since `get_row_coordinate`/`get_col_coordinate` at index 0 only depend on
-  per-detector-type spacing fixed at construction (`dx`/`dy`, `d_phi`, ...), not on the grid dimensions it
-  overwrites. The detector geometry plots (`plot_detector`/`plot_detector_scatter`, called earlier in `main.cpp`)
-  still reflect the full originally-configured grid, since the restriction happens only right before the actual
-  (expensive) simulation. Visualize the result with
-  `py_scripts/radiation/plot_point_spectrum.py` (`<long|short> <mu> <nu>`) — a line plot of `radiation_field.dat`'s
-  `F^{mu nu}` vs. `omega`, the 1D counterpart of `radiation/plot_field.py`'s per-frequency 2D field-map PNGs (the
-  wrong plot shape once frequency, not screen position, is the interesting axis).
-- **`radiation_field.dat`'s exported `omega` column is in units of the fundamental, not raw atomic-unit omega.**
-  `Radiation::plot_radiation_field` divides every `frequencies_list` entry by
-  `simulation_parameters::fundamental_frequency` (`= PhysUtils::non_linear_Thomson_formula(k1, q, n2, 1)` — note
-  the *dressed* momentum `q`, not bare `p`, see the `k1`/`q`/`n2` bullet below — computed once in
-  `init_simulation_parameters` regardless of `dense_frequency_spectrum`) before writing it, so a
-  value of `1.0` always means "the fundamental" and `3.0` always means "third harmonic" — including for the
-  default harmonics mode, where the per-harmonic list is now also built from the dressed `q`, not bare `p`
-  (`frequencies_list[i] = non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i)`). Since
-  `non_linear_Thomson_formula` is exactly linear in its harmonic index `N` (`omega2 = omega1 * N *
-  contract(p1,n1)/contract(p1,n2)`, `phys_utils.hpp`), and both calls now share the same `q`,
-  `frequencies_list[i] / fundamental_frequency == N_harmonics_min + i` holds *exactly*, including for `a0 != 0` —
-  this used to only hold approximately back when harmonics used bare `p` against a `q`-based
-  `fundamental_frequency`; that mismatch was fixed by the "corrected the dressed momentum" /
-  "changed the dressed momentum" commits. This normalizes against the
-  *actual*, possibly Doppler-shifted fundamental for the configured observation direction/electron momentum, not
-  the bare `laser_frequency` — the two coincide only when the beam's average momentum is zero and `a0` is
-  negligible, so don't assume `omega=1.0` corresponds to `laser_frequency` for a moving beam, an off-axis detector
-  direction, or a strong pulse. Both `radiation/plot_field.py` and `radiation/plot_point_spectrum.py` label this axis
-  `$\omega/\omega_1$` accordingly.
-- **`k1` and `n2` in `init_simulation_parameters` are fixed along canonical `Oz`/the detector's own
-  configured direction respectively.** `k1` is fixed along canonical `Oz` (the laser's only propagation
-  direction) scaled by `laser.get_omega() / c`; `n2` is the detector's own direction via
-  `IoUtils::get_detector_direction_angles(config)`, not the electron's direction of motion — using
-  `average_px/py/pz` for `n2` directly would give the wrong observation direction. **`q` is a ponderomotively-dressed momentum**,
-  computed by `PhysUtils::dressed_momentum(p, k1, xi)` (`phys_utils.hpp` — moved there from an inline computation
-  in `init_simulation_parameters` so there is exactly one place `q` is built; the full derivation comment below
-  lives with the function, not here), `q = p + (mc)^2*<a^2>/(2*contract(p, k1)) * k1` with `mc = m_0*c` — used both
-  to compute
-  `fundamental_frequency` (accounting for the nonlinear frequency shift of the Thomson fundamental at high `a0`)
-  and, as of the "changed/corrected the dressed momentum" commits, for the per-harmonic `frequencies_list`
-  entries in the default (non-dense) mode too (previously those used bare `p`, which made the
-  `frequencies_list[i]/fundamental_frequency` normalization only approximate for `a0 != 0` — see the
-  `radiation_field.dat`'s exported `omega` column bullet above).
-  The `(mc)^2` prefactor is required for unit consistency (`<a^2>` is dimensionless, and `mc ~= 137.036` in these
-  atomic units, so omitting it would make the correction term negligibly small regardless of `a0`).
-  **FIXED: `<a^2>` was computed as `xi^2` (`xi = laser.get_a0()`, the peak normalized amplitude) instead of the
-  cycle-averaged `<a^2> = xi^2/2`.** `q` is the electron's *drift* momentum (its trajectory averaged over one
-  laser cycle), so it must be built from the cycle-averaged field, not the instantaneous peak. Found via the same
-  cross-check against the independent Python reference (`~/Dropbox/work/bin/python/Superradiant_Thomson`,
-  `ScreenGeometry.from_parameters`), prompted by a direct question about whether the polarization-dependence this
-  bug was first mistaken for (see below) actually survives the project's own `zeta_1`/`zeta_2` normalization
-  convention (`|zeta_1|^2+|zeta_2|^2=1`, `laser_factory.cpp`) -- it doesn't: for the on-axis carrier
-  `A_x=A0*a*cos(phi-alpha)`, `A_y=A0*b*cos(phi-beta)` (`zeta_1=a*e^{i*alpha}`, `zeta_2=b*e^{i*beta}`,
-  `a^2+b^2=1`), `<|A|^2> = A0^2*(a^2+b^2)*<cos^2> = A0^2/2` exactly for *any* `a,b` with `a^2+b^2=1` — i.e.
-  `<a^2>=xi^2/2` regardless of polarization state (linear, circular, or elliptical), since `|A|^2=A_x^2+A_y^2`
-  has no cross term between the two orthogonal components and each squared cosine averages to `1/2`
-  independently. The old `xi^2` (not `xi^2/2`) formula gave mass-shell shift `m_eff^2=m^2(1+xi^2)`, not the
-  `m^2(1+xi^2/2)` this section's own code comment already (correctly) documented as the target — i.e. the bug
-  predates this note and its own comment had the right intent, just not the matching denominator. Fixed by
-  computing `a_sq_avg = xi*xi/2.0` and using it (instead of bare `xi*xi`) in `q`'s numerator, in both this file
-  and the Python reference (with matching fixes to Python's own test, `tests/test_screen.py`'s
-  `test_nonlinear_thomson_frequency_formula`, which had encoded the old, now-superseded coefficient). Verified:
-  the two codebases' dressed fundamental frequencies for an on-axis-backward, at-rest-electron debug config now
-  agree to 8 significant figures (previously already agreed to ~9 figures pre-fix too, since that check only
-  confirms self-consistency of whichever formula is implemented, not its correctness against the true physics —
-  see the "**Also fixed while investigating this**" note directly below for how the actual bug was found instead).
-  **Also fixed while investigating this**: an intermediate, since-superseded hypothesis (that the fixed coefficient
-  should instead depend on polarization — `xi^2` for circular, `xi^2/2` for linear) was tested and found wrong
-  by the `<|A|^2>` derivation above; flagged here so it isn't independently rediscovered and "fixed" backwards.
-  **Independently re-confirmed** via a `dense_frequency_spectrum=true` scan (see the `omega_min`/`omega_max` unit
-  bullet above): the theoretical fundamental sits at `omega/omega_1 = 1` by construction (`fundamental_frequency`
-  is exactly `non_linear_Thomson_formula(k1, q, n2, 1)`, so this is circular for locating the *label*, but not for
-  where the actual radiated spectrum peaks relative to it), and with `<a^2> = xi^2/2` the observed spectral peak
-  sits close to `omega/omega_1 = 1`, offset only by the amount expected from the pulse's finite duration
-  (a transform-limited spectral width, not a bug). Re-running the same scan with `<a^2> = xi^2` (`a_sq_avg = xi *
-  xi / 1.0` in `PhysUtils::dressed_momentum`, `phys_utils.hpp`) shifts the observed peak further off `omega/omega_1
-  = 1` than the `xi^2/2` case — i.e. the wrong coefficient makes the mismatch between the labeled fundamental and
-  the actual peak worse, not better/unchanged, which is independent evidence (on top of the `<|A|^2>` derivation
-  and the Python cross-check above) that `xi^2/2` is the correct cycle-averaged `<a^2>`, not `xi^2`. `<a^2> =
-  xi^2/2` is the setting to keep going forward.
-- **The detector has its own direction (`detector_direction_theta`/`detector_direction_phi`), independent of the
-  laser's (Oz) direction.** `create_detector` builds a 3x3 `local_rotation` (`Detector_2D`) orthogonal to that
-  direction, and `to_lab_frame` applies it to each local grid point. `(0.0 pi, 0.0
-  pi)` (the config default) points the detector straight along the laser.
-- **`CircularDetector`'s radial grid is spaced in equal-*area* steps, not equal-distance**: `r_i = sqrt(R_min^2 +
-  i*(R_max^2-R_min^2)/(N_R-1))`, so each ring encloses the same annular area despite fixed `N_phi` per ring —
-  linear `r` spacing would make point density diverge as `1/r` near the center and collapse all `N_phi` points at
-  `i=0` onto the origin when `R_min=0`. Anything reading `radiation_field.dat`'s circular-detector coordinates must
-  reconstruct `r` from `i` via this formula, not assume linear spacing. `radiation/plot_field.py` mirrors it
-  exactly and renders all three detector types as a `pcolormesh` over their native grid rather than a scatter —
-  for `CircularDetector`/`SphericalDetector` this keeps the `phi=0`/`phi=2*pi` seam continuous for helical/vortex
-  patterns; for `RectangularDetector` (grid already Cartesian-monotonic, so continuity isn't the issue) it instead
-  avoids a coarse `Nx`/`Ny` grid rendering as sparse colored dots instead of a filled screen.
-- **The beam cylinder's spatial axis is derived from the beam's own mean momentum direction, not fixed along
-  canonical `Oz`.** `generate_cylinder_beam` computes a rotation from `average_px/py/pz` once per beam and applies
-  it to each electron's local cylinder point before the shared laser rotation (falls back to identity if the mean
-  momentum is numerically zero) — a beam whose mean momentum isn't along canonical `Oz` gets different
-  per-electron realizations, not just different statistics, than a naive canonical-`Oz` cylinder would.
-  `beam_center_x/y/z` (config keys, `lambda` units) offset each electron's raw cylindrical-Cartesian point
-  (`generate_electron`, `electron_factory.cpp`) **before** this mean-momentum rotation
-  — so the configured center is itself expressed in, and rotates along with, the same canonical frame as
-  `beam_cylinder_radius`/`height`, not a fixed shift applied after the beam is built. Translating
-  before `beam_axis_rotation` rather than after is intentional, not an oversight: since that rotation is built to
-  map local `+Oz` exactly onto the mean momentum direction, `beam_center_z` alone already lands as a pure
-  translation along the beam's direction of motion (useful for staging the beam upstream so it reaches the laser
-  focus region in sync with the pulse) — but this whole arrangement (including its interaction with the
-  hardcoded `tau_0_traj=0.0` and the `laser_delay` bug below) is planned for revisiting, so don't assume the
-  current scheme is final.
-- **REMOVED: arbitrary laser propagation direction (`laser_nx/ny/nz`) and the canonical-vs-lab-frame
-  distinction it drove.** The solver used to support the laser pointing anywhere, with a `LaserField::rotation_matrix`
-  (canonical Oz → lab) shared with the detector (`Detector_2D::lab_rotation`) and the beam generator
-  (`generate_electron`'s final `contract(rotation_matrix, ...)` step), plus a `print_field_in_canonical_frame`
-  config key controlling whether `run_simulation` rotated the accumulated radiation field back to canonical
-  before export. This was found to be unused generality (every tracked config already had
-  `laser_nx=0,ny=0,nz=1`) and a latent correctness gap (`plot_observables.py`'s `L_z` operator already assumed
-  screen `(x,y)` aligns with canonical Oz with no rotation check), so it was removed: the laser now always
-  propagates along canonical Oz, `LaserField::unity_n/epsilon_1/epsilon_2` are fixed constants, and "lab frame"
-  and "canonical frame" are the same single frame everywhere. `MathUtils::rotation_four_tensor_from_direction`/
-  `inverse_rotation_tensor`/`rotate_tensor` (and the already-dead `multiply`) were deleted along with it. **Not**
-  touched: the detector's own direction (`detector_direction_theta/phi` + `Detector_2D::local_rotation`) and the
-  beam's own mean-momentum-axis rotation (`beam_axis_rotation` in `electron_factory.cpp`) — both independent
-  features that happen to reuse `MathUtils::rotation_matrix_from_direction`/`rotate3d`, which are still used and
-  not deleted. The pre-removal implementation (full generality, arbitrary laser direction) is preserved on the
-  `general-laser-direction-legacy` git branch if ever needed again.
-- **A rectangular detector and a spherical detector covering "the same" angular window will *not* generally show
-  the same radiation pattern — this is real physics, not a bug.** `compute_radiation` uses the *exact*
-  electron-to-screen distance `R` (no far-field linearization) in both amplitude falloff and phase. A rectangular
-  screen's `R` varies across its area (`R = sqrt(D^2+x^2+y^2)`); a spherical screen's `R` is constant by
-  construction — so the rectangular screen picks up an extra quadratic ("Fresnel") phase the spherical one never
-  sees. The governing quantity is the **Fresnel number** `N_F = a^2/(D*lambda)` (`a` = rectangular half-width, `D`
-  = distance): the two only converge once `N_F << 1` (far field); at `N_F` of order 1 or larger they visibly
-  differ. The repo's example config (`x_min/x_max = -250/250 lambda`, `distance = 50000 lambda`) gives `N_F =
-  1.25` — near field, not far field — so don't expect a rectangular-vs-spherical comparison to agree there without
-  changing the config. **Common pitfall**: growing `rectangular_detector_distance` while holding the *angular*
-  window fixed makes `N_F` grow, not shrink (`N_F = theta^2 * D/lambda`) — to actually approach the far field,
-  hold the rectangular screen's *absolute* half-width fixed and increase `D` until `N_F << 1` (e.g. `D >=
-  500000 lambda` for `N_F <= 0.125`), then match the spherical detector's `spherical_detector_theta_max` to the
-  new, smaller angular window at that `D`. When comparing, use `Re(F01)`/`Im(F01)`, not `|F01|` — since the beam
-  is tiny relative to the screen, the extra Fresnel phase is common to every electron's contribution and cancels
-  out of the coherent sum's magnitude, only showing up in phase (`|F01|` correlates >0.9998 in both regimes and
-  isn't a useful diagnostic here). The fundamental (`i_omega=0`) also isn't a useful test this close to the beam
-  axis — its angular variation is ~6 orders of magnitude below its constant offset, below the double-precision
-  noise floor.
-- **`py_scripts/radiation/plot_spherical_components.py` projects the exported Faraday tensor onto
-  spherical components** (`E_r`/`E_theta`/`E_phi`/`B_r`/`B_theta`/`B_phi`), for `spherical`-detector runs only —
-  Python-only post-processing of `radiation_field.dat`, no C++ output involved. A spherical detector is the
-  natural fit for this: every screen point already has its own observation direction, obtained by rotating its
-  local (`theta`, `phi`) — `Core::Detector::SphericalDetector`'s own cone-point construction, generally relative
-  to the detector's own axis via `detector_direction_theta/phi`, not necessarily canonical `Oz` — into the
-  canonical frame via `get_detector_local_rotation`, then building the standard orthonormal
-  `(r_hat, theta_hat, phi_hat)` basis at that direction and dotting it into the Cartesian `E`/`B` (read directly
-  off the exported columns, no rotation needed there since the laser always propagates along Oz). This rotation
-  machinery (`get_detector_local_rotation`, `extract_rotated_faraday_fields`) lives in its own shared module,
-  `radiation/faraday_frame_utils.py`, imported by `radiation/plot_spherical_components.py` rather than duplicated.
-  **Non-obvious physics sanity check surfaced while validating this script**: `compute_radiation`'s per-`(tau,
-  screen point)` bivector term is built once from `n0`/`u` and shared, unscaled, between the long-range and
-  short-range complex amplitude prefactors (`radiation.cpp`'s `add_bivector_term`) — so for a single contribution,
-  `B` (built purely from the spatial `F^{jk}` block, i.e. an `n0 x u`-like construction) is *exactly* orthogonal to
-  `n0` (triple product identity, `n0 . (n0 x u) = 0`), while `E` (built from the mixed `F^{i0}` block) is generally
-  *not* exactly transverse to `n0` — unlike the textbook Lienard-Wiechert acceleration field. This was confirmed
-  numerically on a 30-electron spherical-detector test run: `|B_r|/|B_theta|` came out ~`1e-5` (consistent with
-  pure numerical/finite-beam-size residual) while `|E_r|/|E_theta|` was ~`0.1` (a real, nonzero effect of this
-  formula, not a bug) — a useful regression check if this script (or `compute_radiation` itself) is ever modified:
-  `B_r` should stay pinned near zero; `E_r` should not.
-- **A spherical detector covering (close to) the full 4*pi sphere breaks a naive stereographic-projection
-  heatmap plot** — a real bug, found and fixed while validating `radiation/plot_spherical_components.py` against a
-  `spherical_detector_theta_max=1.0 pi` config. The stereographic formula both
-  `Core::Detector::SphericalDetector::get_stereographic_projection` (`detector.cpp`, feeding
-  `detector_stereographic.dat`) and its Python mirror `get_spherical_cell_edges`
-  (`py_scripts/radiation/plot_field.py`) use — `rho = R*sin(theta)/(1+cos(theta))` — maps `theta=pi` (the pole
-  antipodal to the projection's own reference pole) to `0/0`; this is an inherent property of stereographic
-  projection (no single finite 2D chart can cover an entire sphere), not a rounding-error bug, so
-  `detector_stereographic.dat` correctly (if silently) contains `nan` rows for any grid ring that reaches `theta=pi`
-  — expected, not itself a defect. The actual bug was downstream: `radiation/plot_field.py`'s
-  `plot_radiation_component` fed those `nan`-containing edges straight into `pcolormesh`, which raises
-  (`x and y arguments to pcolormesh cannot have non-finite values`) instead of degrading gracefully. Fixed via two
-  new functions in `radiation/plot_field.py`: `spherical_projection_is_well_defined` (checks whether
-  `spherical_detector_theta_max` comes within a small tolerance of `pi`) and `get_spherical_plot_grid`, which uses
-  the stereographic projection when that holds and otherwise falls back to a plain `(theta, phi)` rectangular map
-  (own explicit cell corners, `aspect='auto'` since the axes are angles, not a shared length scale) — the standard
-  way to visualize near-full-sphere angular data, since it has no polar singularity. Both
-  `plot_radiation_component` (`radiation/plot_field.py`) and the heatmap branch of
-  `radiation/plot_spherical_components.py` now call `get_spherical_plot_grid` instead of `get_spherical_cell_edges`
-  directly, so both degrade gracefully together. `detector/plot_stereographic.py` was not touched — it renders
-  with `plt.scatter`, which already drops `nan` points silently rather than crashing (so a full-sphere config just
-  shows a scatter plot missing the exact-pole ring, not an error).
-- **`py_scripts/radiation/plot_angular_momentum.py` (since renamed `plot_observables.py` — see the bullet below)
-  plots the z-components of the spin (SAM), orbital (OAM), and total (TAM) angular momentum spectral densities**,
-  per `theory/numerical_calculation_of_angular_momentum.md`'s
-  "Applications for the angular momentum density" section — Python-only post-processing of `radiation_field.dat`/
-  `incident_field.dat`, no new C++ export. Supersedes the older `plot_spin_angular_momentum.py` (S_z only, deleted
-  by this change), which the theory doc's own update found was **missing the `epsilon_0 = 1/(4*pi)` prefactor**
-  (`Core::PhysUtils::AtomicUnits::epsilon_0`, `phys_utils.hpp` — the same constant already used for `mu_0` there)
-  in front of `dS_z/domega`; fixed here (`EPSILON_0` constant, mirrored independently in Python per this project's
-  no-shared-constants-module convention) alongside adding the new `L_z`/`J_z` pieces and the screen integration.
-  `Ex`/`Ey`/`Ez` are read directly out of the already-exported `F10`/`F20`/`F30` columns (`E_i=c*F^{i0}`, the same
-  convention `radiation/faraday_frame_utils.py`'s `extract_rotated_faraday_fields` documents) — no rotation
-  machinery needed, since this is a plain Cartesian quantity, not a per-point spherical projection.
-  **Deliberately always uses the total (LR+SR+BR) Faraday tensor** — unlike `plot_field.py`'s own
-  `long`/`short`/`boundary`/`total` choice, there is no such CLI option here: a `long`-only or `short`-only field
-  is an intermediate term of the derivation (see `theory/FT_Faraday_tensor-direct_and_simplified_forms.md`), not
-  itself a physical field, so an angular-momentum observable built from one alone wouldn't correspond to anything
-  measurable — only the summed total `E` is physical. `BR` is treated as `0` if absent (pre-boundary-term run);
-  for `incident_field.dat`, `SR`/`BR` are already identically zero so the sum reduces to `LR` alone. CLI is
-  therefore just `[path_to_run_folder] [--incident]` (no leading range-type argument), reusing `plot_field.py`'s
-  `--incident` flag and its own `emitted`/`incident` split of `png_folder/radiation/`, and its screen-geometry/
-  cell-edge functions directly rather than duplicating them. Renders one single-panel (not 2x2 Re/Im/Abs/Phase —
-  each quantity is already real-valued) diverging-colormap heatmap per frequency, for each entry of the
-  `QUANTITIES` tuple — originally just `S_z`/`L_z`/`J_z` density, extended below to also cover
-  `Sigma_zz`/`Lambda_zz`/`Flux_tot` flux.
-  **Circular detector: `pcolormesh(..., shading='gouraud')` on cell *centers*, not the flat-shaded cell-edge
-  quads every other detector plot in this project uses.** A coarse `(N_R, N_phi)` grid mapped to Cartesian `x`/`y`
-  and flat-shaded renders as visible pie-slice facets (confirmed on a real 50-electron/64-`N_phi` run — worst at
-  large radius, where each azimuthal wedge spans a wide arc length); `gouraud` shading interpolates color across
-  each cell from its own four corner values instead of flat-filling it, using the exact same grid this project
-  already builds (`get_screen_coordinates`'s centers, reshaped — matplotlib requires `X`/`Y`/`C` all the same
-  shape for `gouraud`, unlike flat shading's one-bigger edges array), so it costs no extra data and can't
-  desynchronize from the underlying grid. A `matplotlib.tri`/`tricontourf` Delaunay re-triangulation of the raw
-  point cloud was considered and rejected instead: it would fabricate interpolated data across the detector's own
-  center hole whenever `circular_detector_R_min > 0` (Delaunay has no notion that region has no data), and risks a
-  degenerate-triangulation failure right at `R_min=0` specifically, where the whole innermost ring collapses to
-  `N_phi` exactly-coincident points at the origin — `gouraud` shading instead just draws a degenerate (zero-area)
-  quad there, harmless, and leaves a small residual radial-striping artifact confined to the few pixels immediately
-  around that one degenerate point (visible on the same test run's beam-axis heatmaps), not a numerical failure.
-  Rectangular stays flat-shaded on cell edges, unchanged: its cells are already axis-aligned squares, so flat
-  shading doesn't produce the same faceted look.
-  **Restricted to rectangular/circular detectors only** (the theory doc's own "Target Screens" instruction) — a
-  spherical detector's `(theta, phi)` grid has no flat local `(x, y)` plane for the OAM operator (`x*d/dy-y*d/dx`
-  or `d/dphi`) to act on, so `detector_type=spherical` is rejected outright (a `ValueError`), unlike the old,
-  now-superseded script, which did support spherical for `S_z` alone (no spatial derivative needed there).
-  **OAM spatial derivatives**: rectangular uses `numpy.gradient` in `x`/`y` (central differences, per the theory
-  doc's own numerical-implementation instructions); circular uses an exact periodic centered difference in `phi`
-  (`_periodic_phi_derivative` — `numpy.gradient` has no periodic-boundary mode, so this is hand-implemented,
-  dropping the duplicate `phi=2*pi` column before differencing, same trick `CircularDetector`'s own equal-area
-  radial-spacing bullet documents elsewhere in this file). The `L_z` density itself is **invariant under an
-  isotropic rescaling of `x`/`y`** (`x*d/dy-y*d/dx` is the rotation generator, scale-free under `x->c*x, y->c*y`),
-  so it doesn't matter that `get_screen_coordinates` returns `x`/`y` in the config's own length unit (`lambda`)
-  rather than atomic units for the per-point density — only the screen-integrated total needs an explicit unit
-  conversion, since an area *does* scale with the unit choice (`get_screen_area_weights_au`, ported from the
-  deleted `plot_angular_momentum_flux_screen.py`'s function of the same name, converting via
-  `faraday_frame_utils.convert_unit_to_number`).
-  **Frequency-normalization choice**: neither `.dat` file exports raw atomic-unit `omega`, only the dimensionless
-  `omega/omega_1` ratio (see the `radiation_field.dat` `omega` column bullet above) — recovering true
-  `fundamental_frequency` in Python would mean re-deriving it from `run_log.txt`'s human-readable dump, which no
-  script in this repo currently parses. So this script's `1/omega` factor uses that same ratio, making the plotted
-  quantities `d.../d(omega/omega_1)` rather than the literal `d.../domega` — off by the constant factor `omega_1`
-  (fundamental_frequency), which doesn't change any single frequency slice's spatial pattern or the relative
-  comparison across harmonics, and keeps this consistent with every other frequency axis this project already
-  plots in `omega/omega_1` units.
-  **Screen integration** (the theory doc's "Surface Integration" step): appends an `S_z`/`L_z`/`J_z(omega)`
-  summary table to the run's own `run_log.txt`, trapezoidal quadrature in `(x, y)` for rectangular or `(r^2, phi)`
-  for circular (matching `CircularDetector`'s own equal-area radial spacing). `append_integration_to_run_log`
-  locates and replaces only its own previously-appended section by its *exact* header text (via
-  `_find_run_log_sections`, matching `Logging::write_run_log`'s own "Title\n-----\n" section convention) —
-  **not** the "truncate everything after the first marker match" approach the deleted
-  `plot_angular_momentum_flux_screen.py`/`plot_angular_momentum_density_screen.py` scripts used, which this
-  script's own first implementation copied and which was then found, by direct testing (run on
-  `radiation_field.dat`, then `incident_field.dat`, then `radiation_field.dat` again), to silently delete the
-  *incident* section instead of leaving it alone, since the plain-run's marker also matched as a prefix of
-  content preceding the incident section and truncated everything from there on. Fixed by finding *all* section
-  boundaries first and splicing out only the one matching the target header exactly, regardless of what other
-  sections (including the other `label_suffix` variant of this same script) precede or follow it — verified by
-  running plain/`--incident`/plain/`--incident` back-to-back and confirming both sections coexist afterward.
-  **Sanity-checked** on a real 1024-electron `laser_lg_p=2, laser_lg_l=2` circularly-polarized rectangular-detector
-  run: the incident beam's `OAM/SAM` screen-integrated ratio (`L_z_total/S_z_total`) came out `~1.90`, close to the
-  mode's own topological charge `l=2` — the textbook expectation for a circularly-polarized paraxial LG beam
-  (`<L_z>/<S_z> ~ l`); the `L_z` density heatmap itself shows `p+1=3` concentric single-signed rings, matching the
-  LG(p=2,l=2) mode's own radial intensity structure. The emitted (`radiation_field.dat`) field's ratio came out
-  `~1.65` on the same run — not expected to match the incident beam's ratio exactly (Doppler shift/beam averaging/
-  scattering physics intervene), but the same order of magnitude, as a coarse consistency check.
-- **`plot_angular_momentum.py` extended to also compute the z-directed SAM/OAM/total *flux*** (`Sigma_zz`/
-  `Lambda_zz`/`Flux_tot`, theory doc sections 3-4: "Spin/Orbital Angular Momentum Flux and Continuity Equation"),
-  alongside the density (`S_z`/`L_z`/`J_z`) the script already computed — **a genuinely different physical
-  quantity from the density, not the same thing in different units** (angular momentum flowing *through* the
-  screen along its own normal, vs. angular momentum *accumulated* on it; this project's own deleted precedent
-  scripts, `plot_angular_momentum_flux_screen.py`/`plot_angular_momentum_density_screen.py`, made the same
-  density-vs-flux distinction — see their own bullets' history in this file's git log if useful context). Both
-  flux quantities need the magnetic field too, so `_get_B_total` was added alongside `_get_E_total` (`Bx=F^{32}`,
-  `By=F^{13}`, `Bz=F^{21}`, no `c` factor, per `Eq. (definition-of-E-and-B)`) — both are now thin wrappers around
-  one shared `_get_total_field(data, index_pairs, scale)` helper (LR+SR+BR sum, optional BR-column presence
-  check) rather than two near-duplicate functions. `Sigma_zz` is a pointwise formula (`Im[Bx^* Ex + By^* Ey -
-  Bz^* Ez]`, no spatial derivative); `Lambda_zz` needs the *same* `hat{L}_z` operator the OAM density already
-  uses (`x*d/dy-y*d/dx` rectangular / `d/dphi` circular) — factored out into its own `_lz_operator(detector_type,
-  E, ...)` dispatcher, replacing the density-only `_rectangular_oam_terms`/`_circular_oam_terms` pair from the
-  first version, so both `L_z` and `Lambda_zz` now share one implementation of the derivative instead of each
-  reimplementing it. `compute_angular_momentum_density` was renamed `compute_angular_momentum` to reflect the
-  broader scope (density and flux together, one pass over the data — computing `E`/`B` and the `hat{L}_z`-applied
-  fields only once per frequency rather than once per quantity). `integrate_angular_momentum_density`/
-  `_RUN_LOG_SECTION_HEADER`'s table were likewise generalized to loop over every `QUANTITIES` entry rather than
-  hardcoding three columns, so `run_log.txt`'s appended table now has six numeric columns (`S_z`, `L_z`, `J_z`,
-  `Sigma_zz`, `Lambda_zz`, `Flux_tot`) instead of three, automatically extending to any future addition to
-  `QUANTITIES` without touching the integration/logging code again. New output filenames
-  (`angular_momentum_flux_spin_omega<N>.png`, `_flux_orbital_`, `_flux_total_`) sit alongside the existing three,
-  no collisions. Gouraud shading (see the bullet above) applies to all six on a circular detector, unlike
-  `plot_field.py`'s Phase panel exclusion — every quantity here is a plain real-valued scalar with no branch-cut
-  wrap, so there's no analogous risk.
-  **Sanity-checked** on the same 1024-electron rectangular and 50-electron circular `laser_lg_p=2, laser_lg_l=2`
-  runs used to validate the density formulas: `Lambda_zz_total/Sigma_zz_total` came out `~1.90` (rectangular
-  incident), `~1.99` (circular incident), and `~1.65` (rectangular emitted) — matching `L_z_total/S_z_total`'s own
-  ratio on the *same* run to 3+ significant figures in every case (e.g. both `~1.902` on the rectangular-incident
-  run). This independent agreement between the flux and density ratios (different formulas, sharing only the
-  underlying field data) is strong evidence the flux implementation is correct, not just internally consistent.
-  **Stronger independent check, found afterward on a real 16384-electron circular-detector run
-  (`config/config.cfg`'s own `laser_lg_p=2, laser_lg_l=2`): `Flux_total_quantity / Density_total_quantity ==
-  C_LIGHT` for all three pairs (`Sigma_zz/S_z`, `Lambda_zz/L_z`, `Flux_tot/J_z`), each independently, to ~3e-5
-  relative** (`137.0317` vs. `C_LIGHT = 137.035999084`) — not built into the formulas by construction (`Sigma_zz`/
-  `Lambda_zz` and `S_z`/`L_z` are algebraically unrelated bilinear combinations of `E`/`B`, each with its own
-  `epsilon_0`/`epsilon_0*c^2` prefactor from the theory doc, so this ratio landing on `c` is a genuine physical
-  result, not an artifact). **Why this is expected physically**: a flux (angular momentum crossing the screen per
-  unit time per unit area) equals a density (angular momentum sitting on/near the screen per unit area) times the
-  speed at which it's being transported — exactly the same relationship as the Poynting vector to the EM energy
-  density (`S = c*u`) for radiation freely propagating at `c`. Getting this ratio for angular momentum too,
-  independently for the spin and orbital pieces separately, is a strong confirmation that both flux formulas
-  (`Sigma_zz`/`Lambda_zz`) are correctly implemented *and* that this pipeline's Faraday-tensor export normalization
-  is self-consistent between the density and flux quantities (an open question elsewhere in this project for
-  other formula pairs, e.g. the FT-normalization caveat on the deleted flux-density scripts' own doc). The small
-  residual (`~3e-5`, consistent across all three pairs — not random noise) is most plausibly the finite `(N_R=128,
-  N_phi=64)` trapezoidal screen-integration quadrature error, or a genuine near-field/Fresnel-number correction
-  (this project's detector sits at a finite, not asymptotically-far, distance — see the Fresnel-number bullet
-  above) rather than a bug; not investigated further.
-- **`plot_angular_momentum.py` renamed `plot_observables.py` and extended to also compute the electromagnetic
-  energy spectral density (`u`) and its z-directed flux, the Poynting vector (`P_z`)** — theory doc sections 5-6
-  ("Electromagnetic Energy Density and Energy Flux (Poynting Vector)"), added to
-  `theory/numerical_calculation_of_angular_momentum.md` after the angular-momentum sections were already
-  implemented. Folded into the same script rather than split into a new one, since `u`/`P_z` need nothing
-  angular-momentum-specific — they reuse every piece of existing machinery (screen geometry, incident/emitted
-  split, `run_log.txt` table splicing, `QUANTITIES`-driven plotting loop) unchanged; the rename reflects the
-  broadened scope now that "angular momentum" no longer describes everything the script computes. **Unlike every
-  angular-momentum quantity, `u`/`P_z` carry no explicit `1/omega` prefactor** — they're bilinear directly in
-  `E`/`B` (never in the vector potential `A`), so [Eq. (bilinear-spectral-density)] applies to the fields
-  themselves with no extra factor from `A = E/(i*omega)`; the existing `S_z`/`L_z`/`Sigma_zz`/`Lambda_zz` formulas
-  pick up their `1/omega` specifically from that substitution. `compute_angular_momentum`/`plot_angular_momentum`/
-  `integrate_angular_momentum` were renamed `compute_observables`/`plot_observables`/`integrate_observables` to
-  match; `_RUN_LOG_SECTION_HEADER` changed to `"Screen-integrated observables (plot_observables.py)"` (a prior
-  run's differently-titled section from before the rename is left alone rather than replaced, same as any other
-  `label_suffix` mismatch — see `_find_run_log_sections`). Output filenames changed from
-  `angular_momentum_<tag>_omega<N>.png` to `observable_<tag>_omega<N>.png` for the same reason, now covering
-  `energy_density`/`energy_flux` alongside the six existing tags.
-  **Sanity-checked** the same way as the `Sigma_zz`/`Lambda_zz` flux-vs-density ratios above: on a
-  1024-electron rectangular-detector `laser_lg_p=2, laser_lg_l=2` run, `P_z_total/u_total` came out `137.03`,
-  matching `C_LIGHT = 137.035999084` to the same `~3e-5` relative precision as the existing `Sigma_zz/S_z` and
-  `Lambda_zz/L_z` checks — expected, since flux equals density times transport speed for radiation propagating at
-  `c` (the theory doc's own in-line sanity check for `P_z` reduces to exactly `dP_z/domega = c * du/domega` for a
-  paraxial wave). Independent confirmation the new formulas are implemented correctly, not just that the two
-  intermediate factors (`epsilon_0` vs. `epsilon_0*c^2`) happen to cancel by construction.
-- **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
-  should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
-  `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
-  `zeta_2=(0,1)` — independent of azimuthal `phi`, in the weak-field/small-`a0` dipole limit; `sin^2` about the
-  polarization axis instead, for linear polarization). This is the standard benchmark any Thomson-scattering
-  solver should reproduce for a single free electron (`beam_particle_count=1`, `beam_cylinder_radius`/
-  `beam_cylinder_height`/`beam_center_x/y/z=0`, zero `average_p*`/`sigma_p*`), and as of this note it has been
-  tried and does **not** come out matching that expected angular pattern — not yet root-caused (candidates worth
-  checking first: whether `general_factor`/`amp_long`/`amp_short`'s normalization, the long+short recombination,
-  or the observation-direction convention feeding `compute_radiation` actually reduce to the standard dipole
-  formula in this weak-field/single-electron/large-`R` limit). Flagging this here since it's a fundamental
-  correctness check that should hold before trusting the solver's absolute intensities/angular patterns for
-  anything more complex (a coherent beam, higher `a0`, etc.) — revisit before relying on those.
-- **`compute_radiation`'s per-`(tau, screen point, frequency)` integrand is factored into isolated
-  `long_range_prefactor`/`short_range_prefactor`/`radiation_phase_argument` functions** (`radiation.cpp`, anonymous
-  namespace), in preparation for the above gap: the current PREFACT formulas (multiplying the shared geometric
-  bivector term `n0^alpha u^beta - n0^beta u^alpha`) were derived via integration by parts of the standard
-  radiation integral and are suspected as the root cause, so they're kept swappable independently of the
-  loop/phase machinery around them. `radiation_phase_argument(x, R) = x[0] + R` is the frequency-independent "rest
-  of the exponent" in `PREFACT * exp(i*freq*phase_argument)` — frequency is applied by the caller, not this
-  function, so it must stay frequency-independent for `compute_radiation`'s evenly-spaced-frequency phase-factor
-  recurrence (see the loop-order bullet above) to remain valid regardless of how the PREFACT terms change.
-  `debug/debug_radiation.cpp`'s `export_radiation_integrand`/`export_radiation_phase` deliberately duplicate (per
-  the "Debug mode" section above) this same per-tau math inline rather than calling these functions — if the
-  PREFACT formula is changed, that duplicated diagnostic path needs a matching update, or its cross-check against
-  `compute_radiation`'s coherently-summed field (see "Debug mode" above) will silently go stale.
-- **`theory/FT_Faraday_tensor-direct_and_simplified_forms.md` documents two independently-derived, analytically
-  equivalent closed forms for the Fourier-transformed radiation field** (a "direct" form, straight FT of the
-  Lienard-Wiechert field, vs. a "simplified" form via integration by parts on Jackson's compact form — the same
-  integration-by-parts approach `compute_radiation`'s PREFACT formulas came from), each split into its own
-  long-range/short-range pieces — **the two derivations' `F_l`/`F_s` splits do not agree term-by-term with each
-  other or with `compute_radiation`'s; only each form's own `F_l+F_s` total is a valid cross-check target**.
-  **Both forms are now implemented in `compute_radiation`**, selected via the `radiation_formula` config key
-  (`"simplified"`, the default, or `"direct"`; `Simulation::run_simulation` throws at startup for any other
-  value). The simplified form is what the anonymous-namespace `long_range_prefactor`/`short_range_prefactor`
-  functions above compute (an explicit frequency factor on the long-range term, no acceleration needed); the
-  direct form (`long_range_prefactor_direct`/`short_range_prefactor_direct`/`direct_long_range_tensor_term`,
-  `radiation.cpp`) needs the electron's 4-acceleration (`Particle::Electron::State::acceleration`, already stored
-  per trajectory point — see the acceleration bullet above) and has **no explicit frequency factor outside the
-  shared phase** (`radiation_phase_argument` is identical between the two forms — confirmed against the theory
-  doc's "Common notation" section — so the evenly-spaced-frequency phase-factor recurrence stays valid for both
-  formulas unchanged). The direct form's short-range PREFACT also carries an extra `c^2` factor relative to the
-  long-range term (baked into `short_range_prefactor_direct` itself, not into `run_simulation`'s uniform
-  `general_factor`, since it's specific to this one formula — see the theory doc's Form 1 constants). `debug=true`
-  only supports `radiation_formula=simplified`: `debug/debug_radiation.cpp`'s diagnostic still only reimplements
-  the simplified form's per-tau math (unchanged by this addition), so `main.cpp` throws at startup if both are set
-  together, rather than silently producing a debug export that can't cross-check a direct-formula run.
-  **Fixing a pre-existing bug found while implementing this**: the short-range PREFACT's `n0·u` four-dot was
-  previously computed as `contract(n0, u) * R` (an extra, erroneous factor of `R`, present in both
-  `radiation.cpp` and its `debug_radiation.cpp` duplicate before this fix) rather than the bare `contract(n0, u)`
-  the simplified-form formula calls for — this made the short-range term scale as `1/R^3` instead of the
-  documented `1/R^2` near-field scaling. Fixed in both files; per the regime tested so far the short-range term
-  doesn't contribute either way, so this fix alone does not resolve the OPEN VALIDATION GAP above — that
-  remains open, and is now suspected to sit in the long-range term instead.
-- **Cross-checking `radiation_formula=simplified` against `radiation_formula=direct` (same beam/laser/detector
-  config, differing only in that key) found and fixed a genuine sign bug in the simplified form's `F_s` term, but
-  also surfaced a second discrepancy in `F_l` (`F03`/`F30`) that this fix alone does not touch — see the following
-  bullet for how that second discrepancy was subsequently resolved.** Comparing the two forms'
-  total field (`LR+SR`) component-by-component: 5 of the 6 independent Faraday-tensor components (`F01`, `F02`,
-  `F12`, `F13`, `F23`) agree to ~4 significant figures between the two formulas, as expected; `F03` (equivalently
-  `F30`) disagreed by roughly 1-2 orders of magnitude with an unrelated phase/sign, isolated to that one component
-  pair. Because `SR` is ~6-7 orders of magnitude below `LR` in every config tested so far (confirmed again during
-  this investigation), "only the total `F_l+F_s` needs to match, not the individual pieces" (the caveat in the
-  theory doc above) is moot in practice: total is dominated entirely by `F_l`, so an `F_l`-vs-`F_l` mismatch shows
-  up directly in the total, and an `F_s` bug of any size can't visibly move it.
-  - **Sign bug (fixed).** Hand-rederiving the simplified form's integration-by-parts step (`theory/
-    FT_Faraday_tensor-direct_and_simplified_forms.md`, Form 2) found `d/dτ(1/|R_0|) = +(n_{R_0}·u)/|R_0|^2`
-    (three-vector dot), whereas the derivation this repo's `FT-simplified.tex` was built from had that term with
-    the opposite sign — flipping the sign of the entire derived `F_s` term. Confirmed against the actual
-    `FT-simplified.tex` source (since deleted from the repo — it was a working scratch file, not needed once the
-    result was transcribed into the theory doc, and the bug is now documented there under "Sign bug (fixed)").
-    Fixed in `radiation.cpp`'s `short_range_prefactor` (now returns the negated value) and in the theory doc's
-    Form 2 `F_s` formula and its "shared tensor factor" note. **Verified this fix alone does not resolve the `F03`
-    discrepancy above** — re-running both formulas after the fix still shows the same-sized `F03` mismatch, exactly
-    because `SR`'s magnitude is too small relative to `LR` for its sign to matter to the total. So this is a real,
-    independent bug (worth having fixed before relying on `F_s` on its own, since anything built from
-    `F_s` alone rather than the total field would depend on its sign directly), but it is not the explanation
-    for the `F03` anomaly.
-  - **`F03`/`F30` discrepancy — root cause identified and fixed, see the following bullet.** Leading hypothesis at
-    the time: the simplified form's IBP derivation drops a boundary term, evaluated at the τ-integration limits.
-    The theory doc's Form 2 justifies dropping it as "contributes only as ω→0", but its actual suppression
-    mechanism is the explicit `1/|R_0|` factor — i.e. it requires the electron to have travelled far enough that
-    its distance to the (fixed, finite) detector point has grown large relative to its interaction-region value.
-    For a realistic detector distance and pulse-timescale trajectory, the electron's total excursion is a tiny
-    fraction of `|R_0|` regardless of how long the trajectory is integrated, so `1/|R_0|` barely changes — meaning
-    this term may not actually be small at any practically affordable `wing_sigma_cutoff`, unlike the short-range
-    term (whose own vanishing outside the pulse comes from a different, unrelated condition: the particle's
-    velocity/acceleration settling to a constant, not from `1/|R_0|` growing). This was tested directly:
-    increasing `wing_sigma_cutoff` did not shrink the `F03` gap, consistent with the boundary term being a fixed
-    geometric omission rather than a finite-window artifact that integrates away. `F03` specifically (and not
-    `F01`/`F02`/`F12`/`F13`/`F23`) is where this shows up because `F03` (`Ez`, the field component along the
-    beam/propagation axis) is physically expected to be small (near-cancellation, by transversality) while the
-    other components are not — so `F03` is the one component small enough for an uncounted boundary term to
-    dominate its total, rather than being swamped by a genuinely large signal the way it is everywhere else. This
-    hypothesis was then confirmed and implemented — see the next bullet.
-- **`compute_radiation`'s simplified formula now computes a third term, the boundary term `F_b`** (theory doc's
-  "Form 2's boundary term F_b" section), alongside `F_l`/`F_s` — the fix for the `F03`/`F30` discrepancy just
-  described, and a plausible fix for (part of) the OPEN VALIDATION GAP above, since the original "simplified"
-  derivation drops `F_b` on the grounds that it's negligible as `omega->0`, which only holds for an integral over
-  all of `tau` in `(-infinity, infinity)`; `compute_radiation`
-  integrates each electron over its actual **finite** recorded trajectory, so `F_b` is generally significant and
-  was previously missing entirely. Unlike `F_l`/`F_s` (summed over every trajectory point), `F_b` is a pure
-  boundary evaluation — nonzero only at the first/last recorded trajectory point (`i_tau == 0` /
-  `i_tau == N_tau - 1`), zero at every interior tau, with the two endpoint contributions taking opposite sign
-  (`radiation.cpp`'s `boundary_prefactor`/`boundary_weight`/`add_boundary_term`) — and canceling exactly when
-  `N_tau == 1`, the correct zero-width-interval limit, with no special-casing needed. Only meaningful for
-  `radiation_formula=simplified`; identically zero for `radiation_formula=direct` (confirmed: a 50-electron
-  `direct`-formula run's exported `BR_*` columns are exactly `0.0` for every row), since the direct form was
-  derived without integration by parts and needs no such term. **Threaded through the full pipeline**: `boundary`
-  fields added to `Simulation::PackedFaraday`/`Faraday` alongside `long_range`/`short_range` (summed across
-  threads, `unpack_bivector`'d, and `general_factor`-scaled identically to the other
-  two — harmless for `direct` since it's already zero there); `radiation_field.dat` gained matching `BR_F<mu><nu>`
-  columns; `debug/debug_radiation.cpp`'s `export_radiation_integrand` (simplified-formula-only, per "Debug mode"
-  above) gained matching `BR_F<alpha><beta>` columns, with the same "zero except at the two endpoint rows"
-  structure as the production accumulator, keeping the documented tau-sum cross-check valid; `radiation/plot_point_spectrum.py`/
-  `debug/plot_integrand.py`/`radiation/plot_field.py`/`radiation/plot_spherical_components.py` all accept `boundary` as
-  a third `range_type` (`'boundary': 'BR'` alongside `'long'`/`'short'`) — `debug/plot_integrand.py`'s boundary
-  plot will show two spikes rather than a smooth tau-curve, by construction.
-  **Sanity-checked** (not yet the full Thomson-dipole benchmark) against `config/debug.cfg`
-  (single electron at rest, on-axis backward-pointing detector, matching the theory doc's on-axis special case):
-  `F^{03}`'s total magnitude (`|F_l+F_s+F_b|`) came out roughly 8x smaller than `|F_l|` alone would be without
-  `F_b` — consistent with, though not full confirmation of, the predicted near-cancellation.
-  **`py_scripts/radiation/plot_field.py`'s `plot_radiation_component` also gained a `'total'` `range_type`**
-  (`<long|short|boundary|total>`), computed as `LR+SR+BR` summed column-wise from `radiation_field.dat` rather
-  than read from a stored column (there is no `TR_F<mu><nu>` export — it's cheaper to sum the three already-
-  exported tensors in Python than to add a fourth C++ export path). Treats missing `BR_*` columns as zero rather
-  than erroring, so `'total'` degrades gracefully to `LR+SR` on a `radiation_field.dat` from before the boundary
-  term existed. `radiation/plot_point_spectrum.py`/`debug/plot_integrand.py`/`radiation/plot_spherical_components.py` were not
-  given a `'total'` option (not asked for; would follow the same pattern if wanted).
-  **Still open**: full validation against the single-electron Thomson-dipole benchmark (still not attempted) —
-  the boundary term is expected to help but has not been confirmed to resolve the OPEN VALIDATION GAP outright.
-- **`theory/FT_Faraday_tensor-direct_and_simplified_forms.md`'s "On-axis `F^{03}` cancellation (worked special
-  case)" section proves the on-axis `F^{03}`/`F_b^{03}` behavior analytically** (originally written up as its own
-  standalone `theory/09-longitudinal_field_cancellation.md` against the Python reference's
-  `superradiant_thomson/plotting/screen.py`; merged into this doc since, so that file has been deleted — this is
-  the section to link to now, not a separate file). Directly relevant to the `F03`/`F30` discrepancy investigation
-  above: on the central `z`-axis the shared tensor
-  factor `T^{03} = (n_R0^alpha u^beta - n_R0^beta u^alpha)/(u . n_R0)` reduces to an exact constant (`-1` looking
-  forward, `+1` looking backward, for *any* tau/velocity), which makes `F_l^{03}` and `F_b^{03}` individually large
-  but exactly cancel via integration by parts (`F_l^{03}+F_b^{03} ~ 0`) — i.e. their bigness is an IBP artifact of
-  the simplified/Form-2 derivation, not a real signal, and the "direct"/Form-1 long-range term has no such artifact
-  since its `F03` is driven by on-axis acceleration components that vanish identically there. Confirms (rather than
-  merely hypothesizes, as the discrepancy bullets above do) that the physically meaningful quantity is always the
-  full `F_total = F_l+F_s+F_b` sum, never `F_l` alone, exactly matching this repo's own `radiation_formula` design
-  (`F_l`/`F_s`/`F_b` accumulated separately, summed only at plot/analysis time — see the `'total'` `range_type`
-  bullets above).
-- **`radiation/plot_field.py`'s `plot_radiation_component` and `radiation/plot_spherical_components.py`'s heatmap
-  branch render each Faraday/field component as a 2x2 Real/Imaginary/Modulus/Phase grid, styled to match the
-  independent Python reference's own plots** (`~/Dropbox/work/bin/python/Superradiant_Thomson`,
-  `plotting/screen.py`). Re/Im share the Modulus panel's own `[0, abs_max]` scale, symmetrized to
-  `[-abs_max, abs_max]` (diverging `RdBu_r`), rather than each auto-scaling independently — a real part that
-  looks just as saturated as the modulus, even though `|Re| <= |F|`, would misleadingly suggest Re alone
-  accounts for all of the magnitude; sharing one scale keeps the three panels directly comparable at a glance,
-  even though Re/Im then generally look paler than the modulus. The phase panel's `twilight` colorbar gets
-  explicit ticks at `-pi, -pi/2, 0, pi/2, pi` with matching LaTeX labels, instead of raw decimal radian ticks.
-  Each panel's colorbar uses `shrink=0.85` (not full axis height) and carries no `cbar.set_label` — the panel
-  title above already names the quantity, and a second, redundant vertical label competed with the right
-  column's colorbar for width, contributing to the misalignment described next.
-  **Circular detector: Re/Im/Abs panels use `pcolormesh(..., shading='gouraud')` on cell centers; the Phase
-  panel deliberately does not** — same pie-slice-facet problem and `gouraud`-on-centers fix as
-  `plot_observables.py`'s (née `plot_angular_momentum.py`) circular branch (see that script's own bullet above for the full rationale,
-  including why a Delaunay/`tricontourf` alternative was rejected), but here it's applied per-panel rather than
-  to the whole figure: `phase_values` (`np.arctan2`) wraps from `+pi` to `-pi` at an essentially arbitrary branch
-  cut unrelated to the field's actual smoothness there, and `gouraud` linearly interpolates that raw wrapped
-  value between neighboring grid points — sweeping the interpolated color through the *entire* colorbar range
-  across what should be one sharp, physically meaningless jump, which is actively misleading rather than merely
-  coarse. Flat shading's sharp jump between adjacent quads is the *correct* rendering of a phase wrap, so the
-  Phase panel keeps it (`x`/`y` cell-edge arrays, `x_gouraud`/`y_gouraud` centers computed alongside them but
-  only used by the other three panels) — confirmed on a real circular-detector run: the Phase panel still shows
-  a clean, sharply-bounded spiral (the branch cut), while Re/Im/Abs lost their pie-slice faceting. Rectangular
-  and spherical are both untouched (`x_gouraud`/`y_gouraud` stay `None`, so every panel there still takes the
-  flat-shaded branch, same as before this change).
-  **Non-obvious `matplotlib` gotcha, found and fixed while matching this style: `layout='constrained'` does
-  not reliably column-align per-axes colorbars added via `fig.colorbar(sc, ax=ax, shrink=...)`.** With four
-  panels arranged 2x2 (Re/Im on top, Modulus/Phase below), the two right-column colorbars (Im, Phase) can end
-  up at different x-positions even though they share a grid column — confirmed by direct pixel measurement to
-  be invisible on a rectangular-detector run but off by up to ~380px on a circular/stereographic-projection
-  run, i.e. the size of the misalignment is data-shape-dependent, not a fixed bug you'd catch by eyeballing one
-  config. Root cause: the constrained-layout solver allocates space per axes based on that axes' own tick/offset
-  decorations, and the Re/Im colorbars carry a "`1e-N`" scientific-offset label (drawn above the colorbar) while
-  the phase colorbar instead has explicit `$\pi$`-fraction tick labels (drawn to the right) — different content,
-  different space negotiated, and the solver doesn't force the two rows of one column to agree. Two more traps
-  along the way, both real and both worth remembering for any future colorbar work in this repo:
-  1. `bbox_inches='tight'` on `savefig` interacts badly with a still-active `constrained_layout`: it re-renders
-     at a re-derived figure size, which can trigger a *second*, different constrained-layout solve that silently
-     changes the very positions you were trying to preserve.
-  2. A colorbar created via `fig.colorbar(sc, ax=ax, ...)` carries an automatic locator on its own Axes that
-     recomputes its position relative to the parent Axes on every draw — including the one `savefig` triggers —
-     so a manual `cbar.ax.set_position(...)` silently gets overwritten again unless `cbar.ax.set_axes_locator(None)`
-     is called first.
-  **Fix, in both scripts**: after building all four panels, force one layout pass (`fig.canvas.draw()`), freeze
-  it (`fig.set_layout_engine(None)`), clear each colorbar's locator, then snap each column's bottom colorbar
-  (Modulus, Phase) to the top colorbar's (Re, Im) `x0` via `set_position`. `bbox_inches='tight'` was then added
-  back on the final `savefig` (safe now that the layout is frozen and every position set by hand — it only crops
-  outer whitespace, since there's no active layout engine left to re-solve) to stop the phase colorbar's own
-  tick labels (pushed rightward by the snap, since the Re/Im column is normally the wider one) from hanging past
-  the figure's original right edge. Verified via pixel measurement on both a rectangular and a circular/
-  stereographic run: all four colorbars land at identical x-positions in both, with no clipped tick labels.
-- **FIXED: `compute_radiation`'s tau-sum was missing the trapezoidal quadrature weight entirely**, found by
-  cross-checking this repo's solver against an independent Python reimplementation of the same physics
-  (`~/Dropbox/work/bin/python/Superradiant_Thomson`, `superradiant_thomson/screen.py`'s
-  `_compute_single_electron_screen_field`) that produced "similar but not identical" results for nominally the
-  same config. `theory/FT_Faraday_tensor-direct_and_simplified_forms.md` defines `F_l`/`F_s` as genuine continuous
-  integrals `\int d\tau (...)` over the electron's finite recorded trajectory; the Python reference evaluates this
-  with an explicit trapezoidal rule (`tau_weights = full(N_tau, dtau)` with the first/last entries halved), but
-  `radiation.cpp`'s `compute_radiation` was summing the per-tau integrand with no `dtau` factor anywhere -- neither
-  in the tau loop itself nor in `Simulation::run_simulation`'s `general_factor` (a pure physical constant,
-  independent of the trajectory's time step) -- even though `Electron::get_d_tau()` already exposes the fixed RK4
-  step needed to compute it. This made every long-range/short-range contribution scale with raw sample count
-  instead of converging to the physical integral as the trajectory is resolved more finely (i.e. changing
-  `trajectory_NT` changed the answer rather than just its accuracy), and for the repo's default
-  `config/config.cfg` (`laser_frequency=0.057`, `trajectory_NT=100`, `average_pz=-1.0 mc`) the missing weight
-  (`d_tau ~ 0.457` after the Doppler rescale in `init_simulation_parameters`) made the old output roughly 2.2x too
-  large. **Fixed** by computing `tau_weight = d_tau` (full weight at every interior tau, half weight at the two
-  endpoints -- standard trapezoidal rule on a uniform grid, since the trajectory is recorded at a fixed RK4 step)
-  once per tau in `compute_radiation`'s tau loop, and multiplying `amp_long`/`amp_short` by it before accumulating
-  into `local_long`/`local_short` -- **deliberately not applied to the boundary term** `F_b`, which is an exact
-  antiderivative evaluation at the two endpoints, not itself a tau-sum, and needs no quadrature weight (confirmed
-  against the Python reference, which treats it the same way). `debug/debug_radiation.cpp`'s duplicated per-tau
-  math (see "Debug mode" above) was given the identical `tau_weight` construction to keep its documented
-  tau-sum-vs-`compute_radiation` cross-check valid, applied to its `amp_long`/`amp_short` only, never to
-  `amp_boundary`. **Verified** via that same cross-check after the fix
-  (`config/debug.cfg`, comparing `debug_integrand.dat`'s summed `LR+SR+BR` against
-  `radiation_field.dat`'s row nearest the fundamental once `general_factor` is divided back out): magnitudes agree
-  to ~0.2% (the residual being the frequency-grid point landing at `omega/omega_1 ~ 0.9995` rather than exactly
-  `1.0`, not a bug) across all 6 independent components. **Not yet re-attempted**: the OPEN VALIDATION GAP above
-  (full single-electron Thomson-dipole benchmark) and a direct side-by-side numeric comparison against the Python
-  reference implementation on a shared config -- this fix is expected to materially change (shrink) the gap
-  between the two codebases' outputs, but that has not itself been re-checked yet.
-- **FIXED: `Simulation::run_simulation`'s `general_factor` multiplied by `PhysUtils::AtomicUnits::e_0` (the
-  electron charge *in modulus*, `= +1.0`) instead of `q_0` (the electron's actual signed charge, `= -1.0`)** --
-  found from the same cross-check against the Python reference above, prompted by a direct question about
-  whether the charge's sign was actually included. `e_0` is the right constant for `laser_field.cpp`'s `a0`/`E0`
-  amplitude normalization (which only ever needs `|e|`), and `q_0` is already used correctly in
-  `Particle::Electron`'s own equation of motion (`electron.cpp`) -- but `simulation.cpp`'s `general_factor` (the
-  overall `e/(4*pi*epsilon_0*c^2)` prefactor applied to `long_range`/`short_range`/`boundary` after unpacking) had
-  been using the wrong one of the two. The theory doc's own "Common notation" section states "All prefactors use
-  `e` = charge" (the signed value, not a magnitude), and the Python reference's equivalent prefactor
-  (`superradiant_thomson/screen.py`'s `scale_pre`) uses `q=-1.0` explicitly. Since `|e_0| == |q_0| == 1`, this bug
-  flips the *sign* only, not the magnitude, of every exported `F_l`/`F_s`/`F_b` component -- confirmed directly by
-  diffing `radiation_field.dat` before/after the fix at the same frequency/screen point: every `LR_F*`/`SR_F*`/
-  `BR_F*` real and imaginary value flips exactly (ratio `-1.000`), magnitude unchanged. This sign cancels out of
-  anything quadratic in the field (`|F|^2` intensity, the angular-momentum flux density, which is bilinear in
-  E/B) and out of relative phases between electrons in the coherent sum (every electron in the beam shares the
-  same global sign, so their interference pattern is unaffected) -- but it does flip the sign of every raw
-  exported Faraday-tensor component, and would show up as a uniform sign mismatch on any component-by-component
-  comparison against another correctly-signed reference (such as the Python code above). Fixed by changing
-  `simulation.cpp`'s `general_factor` to multiply by `q_0` instead of `e_0`.
-- **FIXED: `LaserField::envelope`'s Gaussian wings used the statistical convention
-  `exp(-delta_phi^2/(2*wing_sigma^2))` (`wing_sigma` as a standard deviation) instead of
-  `exp(-delta_phi^2/wing_sigma^2)`** -- found via the same cross-check against the independent Python
-  reference (`~/Dropbox/work/bin/python/Superradiant_Thomson`, `laser.py`'s `TemporalFactor.envelope`,
-  `exp(-(distance/sigma_l)^2)`), for the *same* physical `wing_sigma`/`sigma_l` value (both given in
-  periods -- confirmed by converting `config.cfg`'s `wing_sigma=2.0 cycles_adim` and the Python side's
-  `sigma_l={value:2,unit:"T"}` to the same units). Not a config/units mismatch: an actual factor-of-2
-  difference in the exponent between the two implementations. This is not a negligible edge effect for
-  this project's typical pulses: for `config/config.cfg`'s (`flat_duration=10` cycles,
-  `wing_sigma_cutoff=5`, `wing_sigma=2` cycles) the two Gaussian wings make up two-thirds of the total
-  30-cycle pulse duration, and the old formula's envelope was substantially fatter there (e.g. `0.607`
-  vs the corrected `0.368` one wing_sigma out from the flat-top edge) -- large enough to materially
-  shift the effective pulse energy/a0 seen by the beam, and a plausible (partial, not yet fully
-  quantified) explanation for the two solvers' outputs disagreeing by a modest but consistent amount on
-  otherwise-matched configs. Verified analytically (ratio between the old and Python's formula computed
-  directly, not just eyeballed) before applying the fix; **not yet re-verified end-to-end** against a
-  fresh full-config run of both solvers post-fix -- do that before treating any remaining cross-code
-  gap as evidence of a *different* bug. An earlier, since-reverted attempt fixed this equivalently from
-  the config side alone instead (rescaling `config/config.cfg`'s `wing_sigma`/`wing_sigma_cutoff` by
-  `1/sqrt(2)`/`sqrt(2)`, which does reproduce the same envelope shape *and* total duration for that one
-  config) -- reverted in favor of fixing `envelope` itself, since a per-config rescaling has to be
-  redone by hand for every other config using `laser_wing_sigma`/`laser_wing_sigma_cutoff`
-  (`config/config.cfg`, `config/debug.cfg`, ...), whereas fixing the formula
-  once fixes all of them.
-- **`PhysUtils::AtomicUnits::c` (`phys_utils.hpp`) raised from the truncated `137.036` to the 2018 CODATA
-  inverse fine-structure constant `137.035999084`** -- prompted by adding the SI-unit conversion constants
-  `bohr_radius_m`/`atomic_time_unit_s` to the same namespace (for `run_log.txt`'s new SI columns, see the
-  "Run log" section above) and noticing their ratio (the atomic unit of velocity) only reproduces `c_SI *
-  alpha` to full precision against the *precise* `1/alpha`, not the old truncated value -- fixed both
-  together rather than leaving the three mutually inconsistent at the 6th significant figure. This is not
-  cosmetic: `c` feeds `mc`, `epsilon_0`/`mu_0`, and every formula built from them across
-  `laser_field.cpp`/`electron.cpp`/`radiation.cpp`/`phys_utils.hpp` itself -- i.e. essentially the whole
-  physics pipeline, not just `run_log.txt`'s own display. The magnitude of the resulting change is tiny
-  (`137.035999084` vs `137.036` differ at the 6th significant figure, `~7e-9` relative), well below this
-  project's typical numerical-precision floor elsewhere (e.g. the debug-mode tau-sum cross-check agrees to
-  only ~0.2%) -- included for correctness/consistency, not because it was observed to explain any specific
-  discrepancy. `py_scripts/particle/plot_trajectory.py` and `py_scripts/radiation/faraday_frame_utils.py`
-  each independently hardcode this same constant as `C_LIGHT` (no shared constants module between C++ and
-  Python -- see those bullets elsewhere in this file) and were updated to match; any other Python script
-  that starts needing `c` should do the same rather than reintroducing the old truncated value.
-  **Discovered mid-build-check that this repo's `build/` directory has a real stale-dependency bug**:
-  touching `phys_utils.hpp` alone rebuilt only the two files most recently touched in the same session
-  (`simulation.cpp`, `run_log.cpp`) via incremental `cmake --build`, silently leaving `electron.cpp`,
-  `laser_field.cpp`, `electron_factory.cpp`, `laser_factory.cpp`, and others that directly `#include
-  phys_utils.hpp` and use `PhysUtils::AtomicUnits::c` un-rebuilt with the *old* constant baked in --
-  confirmed by object-file mtimes staying untouched across an incremental rebuild that did touch the
-  header. Worked around here via `cmake --build build/ --clean-first`; root cause (stale/missing `.d`
-  dependency files under this Unix-Makefiles-generated `build/`, or something more specific to this one
-  `build/` directory) not investigated further. **Practical takeaway, alongside the existing
-  Debug-vs-Release build-type footgun documented above**: after editing a widely-`#include`d header in
-  this repo, prefer a `--clean-first` (or fresh `build/`) rebuild over trusting incremental `cmake --build`
-  to have picked up every affected translation unit, at least until this is root-caused.
-- **FIXED: `py_scripts/radiation/plot_observables.py`'s angular-momentum density/flux quantities
-  (`S_z`/`L_z`/`J_z`/`Sigma_zz`/`Lambda_zz`/`Flux_tot`) used the exported dimensionless `omega/omega_1`
-  ratio as the divisor in their theory-doc-mandated `1/omega` prefactor, instead of the actual raw angular
-  frequency** -- found by an external review of the script that noticed
-  `int_dJz_domega / int_du_domega` came out as a bare dimensionless integer (`~2`, coincidentally close to
-  the LG mode's own topological charge `l=2`) instead of a quantity with units of inverse time
-  (`~m/omega_1`), the expected `angular momentum / energy = m/omega` relation for radiation carrying `m`
-  units of angular momentum per photon of energy `omega` (in `hbar=1` units). The `1/omega` division
-  itself was never missing -- it's applied to the entire bracketed expression in all four formulas, exactly
-  matching `theory/numerical_calculation_of_angular_momentum.md`'s derivation -- but the divisor was
-  `omega/omega_1` (the same dimensionless ratio `radiation_field.dat`'s own `omega` column stores, per the
-  bullet above), not raw `omega`. Since `d/d(omega/omega_1) = omega_1 * d/domega` by the chain rule, this
-  made `S_z`/`L_z`/`Sigma_zz`/`Lambda_zz` (and `J_z`/`Flux_tot`, built from them) equal to
-  `omega_1 * (true d.../domega)`, while `u`/`P_z` (which have no `1/omega` prefactor at all, per the theory
-  doc's sections 5-6) stayed genuine, unscaled `d.../domega` -- putting the angular-momentum family and the
-  energy family on two different frequency bases, off by the constant factor `omega_1`
-  (`fundamental_frequency`). This was invisible to every ratio check already documented above
-  (`Sigma_zz/S_z`, `Lambda_zz/L_z`, `Flux_tot/J_z`, `P_z/u`, all still landing on `C_LIGHT`) because each
-  of those pairs a flux against its *own* density, both carrying the identical `omega_1` mismatch, which
-  cancels -- exactly the caveat the external review itself flagged before it could be used to rule out the
-  bug. Fixed by adding `_read_fundamental_frequency_au` (parses the `fundamental_frequency` line
-  `Logging::write_run_log` already writes into the run's own `run_log.txt` -- `write_kv_au(file,
-  "fundamental_frequency", sim_par.fundamental_frequency * c)`, i.e. the internal omega/c-convention value
-  already converted back to a genuine raw angular frequency, atomic units) and multiplying it onto the
-  exported `omega/omega_1` ratio to recover the actual raw `omega` used as the `1/omega` divisor in all
-  four formulas; `u`/`P_z` were left untouched (correct already). `QUANTITIES`' plot panel labels were
-  also corrected from `d(\omega/\omega_1)` to `d\omega` for all eight quantities, including `u`/`P_z`,
-  which were already true `d.../domega` but had carried the wrong label the whole time.
-  **Verified** by re-running the fixed script against a real 16384-electron circular-detector
-  `laser_lg_p=2, laser_lg_l=2` run already on disk (no solver re-run needed -- this is a pure
-  post-processing fix): the four flux/density `C_LIGHT` ratios are unchanged (as expected, since the
-  `omega_1` factor cancels in each), while `int_dJz_domega/int_du_domega` moved from `~1.968`
-  (dimensionless) to `~34.5` a.u.$^{-1}$, matching `m/omega_1 = 2/0.057 ~= 35.09` a.u.$^{-1}$ to the same
-  ~1.6% relative agreement the old (dimensionless) check had against the bare integer `2` -- i.e. the fix
-  changes the quantity's units/magnitude exactly as predicted without degrading the level of agreement with
-  the expected physics.
-  **A third run_log.txt table was then added, `_ENERGY_NORMALIZED_PAIRS`/`compute_ratio_table`/
-  `append_energy_ratios_to_run_log`** (generalized from the existing `_RATIO_PAIRS`/
-  `compute_flux_density_ratios`/`append_ratios_to_run_log` machinery, now `compute_ratio_table(integrated,
-  pairs)` taking either tuple), printing `L_z/u` (currently the only entry) alongside the existing
-  `Sigma_zz/S_z`/`Lambda_zz/L_z`/`Flux_tot/J_z`/`P_z/u` table -- kept in its own table/caption rather than
-  folded into `_RATIO_PAIRS` since it's expected to land near `m/omega_1`, not `C_LIGHT`. Confirmed on the
-  same run: `L_z/u = 34.52` a.u.$^{-1}$, matching the `J_z/u` figure above (`J_z = S_z+L_z`, and `S_z` is
-  numerically negligible on this run) as expected.
-- **`_ENERGY_NORMALIZED_PAIRS` switched from the density pair `L_z/u` to the flux pair `Lambda_zz/P_z`**
-  (algebraically identical to `L_z/u` since `flux = c * density` cancels in the ratio, per the `C_LIGHT`
-  checks above -- but `Lambda_zz/P_z` draws on the B-field bilinears `L_z/u` never touches, so agreement
-  with theory is an independent check on the flux formulas too), and a per-row theoretical `m/omega_N
-  (theory)` column was added alongside the numerical ratio in both the stdout printout and the
-  `run_log.txt` table (`add_theoretical_oam_energy_ratio`, reading `m` from `config.cfg`'s `laser_lg_l`
-  and computing each row's actual `omega_N = (omega/omega_1) * fundamental_frequency_au`, not just
-  quoting `m/omega_1` once in a caption -- `omega_N` scales with harmonic index, so a single caption
-  value is only valid at the fundamental).
-  **OPEN, UNRESOLVED: on the `config/config.cfg` setup matched to the Python reference (N=128 electrons,
-  `laser_lg_l=-1`, `detector_direction_theta=1.0 pi` -- a *backward*-facing detector, screen behind the
-  source), the numerical and theoretical columns agree in magnitude to ~0.6% but disagree in sign**:
-  `Lambda_zz/P_z = 0.011107` vs. `m/omega_N (theory) = -0.011170`. The close magnitude agreement is
-  strong evidence the flux formula itself is implemented correctly; the sign flip is not yet explained by
-  either the flux/density `C_LIGHT` checks (self-consistent, and algebraically cancels out of this
-  comparison regardless of propagation direction -- confirmed by hand) or the `_RATIO_PAIRS` sign for this
-  same run (`Sigma_zz/S_z` etc. all land on `-C_LIGHT`, not `+C_LIGHT`, for this backward geometry, but
-  that sign cancels identically out of `Lambda_zz/P_z` vs. `L_z/u` and can't explain the mismatch). Two
-  live, untested hypotheses: (1) the `m/omega_N` relation implicitly assumes a forward-facing detector
-  (photon momentum along `+z`) and needs a sign flip for a backward one -- an observation-direction-
-  dependent OAM/helicity-projection effect; (2) a genuine sign mismatch between `laser_lg_l`'s definition
-  (`sign_l = (l>=0) ? 1 : -1` in `laser_field.cpp`) and the OAM operator `_lz_operator` builds from the
-  screen's own `(x,y)`/`phi` coordinates. A quick ad hoc forward-facing check was tried but changed `l`,
-  electron count, and beam momentum all at once (plus a much smaller `N=16`) and gave an inconsistent,
-  ~1000x-off magnitude -- **not evidence either way**, since it wasn't a controlled comparison. Before
-  touching this again: run a controlled forward-vs-backward comparison (same `|l|`, same electron count,
-  only `detector_direction_theta` flipped between `0.0 pi` and `1.0 pi`, with `average_pz`'s sign flipped
-  to match so the beam still heads toward the detector) and check whether the sign tracks the detector
-  direction or stays fixed. Deliberately deferred, not yet investigated further.
+- `run_log.txt` summarizes every parameter and derived quantity (atomic units, `lambda`/`w0`, and SI): the
+  fundamental and its shift ratio, `q`, and the frequency list. It re-reads config keys the way the factories do
+  (`read_scaled`) rather than adding getters to the physics classes. `plot_observables.py` appends its
+  screen-integrated tables to it, replacing only its own section by exact header match (`_find_run_log_sections`).
+  Don't reintroduce a "truncate after first marker" approach.
+- `electron.dat` holds up to 10 electrons tagged by `electron_id`, with trailing `a0..a3` acceleration columns.
+  `plot_trajectory.py` draws one panel per four-vector component, since sharing an axis hid real variation, with
+  position in `lambda` and momentum in `mc`.
+- `radiation/plot_field.py` (and `plot_spherical_components.py`) draw 2x2 Re/Im/Abs/Phase panels. Re and Im share
+  the `±|F|max` scale. Rectangular, circular, and spherical detectors all render as `pcolormesh` on the native grid.
+  On circular detectors Re/Im/Abs use `gouraud` shading on cell centers, while **Phase stays flat-shaded** because
+  interpolating across the ±π wrap is misleading. Colorbar alignment requires freezing the layout (`fig.canvas.draw()`,
+  `set_layout_engine(None)`, `cbar.ax.set_axes_locator(None)`) before `set_position`. `constrained_layout` alone
+  misaligns them.
+- **Spherical detectors near the full 4π:** stereographic projection is singular at θ=π (`nan` in
+  `detector_stereographic.dat` is expected). `get_spherical_plot_grid` falls back to a `(θ, φ)` map.
+- Heatmaps of LG runs add secondary `x/w0`, `y/w0` axes (`utils/w0_axes_utils.py`, a leaf module that
+  deliberately avoids importing `plot_field` to prevent circular imports).
+- `plot_observables.py` computes the SAM/OAM/TAM densities `S_z`/`L_z`/`J_z`, the fluxes
+  `Sigma_zz`/`Lambda_zz`/`Flux_tot`, and energy `u`/`P_z`, per `theory/numerical_calculation_of_angular_momentum.md`.
+  It requires a rectangular or circular screen **facing ±Oz** (it raises otherwise). The `L_z` operator is
+  `x∂y−y∂x` (rectangular, `np.gradient`) or a periodic `∂φ` (circular). The angular-momentum quantities divide by
+  the true `omega` (not `omega/omega_1`). Sanity checks it prints: each flux/density ratio ≈ `±c` (holds to ~3e-5),
+  and `Lambda_zz/P_z` ≈ `m/omega_N` (magnitude OK, sign open, see Open issues).
+- `get_faraday_tensor`-style extraction: `E_i = c·F^{i0}`, `B = (F^{32}, F^{13}, F^{21})`.
+
+## Physics notes worth knowing before comparing results
+
+- **Rectangular vs. spherical screens differ for real** (exact `R`, no far-field approximation). They agree only
+  when the Fresnel number `N_F = a²/(Dλ) << 1`. Growing `D` at a fixed *angular* window makes `N_F` larger, not
+  smaller. Compare `Re/Im(F01)`, not `|F01|`.
+- Per contribution, `B` is exactly ⊥ `n0` but `E` is not: `|B_r|/|B_θ|` ~ 1e-5 while `|E_r|/|E_θ|` ~ 0.1. That is
+  a useful regression check for `plot_spherical_components.py`.
+- The independent Python reference is `~/Dropbox/work/bin/python/Superradiant_Thomson`, and `config/config.cfg`
+  is matched to its `main.py` `INPUTS`. Several past bugs were found by cross-checking against it (missing
+  trapezoid weight, `e_0` vs `q_0` sign, envelope `σ` convention, `<a²>`); see `theory/dev_notes.md`.
+- `MathUtils::mirror_antisymmetric_in_place` is dead code.
+
+Full investigation history, measurements, and rationale for everything above: `theory/dev_notes.md`.
