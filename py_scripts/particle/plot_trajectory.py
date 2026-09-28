@@ -124,7 +124,7 @@ def plot_electron_trajectory(filepath):
     electron_colors = {eid: cmap(i) for i, eid in enumerate(electron_ids)}
 
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
-    # laser/detector/particle/radiation/debug layout).
+    # laser/detector/particle/radiation layout).
     png_dir = os.path.join(os.path.dirname(filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
     basename = os.path.basename(filepath).rsplit('.', 1)[0]

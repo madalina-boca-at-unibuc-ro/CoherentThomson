@@ -20,6 +20,7 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "COHERENT_THOMSON_ALLOW_NON_RELEASE": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     }

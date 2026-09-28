@@ -18,10 +18,19 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-#Set default build type
-if(NOT CMAKE_BUILD_TYPE)
+#Force Release: a stale build/CMakeCache.txt or an IDE (e.g. VS Code CMake Tools) can otherwise silently leave the
+#build in Debug, which is ~12x slower. Pass -DCOHERENT_THOMSON_ALLOW_NON_RELEASE=ON to deliberately build another type.
+option(COHERENT_THOMSON_ALLOW_NON_RELEASE "Allow a CMAKE_BUILD_TYPE other than Release" OFF)
+if(NOT COHERENT_THOMSON_ALLOW_NON_RELEASE)
+    if(CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+        message(WARNING "CMAKE_BUILD_TYPE was '${CMAKE_BUILD_TYPE}'; forcing Release. "
+                        "Use -DCOHERENT_THOMSON_ALLOW_NON_RELEASE=ON to override.")
+    endif()
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+elseif(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 #Add optimization flags
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

@@ -54,7 +54,7 @@ def plot_stereographic(filepath):
     plt.grid(True, linestyle=':', alpha=0.6)
 
     # Save output plot into a per-module subfolder of the run directory's 'png_folder'
-    # (mirroring py_scripts/'s own laser/detector/particle/radiation/debug layout).
+    # (mirroring py_scripts/'s own laser/detector/particle/radiation layout).
     png_dir = os.path.join(os.path.dirname(filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
     output_name = os.path.basename(filepath).rsplit('.', 1)[0] + "_plot.png"

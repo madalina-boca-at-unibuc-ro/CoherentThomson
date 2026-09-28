@@ -14,8 +14,9 @@ C_LIGHT = 137.035999084
 
 
 def convert_unit_to_number(unit, config_path):
-    """Python mirror of Core::IoUtils::convert_unit_to_number (io_utils.hpp) -- only the branches
-    detector-geometry/direction keys actually use ('lambda', 'pi', 'a.u.', bare)."""
+    """Python mirror of Core::IoUtils::convert_unit_to_number (io_utils.hpp) -- keep the two in sync.
+    Unlike the C++ (which warns and assumes 1.0), an unknown unit raises: a silently wrong scale here
+    corrupts screen-integrated quantities without any visible symptom."""
     unit = unit.lower()
     if unit == 'pi':
         return np.pi
@@ -26,12 +27,18 @@ def convert_unit_to_number(unit, config_path):
         return C_LIGHT
     if unit == 'cycles_adim':
         return 2.0 * np.pi
-    if unit == 'omega_laser':
+    if unit in ('omega_laser', 'first_harmonic_frequency'):
+        # Same raw laser frequency for both, as in the C++; the rescaling to the emitted fundamental
+        # happens downstream (Simulation::init_simulation_parameters), not at unit-parse time.
         return float(read_config_value('laser_frequency', config_path)[0])
+    if unit == 'w0':
+        # laser_lg_w0 is itself given in some other unit (typically 'lambda'), so recurse like the C++.
+        w0_value, w0_unit = read_config_value('laser_lg_w0', config_path)
+        return float(w0_value) * convert_unit_to_number(w0_unit, config_path)
     if unit in ('a.u.', ''):
         return 1.0
-    print(f"Warning: Unknown unit '{unit}'. Assuming 1.0.")
-    return 1.0
+    raise ValueError(f"Unknown unit '{unit}' in '{config_path}' (no Python mirror of it in "
+                     f"faraday_frame_utils.convert_unit_to_number; add it there to match io_utils.hpp)")
 
 
 def rotation_matrix_from_direction(nx, ny, nz):

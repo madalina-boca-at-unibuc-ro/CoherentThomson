@@ -192,7 +192,6 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   write_section(file, "Run");
   file << "  num_threads (resolved)      " << num_threads << "\n";
   file << "  random_seed                 " << IoUtils::get_required(config, "random_seed") << "\n";
-  file << "  debug                       " << IoUtils::get_required(config, "debug") << "\n";
   file << "  screen points               " << detector.get_total_points() << "\n";
   file << "  simulation wall time (s)    " << simulation_elapsed_seconds << "\n";
 

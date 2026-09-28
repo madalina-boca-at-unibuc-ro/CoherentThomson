@@ -10,6 +10,10 @@ from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
+# Length unit of the spherical detector's stereographic axes: main.cpp's detector_axes_unit, which
+# detector_stereographic.dat (and so get_screen_coordinates' spherical branch) is also written in.
+SPHERICAL_AXES_UNIT = 'lambda'
+
 # Printed once whenever plot_radiation_component runs on incident_field.dat -- see
 # Radiation::export_incident_field_fourier's doc comment (radiation_plotter.hpp): that file holds the
 # incident beam's raw phasor field (a single evaluation instant, no tau-integration or general_factor
@@ -60,8 +64,14 @@ def get_spherical_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     unreliable exactly at the phi=0/2*pi seam a helical/vortex field pattern needs to be
     continuous across. Passing explicit corners (shading='flat') sidesteps the inference entirely.
     """
-    radius, _ = read_config_value('spherical_detector_radius', config_path)  # assumed given in 'lambda',
-    radius = float(radius)                                                  # matching detector_axes_unit
+    # Imported here, not at module level: faraday_frame_utils itself imports this module.
+    from faraday_frame_utils import convert_unit_to_number
+
+    # Converted to SPHERICAL_AXES_UNIT whatever unit the config gives it in, so these edges line up
+    # with detector_stereographic.dat's centers.
+    radius_str, radius_unit = read_config_value('spherical_detector_radius', config_path)
+    radius = (float(radius_str) * convert_unit_to_number(radius_unit, config_path)
+              / convert_unit_to_number(SPHERICAL_AXES_UNIT, config_path))
 
     N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
     N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
@@ -116,7 +126,8 @@ def get_spherical_plot_grid(config_path=DEFAULT_CONFIG_PATH):
     """
     if spherical_projection_is_well_defined(config_path):
         x_edges, y_edges = get_spherical_cell_edges(config_path)
-        return x_edges, y_edges, '$x_{proj}$', '$y_{proj}$', 'equal'
+        return (x_edges, y_edges, f'$x_{{proj}}$ [{SPHERICAL_AXES_UNIT}]', f'$y_{{proj}}$ [{SPHERICAL_AXES_UNIT}]',
+                'equal')
 
     N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
     N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
@@ -217,7 +228,8 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     if detector_type == 'spherical':
         stereo_path = os.path.join(os.path.dirname(radiation_filepath), 'detector_stereographic.dat')
         stereo = pd.read_csv(stereo_path, sep=' ', comment='#')
-        return stereo['x_proj'].to_numpy(), stereo['y_proj'].to_numpy(), '$x_{proj}$', '$y_{proj}$'
+        return (stereo['x_proj'].to_numpy(), stereo['y_proj'].to_numpy(), f'$x_{{proj}}$ [{SPHERICAL_AXES_UNIT}]',
+                f'$y_{{proj}}$ [{SPHERICAL_AXES_UNIT}]')
 
     elif detector_type == 'rectangular':
         Nx, _ = read_config_value('rectangular_detector_Nx', config_path)
@@ -380,7 +392,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         # Only the stereographic-projection grid (aspect == 'equal') is in length units; the
         # (theta, phi) angular fallback has no length scale for w0 to supplement.
         if aspect == 'equal':
-            axes_unit = read_config_value('spherical_detector_radius', config_path)[1]
+            axes_unit = SPHERICAL_AXES_UNIT
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
@@ -410,7 +422,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
 
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
-    # laser/detector/particle/radiation/debug layout), further split into 'emitted'/'incident'
+    # laser/detector/particle/radiation layout), further split into 'emitted'/'incident'
     # subfolders (rather than leaving the real run's own PNGs bare in png_folder/radiation/) so both
     # sets sit side by side with parallel, equally-named paths instead of one being the implicit
     # default.

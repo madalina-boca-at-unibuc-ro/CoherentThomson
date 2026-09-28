@@ -36,8 +36,8 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
   file << std::scientific << std::setprecision(6);
   file << "# coherent radiation field: one row per (frequency, screen point)\n";
   file << "# LR/SR/BR = long_range/short_range/boundary Faraday tensor F^{mu nu}, printed as 're im' pairs -- BR "
-          "is identically zero for radiation_formula=\"direct\" (see theory/"
-          "FT_Faraday_tensor-direct_and_simplified_forms.md's \"Form 2's boundary term F_b\" section)\n";
+          "is identically zero for radiation_formula=\"direct\"/\"long_distance_direct\", SR for both "
+          "long_distance_* formulas; only LR+SR+BR is physical\n";
   file << "# omega is in units of the fundamental (non_linear_Thomson_formula(k1, p, n2, 1)); 1.0 = fundamental, "
           "3.0 = third harmonic\n";
   file << "i_omega omega i_screen";

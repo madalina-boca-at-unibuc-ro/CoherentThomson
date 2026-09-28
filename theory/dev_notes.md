@@ -1004,6 +1004,28 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   only `detector_direction_theta` flipped between `0.0 pi` and `1.0 pi`, with `average_pz`'s sign flipped
   to match so the beam still heads toward the detector) and check whether the sign tracks the detector
   direction or stays fixed. Deliberately deferred, not yet investigated further.
+- **2026-09-28: debug mode removed.** The `debug` config key, `config/debug.cfg`, `src/core/debug/`
+  (`Core::Debug::export_radiation_integrand`/`export_radiation_phase`, writing `debug_integrand.dat`/
+  `debug_exponent.dat`) and `py_scripts/debug/` were deleted. The mode only dumped the per-tau integrand and phase
+  of the exact simplified formula for one electron and one screen point. Those had been verified long before, it
+  never supported the direct or long-distance formulas, and its duplicated per-tau math had to be kept in sync by
+  hand. The entries below that mention it are historical; the code is in git history before this date.
+- **2026-09-28: long-distance formulas added (`long_distance_simplified`/`long_distance_direct`), and a GCC
+  miscompile of them found.** Implemented per `long_distance_direct_simplified_coding_guide.md` with the two-projection
+  method; reading and full validation tables in `long_distance_implementation_review.md`. A 1-electron, 3x3-screen,
+  2-harmonic run first gave h2 ~1000x too large for `long_distance_simplified` (and ~4% off for
+  `long_distance_direct`). An independent Python evaluation from `electron.dat` got the right h2, and an isolated
+  h2-only run (`N_harmonics_min=2`) was correct in C++ too. Bisecting build flags: `-O0`, `-O2`, `-O3`,
+  `-O2 -march=native` are all correct; only `-O3 -march=native` is wrong, and adding either
+  `-fno-tree-slp-vectorize` or `-ffp-contract=off` fixes it. ASan/UBSan report nothing. Logged per-tau phase factors
+  and integrand values from the broken build were correct (the recurrence phasor matched `std::polar` to 1e-16, and
+  re-summing the logged values offline gave the right h2), but the accumulated sums were wrong. Adding debugging
+  output inside the i_freq loop made the bug disappear. GCC's report showed SLP vectorizing `std::complex`
+  arithmetic (`complex:1712`). Conclusion: a GCC 15.2 SLP/FMA miscompile of the complex accumulation. Fixed by
+  disabling SLP for `compute_radiation_long_distance` only. The exact path's Release results match `-O0` to rounding
+  (<= 6e-5 at weak harmonics), so it was left alone. Side trap found on the way: all build dirs write the same
+  `bin/` binary, and a no-op build of another dir doesn't relink, which briefly made two different builds look
+  bit-identical.
 - **2026-09-23: simplified `F_s` replaced by the v2 kernel, and the direct `F_s`'s missing `c^2` restored.**
   `theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md` corrects the simplified short-range term: the v1
   kernel `-(n.u)_3/(R^2 (n.u)) * (n^a u^b - n^b u^a)` came from treating Jackson's fixed-event `d/dtau` as a

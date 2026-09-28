@@ -42,7 +42,7 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
         sys.exit(1)
 
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
-    # laser/detector/particle/radiation/debug layout).
+    # laser/detector/particle/radiation layout).
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)
 

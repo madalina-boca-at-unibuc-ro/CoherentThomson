@@ -26,26 +26,33 @@ directory `~/<output_folder>/YYYYMMDD_HHMMSS/`. Python scripts in `py_scripts/` 
 
 ```
 cmake -B build/ && cmake --build build/                    # build (out-of-source enforced)
-cmake --preset release && cmake --build --preset release  # same, but forces CMAKE_BUILD_TYPE=Release
+cmake --preset release && cmake --build --preset release  # same, but forces CMAKE_BUILD_TYPE=Release (debug preset opts out, see below)
 python3 py_scripts/compile_and_run.py [config_file]        # configure + build + run
 ./bin/coherent_thomson_solver config/config.cfg            # run (config argument required)
 ```
 
-Build types: `Release` (default, `-O3 -march=native -mtune=native`), `Debug` (`-g`, no `-O`), `RelWithDebInfo`,
-`MinSizeRel`. C++20; `-Wall -Wextra -Wpedantic` except on `RelWithDebInfo`/`MinSizeRel`.
+**The project is always built as `Release`** (`-O3 -march=native -mtune=native`). `CMakeLists.txt` forces it,
+overriding any cached or IDE-supplied `CMAKE_BUILD_TYPE` with a warning, so it holds on every machine the repo is
+cloned to. Another type (`Debug`: `-g`, no `-O`; `RelWithDebInfo`; `MinSizeRel`) needs an explicit
+`-DCOHERENT_THOMSON_ALLOW_NON_RELEASE=ON` (the `debug` preset sets it). Being cached, that opt-out sticks until you
+pass `=OFF`. The configure step prints `Build type: ...`. A Debug build is ~12–13x slower, so check that line before
+trusting any timing. `-march=native` means a binary must be built on the machine that runs it (`build/` and `bin/`
+are gitignored). C++20; `-Wall -Wextra -Wpedantic` except on `RelWithDebInfo`/`MinSizeRel`.
 
 **Build traps, check these first:**
-- **The build type sticks in the cache.** `cmake -B build/` and `compile_and_run.py` (which never passes
-  `-DCMAKE_BUILD_TYPE`) keep whatever `build/CMakeCache.txt` already holds, and an IDE can silently set it to
-  `Debug`. A Debug build is ~12–13x slower. Before trusting any timing, run `grep CMAKE_BUILD_TYPE
-  build/CMakeCache.txt`, or use the `release` preset.
 - **Incremental rebuilds have missed header dependencies.** After editing a widely-`#include`d header (e.g.
   `phys_utils.hpp`), rebuild with `cmake --build build/ --clean-first`. Not root-caused.
+- **Every build directory writes the same `bin/coherent_thomson_solver`.** A no-op `cmake --build` of another
+  build dir does *not* relink, so `bin/` keeps whichever binary was linked last. To compare builds, use
+  `--clean-first` and copy each binary out right after building it.
+- **GCC's SLP vectorizer miscompiles `compute_radiation_long_distance`** under `-O3 -march=native` (GCC 15.2),
+  giving wrong sums at every frequency after the first. It is disabled for that function only, with
+  `__attribute__((optimize("no-tree-slp-vectorize")))`. Don't remove it without re-running
+  `long_distance_simplified` with `N_harmonics >= 2` against a `-O0` build.
 
 **Iterating on code changes:** copy a config (don't edit `config/config.cfg` in place unless the task is about the
-default config) and drop `beam_particle_count` to e.g. `50` (default `16384`); run time scales with electron
-count. Configs: `config/config.cfg` (default; parameter-matched to the Python reference, so use it for
-cross-checks), `config/debug.cfg` (debug mode, see below), `config/config_initial_momentum.cfg`.
+default config) and drop `beam_particle_count` to e.g. `50`; run time scales with electron count. Configs: `config/config.cfg` (default; parameter-matched to the Python reference, so use it for
+cross-checks), `config/config_initial_momentum.cfg`.
 
 Formatting: `clang-format -i` on touched files (`.clang-format`: Google style, 120 cols, 2-space indent).
 `py_scripts/` is type-checked against `.venv` via `pyrefly.toml`/`pyrightconfig.json` (editor config only, no
@@ -70,8 +77,6 @@ python3 py_scripts/radiation/plot_all_components.py [--incident]   # plot_field 
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular only
-python3 py_scripts/debug/plot_integrand.py <long|short|boundary> <mu> <nu>   # debug=true
-python3 py_scripts/debug/plot_exponent.py                                    # debug=true
 ```
 `--incident` analyzes `incident_field.dat` (the incident laser's own analytic field, from
 `Radiation::export_incident_field_fourier`, written only for rectangular/circular detectors) instead of
@@ -97,7 +102,12 @@ python3 py_scripts/debug/plot_exponent.py                                    # d
   plain files (not `python -m`): each inserts `py_scripts/` onto `sys.path` and imports `utils.*`, an implicit
   namespace package with no `__init__.py`. Scripts in the same folder import each other by filename. There is no
   shared constants module between C++ and Python: `C_LIGHT = 137.035999084`, `EPSILON_0 = 1/(4π)` etc. are
-  duplicated in the scripts, so keep them in sync with `phys_utils.hpp`.
+  duplicated in the scripts, so keep them in sync with `phys_utils.hpp`. Likewise
+  `radiation/faraday_frame_utils.py::convert_unit_to_number` is a partial Python copy of the C++
+  `IoUtils::convert_unit_to_number`, used by `plot_observables.py` (screen extent, detector direction) and
+  `plot_spherical_components.py` (angle ranges). It covers every C++ unit, but unlike the C++ (warn and assume
+  `1.0`) it **raises** on an unknown unit, so a unit added only in C++ fails loudly in the plots instead of
+  silently mis-sizing the screen. Add any new unit to both.
 
 ### Namespaces (`Core::<CamelCase of folder>`)
 
@@ -111,7 +121,6 @@ python3 py_scripts/debug/plot_exponent.py                                    # d
 | `Detector` | `Detector_2D` base + `Rectangular`/`Circular`/`SphericalDetector`; `create_detector` |
 | `Simulation` | `init_simulation_parameters` (frequency list, fundamental, dressed `q`, trajectory grid), `run_simulation`, `PackedFaraday`/`Faraday` field containers |
 | `Radiation` | `compute_radiation` (per-electron hot path), `plot_radiation_field`, `export_incident_field_fourier` |
-| `Debug` | per-tau integrand diagnostics (see "Debug mode") |
 | `Logging` | `write_run_log` → `run_log.txt` |
 
 ### Frames and geometry
@@ -130,6 +139,10 @@ python3 py_scripts/debug/plot_exponent.py                                    # d
 
 ### Radiation calculation (the hot path)
 
+Overview of all six `radiation_formula` modes and every optimization, with formulas and timings:
+`theory/implementation_details.md`. Keep it in sync when changing `radiation.cpp`.
+
+
 - `compute_radiation` sums, per `(screen point, tau, frequency)`, prefactor × bivector
   `n0^α u^β − n0^β u^α` × `exp(i·freq·(x⁰+R))`. Values accumulate in the packed 6-component form
   (`PackedFaraday`) and are unpacked to a 4x4 tensor after the per-thread accumulators are summed.
@@ -145,12 +158,38 @@ python3 py_scripts/debug/plot_exponent.py                                    # d
   one), `F_b ∝ [(nᵅuᵝ−nᵝuᵅ)/(R(n·u))]` evaluated between the two endpoints. The direct `F_s` carries an explicit
   `c²` in `short_range_prefactor_direct`, because the doc's direct `F_s` has a bare `q` while `general_factor`
   applies `q/c²` to everything.
-- `radiation_formula` selects `simplified` (default: velocity-only integrand plus the boundary term `F_b`) or
-  `direct` (Liénard–Wiechert FT that needs the stored 4-acceleration; `F_b ≡ 0`). Cross-checking the two
+- `radiation_formula` (parsed into `Radiation::RadiationFormula`, which throws on an unknown name) selects
+  `simplified` (default: velocity-only integrand plus the boundary term `F_b`), `direct` (Liénard–Wiechert FT
+  that needs the stored 4-acceleration; `F_b ≡ 0`), or their long-distance approximations (below). Cross-checking the two
   formulas against each other is the main correctness tool. With the v2 `F_s` they agree to the trapezoid's
   `O(dτ²)` error (4x smaller per doubling of `trajectory_NT`) down to a 1 λ screen distance. A mismatch of order
   `1/(kR)` means a short-range bug. Simplified `F03` near the axis is a ~1000x cancellation of `F_l` and `F_b`,
-  so it needs a finer `trajectory_NT` than the other components to reach the same accuracy.
+  so it needs a finer `trajectory_NT` than the other components to reach the same accuracy. The same applies to
+  weak harmonics (h2/h3 of a weak-field run), where both simplified forms need a finer `trajectory_NT`.
+- **Long-distance formulas** `long_distance_simplified`/`long_distance_direct`
+  (`compute_radiation_long_distance`; spec `theory/long_distance_direct_simplified_coding_guide.md`, reading and
+  validation in `theory/long_distance_implementation_review.md`). Per (electron, screen point) the geometry is
+  frozen at the electron's own first sample `r(tau_m)`: fixed `n_0`, `1/|x_0|` amplitude, linearized phase
+  `k(|x_0| + r^0 − n_0·r_0)` (time is not reset), no `F_s`. The constant part `e^{ik(|x_0| + r^0(tau_m))}` is
+  applied once per frequency at reconstruction, **not** inside the tau loop. Keep it there: inside the loop,
+  `|x_0| ~ 1e9` a.u. costs ~1e-9 rad of rounding per step, which the tau-sum cancellation amplified to ~1e-5
+  relative at weak harmonics (now ~5e-9). It uses the two-transverse-projection method (2 complex
+  scalars per tau instead of 6 components). Output: `SR_` is always 0; simplified puts its bulk in `LR_` and its
+  endpoint in `BR_`; direct puts everything in `LR_`. Because it uses `u_perp`, its `LR_`/`BR_` split differs from
+  the exact one (no ~1000x on-axis cancellation), so only the total is comparable. Against exact `direct` the
+  error scales ~`1/D` (3.6e-5 at 144000 λ on `config.cfg`) and doesn't change with `trajectory_NT`. It runs ~2x
+  faster than exact.
+- **`long_distance_simplified_approx`/`long_distance_direct_approx`** (`compute_radiation_long_distance_stepped`)
+  are the same LD formulas and outputs, but the phase factor is advanced along tau:
+  `e^{ikΦ_{j+1}} = e^{ikΦ_j}·e^{ikΔΦ_j}`, with `ΔΦ_j = Δr⁰ − n₀·Δr` taken from trajectory differences, and a
+  Taylor small-angle phasor. Angle halving handles high harmonics, since each step advances about
+  `2πN/trajectory_NT` for harmonic N. It re-anchors with exact `std::polar` every 64 steps and processes 8 screen
+  points together as independent SIMD chains. Timing on `config.cfg` (h1): about 11 ns per (screen point, tau)
+  vs 36 ns for LD and 58 ns for exact simplified. With the constant phase outside the loop, approx and unstepped LD agree
+  to ≤1e-7 in Release (mostly to all 7 printed digits), and Release vs `-O0` builds to ≤5e-6 at the weakest
+  harmonics.
+  SLP is disabled for this function too, and it must stay vectorizable. Check with `-fopt-info-vec` that the
+  stepping loops (`advance_phasors`) still vectorize after edits.
 - **Quadrature:** trapezoidal weights (`d_tau`, halved at the endpoints) apply to `F_l`/`F_s` only. `F_b` is an
   exact endpoint evaluation (nonzero only at the first/last tau, opposite signs) and gets **no** weight.
 - The prefactors are isolated in `radiation.cpp`'s anonymous namespace (`long_range_prefactor`,
@@ -213,23 +252,6 @@ function before adding a unit.
 - Unknown keys are ignored, so stale keys from old configs (e.g. `laser_nx`, `print_field_in_canonical_frame`)
   don't error.
 
-## Debug mode
-
-`debug=true` (use `config/debug.cfg`) requires `beam_particle_count=1`, a 1x1 rectangular detector, and
-`radiation_formula=simplified`; `main.cpp` throws otherwise. It evaluates at the fundamental only and writes
-`debug_integrand.dat` (per-tau `LR`/`SR`/`BR` bivector terms, trapezoid weights applied as in production) and
-`debug_exponent.dat` (the shared phase factor). The normal pipeline still runs, so the tau-sum can be
-cross-checked against `radiation_field.dat` once `general_factor` is divided out. Compare at the exact
-fundamental (`dense_frequency_spectrum=false`, `N_harmonics=1`, row 0): the sums then agree to print precision
-(~1e-7). A dense-scan row that is only near `ω/ω₁ = 1` differs by O(1) because of the long-trajectory phase.
-
-**`debug/debug_radiation.cpp` deliberately duplicates `compute_radiation`'s per-tau math instead of sharing it.
-Any change to the prefactors, weights, or boundary term must be mirrored there**, or the cross-check silently goes
-stale.
-
-`debug/plot_exponent.py` and `particle/plot_trajectory.py` plot against `tau/T`, reading the laser period from
-that run's own `config.cfg` snapshot via `get_laser_period`. `debug/plot_integrand.py` uses raw `tau`.
-
 ## Outputs and plotting conventions
 
 - `run_log.txt` summarizes every parameter and derived quantity (atomic units, `lambda`/`w0`, and SI): the
@@ -237,6 +259,8 @@ that run's own `config.cfg` snapshot via `get_laser_period`. `debug/plot_integra
   (`read_scaled`) rather than adding getters to the physics classes. `plot_observables.py` appends its
   screen-integrated tables to it, replacing only its own section by exact header match (`_find_run_log_sections`).
   Don't reintroduce a "truncate after first marker" approach.
+- `particle/plot_trajectory.py` plots against `tau/T`, reading the laser period from that run's own `config.cfg`
+  snapshot via `get_laser_period`.
 - `electron.dat` holds up to 10 electrons tagged by `electron_id`, with trailing `a0..a3` acceleration columns.
   `plot_trajectory.py` draws one panel per four-vector component, since sharing an axis hid real variation, with
   position in `lambda` and momentum in `mc`.
@@ -248,6 +272,9 @@ that run's own `config.cfg` snapshot via `get_laser_period`. `debug/plot_integra
   misaligns them.
 - **Spherical detectors near the full 4π:** stereographic projection is singular at θ=π (`nan` in
   `detector_stereographic.dat` is expected). `get_spherical_plot_grid` falls back to a `(θ, φ)` map.
+- Spherical stereographic axes are always in `lambda` (`plot_field.SPHERICAL_AXES_UNIT`, matching `main.cpp`'s
+  `detector_axes_unit`), whatever unit `spherical_detector_radius` uses. Rectangular/circular axes use the
+  config key's own unit.
 - Heatmaps of LG runs add secondary `x/w0`, `y/w0` axes (`utils/w0_axes_utils.py`, a leaf module that
   deliberately avoids importing `plot_field` to prevent circular imports).
 - `plot_observables.py` computes the SAM/OAM/TAM densities `S_z`/`L_z`/`J_z`, the fluxes

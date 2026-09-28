@@ -62,7 +62,7 @@ def plot_laser_fields(filepath):
     plt.tight_layout()
 
     # Save a high-res diagnostic image into a per-module subfolder of the run directory's
-    # 'png_folder' (mirroring py_scripts/'s own laser/detector/particle/radiation/debug layout),
+    # 'png_folder' (mirroring py_scripts/'s own laser/detector/particle/radiation layout),
     # alongside the .dat files.
     png_dir = os.path.join(os.path.dirname(filepath), "png_folder", MODULE_NAME)
     os.makedirs(png_dir, exist_ok=True)

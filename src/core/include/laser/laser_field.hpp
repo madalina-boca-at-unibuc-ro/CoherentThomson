@@ -68,8 +68,7 @@ public:
   // Faraday tensor), but for the incident beam itself -- see Radiation::export_incident_field_fourier,
   // the caller that uses this. Deliberately duplicates
   // get_faraday_tensor's combination logic rather than sharing it (dropping the final real(...) isn't
-  // easily factored without templating the whole function), matching this project's existing
-  // precedent of isolated diagnostic paths (Debug::export_radiation_integrand vs. Radiation::compute_radiation).
+  // easily factored without templating the whole function).
   Core::MathUtils::ComplexFourTensor get_complex_faraday_tensor(const Core::MathUtils::RealFourVector& x_mu) const;
 
   double get_omega() const { return omega; }

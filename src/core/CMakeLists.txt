@@ -11,7 +11,6 @@ add_library(coherent_thomson_core STATIC
     simulation/simulation.cpp
     radiation/radiation.cpp
     radiation/radiation_plotter.cpp
-    debug/debug_radiation.cpp
     logging/run_log.cpp
 )
 

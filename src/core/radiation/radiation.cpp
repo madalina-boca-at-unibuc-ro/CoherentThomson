@@ -1,7 +1,10 @@
 #include "../include/radiation/radiation.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 #include "../include/phys_utils/phys_utils.hpp"
 
@@ -151,11 +154,25 @@ inline double direct_long_range_tensor_term(const MathUtils::RealFourVector& n_R
 
 }  // namespace
 
-void compute_radiation(Particle::Electron& electron, const Laser::LaserField& laser,
-                       const std::vector<double>& frequencies_list, const Detector::Detector_2D& detector,
-                       Simulation::PackedRadiationField& field, bool use_direct_formula) {
-  electron.compute_trajectory(laser);
+namespace {
 
+// Shared by both exact and long-distance paths: frequencies_list is normally an arithmetic
+// progression (see compute_radiation_exact's comment on the recurrence), so each tau's phase factors
+// can be built by recurrence from two std::polar calls instead of one per frequency.
+bool are_evenly_spaced(const std::vector<double>& frequencies_list, double step) {
+  size_t N_freq = frequencies_list.size();
+  bool evenly_spaced = N_freq > 0;
+  for (size_t i = 2; evenly_spaced && i < N_freq; ++i) {
+    double expected = frequencies_list[0] + static_cast<double>(i) * step;
+    evenly_spaced = std::abs(frequencies_list[i] - expected) <= 1e-9 * std::abs(expected);
+  }
+  return evenly_spaced;
+}
+
+// Exact formulas ("simplified"/"direct"): theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md.
+void compute_radiation_exact(const Particle::Electron& electron, const std::vector<double>& frequencies_list,
+                             const Detector::Detector_2D& detector, Simulation::PackedRadiationField& field,
+                             bool use_direct_formula) {
   size_t N_tau = electron.get_N_tau();
   size_t N_d = detector.get_total_points();
   size_t N_freq = frequencies_list.size();
@@ -176,11 +193,7 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
   // which harmonic index the list starts at (N_harmonics_min): the recurrence only needs constant
   // spacing, not that frequencies_list[0] itself be the fundamental.
   double step = N_freq > 1 ? frequencies_list[1] - frequencies_list[0] : 0.0;
-  bool frequencies_are_evenly_spaced = N_freq > 0;
-  for (size_t i = 2; frequencies_are_evenly_spaced && i < N_freq; ++i) {
-    double expected = frequencies_list[0] + static_cast<double>(i) * step;
-    frequencies_are_evenly_spaced = std::abs(frequencies_list[i] - expected) <= 1e-9 * std::abs(expected);
-  }
+  bool frequencies_are_evenly_spaced = are_evenly_spaced(frequencies_list, step);
 
   // Per-frequency accumulators for one screen point at a time, reused (and zeroed) across
   // screen points rather than reallocated every iteration. Packed as ComplexBivector (6 complex
@@ -367,6 +380,495 @@ void compute_radiation(Particle::Electron& electron, const Laser::LaserField& la
       field.field[i_freq][i_d].short_range += local_short[i_freq];
       field.field[i_freq][i_d].boundary += local_boundary[i_freq];
     }
+  }
+}
+
+// Long-distance formulas ("long_distance_simplified"/"long_distance_direct"):
+// theory/long_distance_direct_simplified_coding_guide.md, sections 1-6, via the two-projection method.
+//
+// Per (electron, screen point) the geometry is frozen at the electron's first sample r(tau_m):
+// x_0 = x - r(tau_m), n_0 = x_0/|x_0|, and a fixed transverse basis e_1, e_2 (e_1 x e_2 = n_0). Per tau
+// only two complex scalars per frequency are accumulated (p_1, p_2), and the tensor is rebuilt once per
+// frequency as p_a (e_a^alpha n_0^beta - n_0^alpha e_a^beta) / |x_0|, general_factor being applied by
+// run_simulation as for the exact formulas. The full phase k(|x_0| + r^0 - n_0.r_0) is split into the
+// constant k(|x_0| + r^0(tau_m)), applied once per frequency at reconstruction, and the varying
+// k(r^0 - r^0(tau_m) - n_0.r_0) inside the tau loop. This is only for precision: |x_0| ~ 1e9 a.u. would
+// otherwise dominate the argument and cost ~1e-9 rad of rounding per tau, amplified by the tau-sum
+// cancellation at weak harmonics. The in-loop phase stays frequency-independent, so the evenly-spaced
+// recurrence applies. Only the spatial position is shifted by r(tau_m); the time is not reset (its constant
+// part is in the reconstruction factor), so relative phases between electrons are kept.
+//
+// GCC's SLP vectorizer miscompiles this function under -O3 -march=native (seen with GCC 15.2): the
+// complex accumulation in the i_freq loop below then returns wrong sums at every frequency after the
+// first (h2 off by ~100x, h3 by ~1e4x), while -O0/-O2/-O3 without -march=native, or -O3 -march=native
+// with -fno-tree-slp-vectorize or -ffp-contract=off, all agree. UBSan/ASan report nothing, and the
+// per-tau inputs are correct, so this is taken as a compiler bug. SLP is therefore disabled for this
+// function only (the exact path is unaffected). Re-check before removing: run long_distance_simplified
+// with N_harmonics >= 2 and compare against a -O0 build.
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("no-tree-slp-vectorize")))
+#endif
+void compute_radiation_long_distance(const Particle::Electron& electron, const std::vector<double>& frequencies_list,
+                                     const Detector::Detector_2D& detector, Simulation::PackedRadiationField& field,
+                                     bool use_direct_formula) {
+  size_t N_tau = electron.get_N_tau();
+  size_t N_d = detector.get_total_points();
+  size_t N_freq = frequencies_list.size();
+  const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
+  double d_tau = electron.get_d_tau();
+  if (N_tau == 0 || N_freq == 0) return;
+
+  double step = N_freq > 1 ? frequencies_list[1] - frequencies_list[0] : 0.0;
+  bool frequencies_are_evenly_spaced = are_evenly_spaced(frequencies_list, step);
+
+  const MathUtils::RealFourVector& reference = trajectory[0].position;  // r(tau_m); only [1..3] are used
+
+  // bulk[i_freq][a]: the tau-integral part of p_a (simplified: without its ik factor, applied after the
+  // tau loop; direct: the whole p_a). endpoint[i_freq][a]: the simplified endpoint bracket (with its sign).
+  using Projections = std::array<MathUtils::Complex, 2>;
+  std::vector<Projections> bulk(N_freq);
+  std::vector<Projections> endpoint(N_freq);
+
+  for (size_t i_d = 0; i_d < N_d; i_d++) {
+    const MathUtils::RealFourVector detector_point = detector.get_point(i_d);
+    std::fill(bulk.begin(), bulk.end(), Projections{});
+    std::fill(endpoint.begin(), endpoint.end(), Projections{});
+
+    std::array<double, 3> n0{detector_point[1] - reference[1], detector_point[2] - reference[2],
+                             detector_point[3] - reference[3]};
+    double x0_norm = std::sqrt(n0[0] * n0[0] + n0[1] * n0[1] + n0[2] * n0[2]);
+    if (!(x0_norm > 0.0)) {
+      throw std::runtime_error("Radiation::compute_radiation: long-distance formula needs |x - r(tau_m)| > 0, "
+                               "but screen point " +
+                               std::to_string(i_d) + " coincides with an electron's start");
+    }
+    for (double& component : n0)
+      component /= x0_norm;
+
+    // Transverse basis (guide section 5): the Cartesian axis least aligned with n_0, projected
+    // orthogonal to n_0 and normalized, then e_2 = n_0 x e_1.
+    size_t axis = 0;
+    for (size_t i = 1; i < 3; ++i) {
+      if (std::abs(n0[i]) < std::abs(n0[axis])) axis = i;
+    }
+    std::array<double, 3> e1{};
+    e1[axis] = 1.0;
+    for (size_t i = 0; i < 3; ++i)
+      e1[i] -= n0[axis] * n0[i];
+    double e1_norm = std::sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]);
+    for (double& component : e1)
+      component /= e1_norm;
+    std::array<double, 3> e2{n0[1] * e1[2] - n0[2] * e1[1], n0[2] * e1[0] - n0[0] * e1[2],
+                             n0[0] * e1[1] - n0[1] * e1[0]};
+    const std::array<std::array<double, 3>, 2> basis{e1, e2};
+
+    for (size_t i_tau = 0; i_tau < N_tau; i_tau++) {
+      const MathUtils::RealFourVector& x = trajectory[i_tau].position;
+      const MathUtils::RealFourVector& u = trajectory[i_tau].momentum;
+
+      double n0_dot_r0 = n0[0] * (x[1] - reference[1]) + n0[1] * (x[2] - reference[2]) + n0[2] * (x[3] - reference[3]);
+      double n0_contract_u = u[0] - (n0[0] * u[1] + n0[1] * u[2] + n0[2] * u[3]);
+      std::array<double, 2> e_dot_u{};
+      for (size_t a = 0; a < 2; ++a)
+        e_dot_u[a] = basis[a][0] * u[1] + basis[a][1] * u[2] + basis[a][2] * u[3];
+
+      double tau_weight = d_tau;
+      if (N_tau > 1 && (i_tau == 0 || i_tau == N_tau - 1)) tau_weight *= 0.5;
+
+      // Frequency-independent geometric factor multiplying the phase in the tau-integral of p_a.
+      // Simplified: e_a.u (times ik later). Direct: -[(n_0.u)(e_a.w) - (n_0.w)(e_a.u)]/(n_0.u)^2.
+      std::array<double, 2> bulk_term{};
+      if (use_direct_formula) {
+        const MathUtils::RealFourVector& w = trajectory[i_tau].acceleration;
+        double n0_contract_w = w[0] - (n0[0] * w[1] + n0[1] * w[2] + n0[2] * w[3]);
+        for (size_t a = 0; a < 2; ++a) {
+          double e_dot_w = basis[a][0] * w[1] + basis[a][1] * w[2] + basis[a][2] * w[3];
+          bulk_term[a] =
+              -tau_weight * (n0_contract_u * e_dot_w - n0_contract_w * e_dot_u[a]) / (n0_contract_u * n0_contract_u);
+        }
+      } else {
+        for (size_t a = 0; a < 2; ++a)
+          bulk_term[a] = tau_weight * e_dot_u[a];
+      }
+
+      // Simplified endpoint bracket -[(e_a.u)/(n_0.u) e^{ik Phi}]_{tau_m}^{tau_M}: +1 at tau_m, -1 at
+      // tau_M after the leading minus; both apply (and cancel) when N_tau == 1. No quadrature weight.
+      double endpoint_sign = 0.0;
+      if (!use_direct_formula) {
+        if (i_tau == 0) endpoint_sign += 1.0;
+        if (i_tau == N_tau - 1) endpoint_sign -= 1.0;
+      }
+      std::array<double, 2> endpoint_term{};
+      for (size_t a = 0; a < 2; ++a)
+        endpoint_term[a] = endpoint_sign * e_dot_u[a] / n0_contract_u;
+      bool has_endpoint_contribution = endpoint_sign != 0.0;
+
+      double phase_base = (x[0] - reference[0]) - n0_dot_r0;
+      MathUtils::Complex cexp = std::polar(1.0, phase_base * frequencies_list[0]);
+      MathUtils::Complex cexp_step = N_freq > 1 ? std::polar(1.0, phase_base * step) : MathUtils::Complex{};
+
+      for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
+        if (!frequencies_are_evenly_spaced) cexp = std::polar(1.0, phase_base * frequencies_list[i_freq]);
+        bulk[i_freq][0] += bulk_term[0] * cexp;
+        bulk[i_freq][1] += bulk_term[1] * cexp;
+        if (has_endpoint_contribution) {
+          endpoint[i_freq][0] += endpoint_term[0] * cexp;
+          endpoint[i_freq][1] += endpoint_term[1] * cexp;
+        }
+        if (frequencies_are_evenly_spaced) cexp *= cexp_step;
+      }
+    }
+
+    // Reconstruction (guide section 6): sum_a p_a (e_a^alpha n_0^beta - n_0^alpha e_a^beta) / |x_0|, in
+    // the packed (0,1),(0,2),(0,3),(1,2),(1,3),(2,3) order, with e_a^0 = 0 and n_0^0 = 1.
+    std::array<std::array<double, 6>, 2> basis_bivector{};
+    for (size_t a = 0; a < 2; ++a) {
+      const std::array<double, 3>& e = basis[a];
+      basis_bivector[a] = {
+          -e[0], -e[1], -e[2], e[0] * n0[1] - n0[0] * e[1], e[0] * n0[2] - n0[0] * e[2], e[1] * n0[2] - n0[1] * e[2]};
+    }
+    double inv_x0_norm = 1.0 / x0_norm;
+    double constant_phase = x0_norm + reference[0];  // |x_0| + r^0(tau_m), taken out of the tau loop
+    for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
+      // e^{ik(|x_0| + r^0(tau_m))}/|x_0|; the simplified bulk p_a also carries ik (guide 5.2), while the
+      // direct p_a is complete as accumulated (guide 5.1).
+      MathUtils::Complex amplitude = std::polar(inv_x0_norm, frequencies_list[i_freq] * constant_phase);
+      MathUtils::Complex bulk_factor =
+          use_direct_formula ? amplitude : MathUtils::Complex{0.0, frequencies_list[i_freq]} * amplitude;
+      Simulation::PackedFaraday& target = field.field[i_freq][i_d];
+      for (size_t a = 0; a < 2; ++a) {
+        MathUtils::Complex p_bulk = bulk_factor * bulk[i_freq][a];
+        MathUtils::Complex p_endpoint = amplitude * endpoint[i_freq][a];
+        for (size_t index = 0; index < 6; ++index) {
+          target.long_range[index] += p_bulk * basis_bivector[a][index];
+          target.boundary[index] += p_endpoint * basis_bivector[a][index];
+        }
+      }
+    }
+  }
+}
+
+// e^{i angle} for a small angle (|angle| <= kMaxSteppedAngle), by Taylor series: cos to angle^10 and sin
+// to angle^11, so the truncation error is below ~1e-16 at the largest allowed angle.
+inline void small_angle_phasor(double angle, double& cos_value, double& sin_value) {
+  double a2 = angle * angle;
+  cos_value =
+      1.0 - a2 * (1.0 / 2) *
+                (1.0 - a2 * (1.0 / 12) * (1.0 - a2 * (1.0 / 30) * (1.0 - a2 * (1.0 / 56) * (1.0 - a2 * (1.0 / 90)))));
+  sin_value =
+      angle * (1.0 - a2 * (1.0 / 6) *
+                         (1.0 - a2 * (1.0 / 20) *
+                                    (1.0 - a2 * (1.0 / 42) * (1.0 - a2 * (1.0 / 72) * (1.0 - a2 * (1.0 / 110))))));
+}
+
+constexpr double kMaxSteppedAngle = 0.25;  // polynomial range; larger angles are halved first
+constexpr size_t kMaxHalvings = 6;         // up to |angle| = 16 rad per step; beyond that std::polar is used
+constexpr size_t kAnchorInterval = 64;     // exact std::polar re-anchoring period, in tau steps
+constexpr size_t kScreenBlock = 8;         // screen points stepped together (independent chains)
+
+// Multiplies each phasor (re[l], im[l]) of a block by e^{i scale*increment[l]*2^halvings}: the polynomial
+// at scale*increment[l] (|.| <= kMaxSteppedAngle), squared `halvings` times.
+inline void advance_phasors(double* re, double* im, const double* increment, double scale, size_t halvings) {
+  double c[kScreenBlock], s[kScreenBlock];
+  for (size_t l = 0; l < kScreenBlock; ++l)
+    small_angle_phasor(scale * increment[l], c[l], s[l]);
+  for (size_t h = 0; h < halvings; ++h) {
+    for (size_t l = 0; l < kScreenBlock; ++l) {
+      double c_squared = c[l] * c[l] - s[l] * s[l];
+      s[l] = 2.0 * c[l] * s[l];
+      c[l] = c_squared;
+    }
+  }
+  for (size_t l = 0; l < kScreenBlock; ++l) {
+    double new_re = re[l] * c[l] - im[l] * s[l];
+    im[l] = re[l] * s[l] + im[l] * c[l];
+    re[l] = new_re;
+  }
+}
+
+// Same formulas and output as compute_radiation_long_distance ("long_distance_*_approx" modes), but the
+// phase factor is advanced along tau instead of evaluated from scratch. With n_0 fixed, the long-distance
+// phase is linear in the trajectory, so between consecutive samples it changes by
+// Delta Phi_j = Delta r^0_j - n_0.Delta r_j (differences of stored samples, hence accurate), and
+// e^{ik Phi_{j+1}} = e^{ik Phi_j} e^{ik Delta Phi_j}, with the second factor from small_angle_phasor. Every
+// kAnchorInterval steps (and if |k Delta Phi| exceeds even the halving range) the phasor is reset from the exact
+// in-loop phase with std::polar, which bounds the accumulated rounding error. As in the unstepped function,
+// the constant k(|x_0| + r^0(tau_m)) is applied at reconstruction, not in the loop. kScreenBlock screen points are
+// processed together so their independent phasor chains overlap in the CPU (a single chain is
+// latency-bound and barely beats std::polar). Frequencies use the same evenly-spaced recurrence as the other
+// paths, with both of its phasors (base and step) stepped; a non-evenly-spaced list falls back to
+// compute_radiation_long_distance.
+//
+// SLP is disabled here for the same reason as in compute_radiation_long_distance (GCC 15.2 miscompile).
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("no-tree-slp-vectorize")))
+#endif
+void compute_radiation_long_distance_stepped(const Particle::Electron& electron,
+                                             const std::vector<double>& frequencies_list,
+                                             const Detector::Detector_2D& detector,
+                                             Simulation::PackedRadiationField& field, bool use_direct_formula) {
+  size_t N_tau = electron.get_N_tau();
+  size_t N_d = detector.get_total_points();
+  size_t N_freq = frequencies_list.size();
+  if (N_tau == 0 || N_freq == 0 || N_d == 0) return;
+
+  double step = N_freq > 1 ? frequencies_list[1] - frequencies_list[0] : 0.0;
+  if (!are_evenly_spaced(frequencies_list, step)) {
+    compute_radiation_long_distance(electron, frequencies_list, detector, field, use_direct_formula);
+    return;
+  }
+  const double k0 = frequencies_list[0];
+  const bool multi_frequency = N_freq > 1;
+  const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
+  const double d_tau = electron.get_d_tau();
+  const MathUtils::RealFourVector& reference = trajectory[0].position;  // r(tau_m)
+  constexpr size_t L = kScreenBlock;
+
+  // Screen-point-independent per-tau data, in structure-of-arrays form: r_0 = r - r(tau_m) and the
+  // increments Delta r_j = r_j - r_{j-1} (index 0 unused), taken directly from the stored samples.
+  std::vector<double> t0(N_tau), rx(N_tau), ry(N_tau), rz(N_tau), dt0(N_tau), drx(N_tau), dry(N_tau), drz(N_tau);
+  for (size_t j = 0; j < N_tau; ++j) {
+    const MathUtils::RealFourVector& x = trajectory[j].position;
+    t0[j] = x[0] - reference[0];
+    rx[j] = x[1] - reference[1];
+    ry[j] = x[2] - reference[2];
+    rz[j] = x[3] - reference[3];
+    if (j > 0) {
+      const MathUtils::RealFourVector& x_prev = trajectory[j - 1].position;
+      dt0[j] = x[0] - x_prev[0];
+      drx[j] = x[1] - x_prev[1];
+      dry[j] = x[2] - x_prev[2];
+      drz[j] = x[3] - x_prev[3];
+    }
+  }
+
+  // Accumulators for one block, indexed [(i_freq * 2 + a) * L + l]: the tau-integral part of p_a (without
+  // the simplified form's ik) and the simplified endpoint bracket, as in compute_radiation_long_distance.
+  std::vector<double> bulk_re(N_freq * 2 * L), bulk_im(N_freq * 2 * L);
+  std::vector<double> end_re(N_freq * 2 * L), end_im(N_freq * 2 * L);
+
+  for (size_t block_begin = 0; block_begin < N_d; block_begin += L) {
+    size_t block_size = std::min(L, N_d - block_begin);
+
+    // Per-screen-point geometry; slots past block_size repeat the last point and are never stored.
+    double D[L], nx[L], ny[L], nz[L], e1x[L], e1y[L], e1z[L], e2x[L], e2y[L], e2z[L];
+    for (size_t l = 0; l < L; ++l) {
+      size_t i_d = block_begin + std::min(l, block_size - 1);
+      const MathUtils::RealFourVector detector_point = detector.get_point(i_d);
+      std::array<double, 3> n0{detector_point[1] - reference[1], detector_point[2] - reference[2],
+                               detector_point[3] - reference[3]};
+      double x0_norm = std::sqrt(n0[0] * n0[0] + n0[1] * n0[1] + n0[2] * n0[2]);
+      if (!(x0_norm > 0.0)) {
+        throw std::runtime_error("Radiation::compute_radiation: long-distance formula needs |x - r(tau_m)| > 0, "
+                                 "but screen point " +
+                                 std::to_string(i_d) + " coincides with an electron's start");
+      }
+      for (double& component : n0)
+        component /= x0_norm;
+      size_t axis = 0;
+      for (size_t i = 1; i < 3; ++i) {
+        if (std::abs(n0[i]) < std::abs(n0[axis])) axis = i;
+      }
+      std::array<double, 3> e1{};
+      e1[axis] = 1.0;
+      for (size_t i = 0; i < 3; ++i)
+        e1[i] -= n0[axis] * n0[i];
+      double e1_norm = std::sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]);
+      for (double& component : e1)
+        component /= e1_norm;
+      D[l] = x0_norm;
+      nx[l] = n0[0];
+      ny[l] = n0[1];
+      nz[l] = n0[2];
+      e1x[l] = e1[0];
+      e1y[l] = e1[1];
+      e1z[l] = e1[2];
+      e2x[l] = n0[1] * e1[2] - n0[2] * e1[1];
+      e2y[l] = n0[2] * e1[0] - n0[0] * e1[2];
+      e2z[l] = n0[0] * e1[1] - n0[1] * e1[0];
+    }
+
+    std::fill(bulk_re.begin(), bulk_re.end(), 0.0);
+    std::fill(bulk_im.begin(), bulk_im.end(), 0.0);
+    std::fill(end_re.begin(), end_re.end(), 0.0);
+    std::fill(end_im.begin(), end_im.end(), 0.0);
+
+    // Base phasor e^{i k0 Phi} and frequency-step phasor e^{i step Phi}, carried along tau.
+    double base_re[L], base_im[L], step_re[L] = {}, step_im[L] = {};
+
+    for (size_t j = 0; j < N_tau; ++j) {
+      const MathUtils::RealFourVector& u = trajectory[j].momentum;
+
+      // Advance the phasors to tau_j by the small-angle step (branch-free over the block, so it vectorizes),
+      // then re-anchor from the exact phase at anchor steps and for any point whose step angle is too large.
+      // The step phasor is only needed (and only advanced) when there is more than one frequency.
+      bool anchor = j % kAnchorInterval == 0;
+      // Harmonic N advances by roughly 2*pi*N/trajectory_NT per step, so high harmonics exceed
+      // kMaxSteppedAngle. Then the polynomial is evaluated at angle/2^m and squared m times (same m for the
+      // whole block, so the loops stay vectorizable); beyond kMaxHalvings the block falls back to std::polar.
+      bool any_large_angle = false;
+      if (!anchor) {
+        double phi_increment[L];
+        double max_increment = 0.0;
+        for (size_t l = 0; l < L; ++l) {
+          phi_increment[l] = dt0[j] - (nx[l] * drx[j] + ny[l] * dry[j] + nz[l] * drz[j]);
+          max_increment = std::max(max_increment, std::abs(phi_increment[l]));
+        }
+        double max_angle = max_increment * std::max(std::abs(k0), multi_frequency ? std::abs(step) : 0.0);
+        size_t halvings = 0;
+        double angle_scale = 1.0;
+        while (max_angle * angle_scale > kMaxSteppedAngle && halvings < kMaxHalvings) {
+          angle_scale *= 0.5;
+          ++halvings;
+        }
+        any_large_angle = max_angle * angle_scale > kMaxSteppedAngle;
+        if (!any_large_angle) {
+          advance_phasors(base_re, base_im, phi_increment, k0 * angle_scale, halvings);
+          if (multi_frequency) advance_phasors(step_re, step_im, phi_increment, step * angle_scale, halvings);
+        }
+      }
+      if (anchor || any_large_angle) {
+        for (size_t l = 0; l < L; ++l) {
+          double phase = t0[j] - (nx[l] * rx[j] + ny[l] * ry[j] + nz[l] * rz[j]);
+          std::complex<double> base = std::polar(1.0, phase * k0);
+          base_re[l] = base.real();
+          base_im[l] = base.imag();
+          if (multi_frequency) {
+            std::complex<double> step_phasor = std::polar(1.0, phase * step);
+            step_re[l] = step_phasor.real();
+            step_im[l] = step_phasor.imag();
+          }
+        }
+      }
+
+      double tau_weight = d_tau;
+      if (N_tau > 1 && (j == 0 || j == N_tau - 1)) tau_weight *= 0.5;
+
+      // Frequency-independent factors per screen point (see compute_radiation_long_distance).
+      double bulk_term[2][L], endpoint_term[2][L] = {};
+      double endpoint_sign = 0.0;
+      if (!use_direct_formula) {
+        if (j == 0) endpoint_sign += 1.0;
+        if (j == N_tau - 1) endpoint_sign -= 1.0;
+      }
+      bool has_endpoint_contribution = endpoint_sign != 0.0;
+      for (size_t l = 0; l < L; ++l) {
+        double n0_contract_u = u[0] - (nx[l] * u[1] + ny[l] * u[2] + nz[l] * u[3]);
+        double e1_dot_u = e1x[l] * u[1] + e1y[l] * u[2] + e1z[l] * u[3];
+        double e2_dot_u = e2x[l] * u[1] + e2y[l] * u[2] + e2z[l] * u[3];
+        if (use_direct_formula) {
+          const MathUtils::RealFourVector& w = trajectory[j].acceleration;
+          double n0_contract_w = w[0] - (nx[l] * w[1] + ny[l] * w[2] + nz[l] * w[3]);
+          double e1_dot_w = e1x[l] * w[1] + e1y[l] * w[2] + e1z[l] * w[3];
+          double e2_dot_w = e2x[l] * w[1] + e2y[l] * w[2] + e2z[l] * w[3];
+          double scale = -tau_weight / (n0_contract_u * n0_contract_u);
+          bulk_term[0][l] = scale * (n0_contract_u * e1_dot_w - n0_contract_w * e1_dot_u);
+          bulk_term[1][l] = scale * (n0_contract_u * e2_dot_w - n0_contract_w * e2_dot_u);
+        } else {
+          bulk_term[0][l] = tau_weight * e1_dot_u;
+          bulk_term[1][l] = tau_weight * e2_dot_u;
+        }
+        if (has_endpoint_contribution) {
+          endpoint_term[0][l] = endpoint_sign * e1_dot_u / n0_contract_u;
+          endpoint_term[1][l] = endpoint_sign * e2_dot_u / n0_contract_u;
+        }
+      }
+
+      double freq_re[L], freq_im[L];
+      for (size_t l = 0; l < L; ++l) {
+        freq_re[l] = base_re[l];
+        freq_im[l] = base_im[l];
+      }
+      for (size_t i_freq = 0; i_freq < N_freq; ++i_freq) {
+        for (size_t a = 0; a < 2; ++a) {
+          size_t offset = (i_freq * 2 + a) * L;
+          for (size_t l = 0; l < L; ++l) {
+            bulk_re[offset + l] += bulk_term[a][l] * freq_re[l];
+            bulk_im[offset + l] += bulk_term[a][l] * freq_im[l];
+          }
+          if (has_endpoint_contribution) {
+            for (size_t l = 0; l < L; ++l) {
+              end_re[offset + l] += endpoint_term[a][l] * freq_re[l];
+              end_im[offset + l] += endpoint_term[a][l] * freq_im[l];
+            }
+          }
+        }
+        for (size_t l = 0; l < L; ++l) {
+          double re = freq_re[l] * step_re[l] - freq_im[l] * step_im[l];
+          freq_im[l] = freq_re[l] * step_im[l] + freq_im[l] * step_re[l];
+          freq_re[l] = re;
+        }
+      }
+    }
+
+    // Reconstruction, identical to compute_radiation_long_distance's.
+    for (size_t l = 0; l < block_size; ++l) {
+      size_t i_d = block_begin + l;
+      const std::array<std::array<double, 3>, 2> basis{{{e1x[l], e1y[l], e1z[l]}, {e2x[l], e2y[l], e2z[l]}}};
+      std::array<std::array<double, 6>, 2> basis_bivector{};
+      for (size_t a = 0; a < 2; ++a) {
+        const std::array<double, 3>& e = basis[a];
+        basis_bivector[a] = {
+            -e[0], -e[1], -e[2], e[0] * ny[l] - nx[l] * e[1], e[0] * nz[l] - nx[l] * e[2], e[1] * nz[l] - ny[l] * e[2]};
+      }
+      double inv_x0_norm = 1.0 / D[l];
+      double constant_phase = D[l] + reference[0];  // |x_0| + r^0(tau_m), kept out of the stepped phase
+      for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
+        MathUtils::Complex amplitude = std::polar(inv_x0_norm, frequencies_list[i_freq] * constant_phase);
+        MathUtils::Complex bulk_factor =
+            use_direct_formula ? amplitude : MathUtils::Complex{0.0, frequencies_list[i_freq]} * amplitude;
+        Simulation::PackedFaraday& target = field.field[i_freq][i_d];
+        for (size_t a = 0; a < 2; ++a) {
+          size_t index_acc = (i_freq * 2 + a) * L + l;
+          MathUtils::Complex p_bulk = bulk_factor * MathUtils::Complex{bulk_re[index_acc], bulk_im[index_acc]};
+          MathUtils::Complex p_endpoint = amplitude * MathUtils::Complex{end_re[index_acc], end_im[index_acc]};
+          for (size_t index = 0; index < 6; ++index) {
+            target.long_range[index] += p_bulk * basis_bivector[a][index];
+            target.boundary[index] += p_endpoint * basis_bivector[a][index];
+          }
+        }
+      }
+    }
+  }
+}
+
+}  // namespace
+
+RadiationFormula parse_radiation_formula(const std::string& name) {
+  if (name == "simplified") return RadiationFormula::Simplified;
+  if (name == "direct") return RadiationFormula::Direct;
+  if (name == "long_distance_simplified") return RadiationFormula::LongDistanceSimplified;
+  if (name == "long_distance_direct") return RadiationFormula::LongDistanceDirect;
+  if (name == "long_distance_simplified_approx") return RadiationFormula::LongDistanceSimplifiedApprox;
+  if (name == "long_distance_direct_approx") return RadiationFormula::LongDistanceDirectApprox;
+  throw std::runtime_error("unknown radiation_formula \"" + name +
+                           "\" (expected simplified, direct, long_distance_simplified, long_distance_direct, "
+                           "long_distance_simplified_approx or long_distance_direct_approx)");
+}
+
+void compute_radiation(Particle::Electron& electron, const Laser::LaserField& laser,
+                       const std::vector<double>& frequencies_list, const Detector::Detector_2D& detector,
+                       Simulation::PackedRadiationField& field, RadiationFormula formula) {
+  electron.compute_trajectory(laser);
+  switch (formula) {
+    case RadiationFormula::Simplified:
+      compute_radiation_exact(electron, frequencies_list, detector, field, false);
+      break;
+    case RadiationFormula::Direct:
+      compute_radiation_exact(electron, frequencies_list, detector, field, true);
+      break;
+    case RadiationFormula::LongDistanceSimplified:
+      compute_radiation_long_distance(electron, frequencies_list, detector, field, false);
+      break;
+    case RadiationFormula::LongDistanceDirect:
+      compute_radiation_long_distance(electron, frequencies_list, detector, field, true);
+      break;
+    case RadiationFormula::LongDistanceSimplifiedApprox:
+      compute_radiation_long_distance_stepped(electron, frequencies_list, detector, field, false);
+      break;
+    case RadiationFormula::LongDistanceDirectApprox:
+      compute_radiation_long_distance_stepped(electron, frequencies_list, detector, field, true);
+      break;
   }
 }
 
