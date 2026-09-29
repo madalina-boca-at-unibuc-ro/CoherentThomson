@@ -44,15 +44,23 @@ are gitignored). C++20; `-Wall -Wextra -Wpedantic` except on `RelWithDebInfo`/`M
   `phys_utils.hpp`), rebuild with `cmake --build build/ --clean-first`. Not root-caused.
 - **Every build directory writes the same `bin/coherent_thomson_solver`.** A no-op `cmake --build` of another
   build dir does *not* relink, so `bin/` keeps whichever binary was linked last. To compare builds, use
-  `--clean-first` and copy each binary out right after building it.
+  `--clean-first` and copy each binary out right after building it. The `release` and `debug` presets also share
+  one `build/` directory (and so one CMake cache), so switching presets reconfigures that same tree.
+- **`build/` and `bin/` are synced by Dropbox** (the repo lives under `~/Dropbox`, and they're only gitignored,
+  not Dropbox-ignored). A `-march=native` binary or object files from another machine can arrive through the
+  sync, and file timestamps can change under make. This *may* explain the missed rebuilds above (unconfirmed).
+  If a build acts strangely, run `--clean-first` on this machine before debugging anything else.
 - **GCC's SLP vectorizer miscompiles `compute_radiation_long_distance`** under `-O3 -march=native` (GCC 15.2),
   giving wrong sums at every frequency after the first. It is disabled for that function only, with
   `__attribute__((optimize("no-tree-slp-vectorize")))`. Don't remove it without re-running
   `long_distance_simplified` with `N_harmonics >= 2` against a `-O0` build.
 
 **Iterating on code changes:** copy a config (don't edit `config/config.cfg` in place unless the task is about the
-default config) and drop `beam_particle_count` to e.g. `50`; run time scales with electron count. Configs: `config/config.cfg` (default; parameter-matched to the Python reference, so use it for
-cross-checks), `config/config_initial_momentum.cfg`.
+default config) and drop `beam_particle_count` to e.g. `50`; run time scales with electron count. Configs:
+`config/config.cfg` (default, for current experiments; its parameters change freely),
+`config/config_cross_check.cfg` (parameter-matched to the Python reference's `main.py` `INPUTS`, with the mapping
+and date in its header; use it for every C++-vs-Python comparison, and update it when those `INPUTS` change),
+`config/config_initial_momentum.cfg`.
 
 Formatting: `clang-format -i` on touched files (`.clang-format`: Google style, 120 cols, 2-space indent).
 `py_scripts/` is type-checked against `.venv` via `pyrefly.toml`/`pyrightconfig.json` (editor config only, no
@@ -158,8 +166,8 @@ Overview of all six `radiation_formula` modes and every optimization, with formu
   one), `F_b ∝ [(nᵅuᵝ−nᵝuᵅ)/(R(n·u))]` evaluated between the two endpoints. The direct `F_s` carries an explicit
   `c²` in `short_range_prefactor_direct`, because the doc's direct `F_s` has a bare `q` while `general_factor`
   applies `q/c²` to everything.
-- `radiation_formula` (parsed into `Radiation::RadiationFormula`, which throws on an unknown name) selects
-  `simplified` (default: velocity-only integrand plus the boundary term `F_b`), `direct` (Liénard–Wiechert FT
+- `radiation_formula` (a **required** key with no default, parsed into `Radiation::RadiationFormula`, which throws
+  on an unknown name) selects `simplified` (velocity-only integrand plus the boundary term `F_b`), `direct` (Liénard–Wiechert FT
   that needs the stored 4-acceleration; `F_b ≡ 0`), or their long-distance approximations (below). Cross-checking the two
   formulas against each other is the main correctness tool. With the v2 `F_s` they agree to the trapezoid's
   `O(dτ²)` error (4x smaller per doubling of `trajectory_NT`) down to a 1 λ screen distance. A mismatch of order
@@ -171,24 +179,19 @@ Overview of all six `radiation_formula` modes and every optimization, with formu
   validation in `theory/long_distance_implementation_review.md`). Per (electron, screen point) the geometry is
   frozen at the electron's own first sample `r(tau_m)`: fixed `n_0`, `1/|x_0|` amplitude, linearized phase
   `k(|x_0| + r^0 − n_0·r_0)` (time is not reset), no `F_s`. The constant part `e^{ik(|x_0| + r^0(tau_m))}` is
-  applied once per frequency at reconstruction, **not** inside the tau loop. Keep it there: inside the loop,
-  `|x_0| ~ 1e9` a.u. costs ~1e-9 rad of rounding per step, which the tau-sum cancellation amplified to ~1e-5
-  relative at weak harmonics (now ~5e-9). It uses the two-transverse-projection method (2 complex
+  applied once per frequency at reconstruction, **not** inside the tau loop. Keep it there: inside the loop, the
+  rounding of `|x_0| ~ 1e9` a.u. costs precision at weak harmonics (`implementation_details.md` §4.3). It uses the two-transverse-projection method (2 complex
   scalars per tau instead of 6 components). Output: `SR_` is always 0; simplified puts its bulk in `LR_` and its
   endpoint in `BR_`; direct puts everything in `LR_`. Because it uses `u_perp`, its `LR_`/`BR_` split differs from
   the exact one (no ~1000x on-axis cancellation), so only the total is comparable. Against exact `direct` the
-  error scales ~`1/D` (3.6e-5 at 144000 λ on `config.cfg`) and doesn't change with `trajectory_NT`. It runs ~2x
-  faster than exact.
+  error scales ~`1/D` and doesn't change with `trajectory_NT`, so it's only for far screens.
 - **`long_distance_simplified_approx`/`long_distance_direct_approx`** (`compute_radiation_long_distance_stepped`)
   are the same LD formulas and outputs, but the phase factor is advanced along tau:
   `e^{ikΦ_{j+1}} = e^{ikΦ_j}·e^{ikΔΦ_j}`, with `ΔΦ_j = Δr⁰ − n₀·Δr` taken from trajectory differences, and a
   Taylor small-angle phasor. Angle halving handles high harmonics, since each step advances about
   `2πN/trajectory_NT` for harmonic N. It re-anchors with exact `std::polar` every 64 steps and processes 8 screen
-  points together as independent SIMD chains. Timing on `config.cfg` (h1): about 11 ns per (screen point, tau)
-  vs 36 ns for LD and 58 ns for exact simplified. With the constant phase outside the loop, approx and unstepped LD agree
-  to ≤1e-7 in Release (mostly to all 7 printed digits), and Release vs `-O0` builds to ≤5e-6 at the weakest
-  harmonics.
-  SLP is disabled for this function too, and it must stay vectorizable. Check with `-fopt-info-vec` that the
+  points together as independent SIMD chains. It is the fastest mode and matches unstepped LD to ≤1e-7 (timings
+  and precision in `implementation_details.md` §5, §7). SLP is disabled for this function too, and it must stay vectorizable. Check with `-fopt-info-vec` that the
   stepping loops (`advance_phasors`) still vectorize after edits.
 - **Quadrature:** trapezoidal weights (`d_tau`, halved at the endpoints) apply to `F_l`/`F_s` only. `F_b` is an
   exact endpoint evaluation (nonzero only at the first/last tau, opposite signs) and gets **no** weight.
@@ -292,8 +295,8 @@ function before adding a unit.
   smaller. Compare `Re/Im(F01)`, not `|F01|`.
 - Per contribution, `B` is exactly ⊥ `n0` but `E` is not: `|B_r|/|B_θ|` ~ 1e-5 while `|E_r|/|E_θ|` ~ 0.1. That is
   a useful regression check for `plot_spherical_components.py`.
-- The independent Python reference is `~/Dropbox/work/bin/python/Superradiant_Thomson`, and `config/config.cfg`
-  is matched to its `main.py` `INPUTS`. Several past bugs were found by cross-checking against it (missing
+- The independent Python reference is `~/Dropbox/work/bin/python/Superradiant_Thomson`, and
+  `config/config_cross_check.cfg` is matched to its `main.py` `INPUTS`. Several past bugs were found by cross-checking against it (missing
   trapezoid weight, `e_0` vs `q_0` sign, envelope `σ` convention, `<a²>`); see `theory/dev_notes.md`.
 - `MathUtils::mirror_antisymmetric_in_place` is dead code.
 

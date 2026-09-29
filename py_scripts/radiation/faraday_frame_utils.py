@@ -11,6 +11,8 @@ from plot_field import read_config_value
 # (2018 CODATA). Mirrors phys_utils.hpp's own value independently (no shared constants module
 # between C++ and Python) -- keep in sync if that one changes.
 C_LIGHT = 137.035999084
+# Core::PhysUtils::AtomicUnits::bohr_radius_m (phys_utils.hpp): 1 a.u. of length in meters -- keep in sync.
+BOHR_RADIUS_M = 5.29177210903e-11
 
 
 def convert_unit_to_number(unit, config_path):

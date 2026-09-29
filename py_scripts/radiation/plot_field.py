@@ -271,11 +271,14 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
 
 def get_detector_geometry_label(detector_type, config_path):
     """
-    Returns a short 'distance=<value> <unit>' (rectangular/circular) or 'radius=<value> <unit>'
-    (spherical) string describing how far the detector screen sits from the beam, read straight
-    from the per-run config snapshot -- unit is whatever's in the config (conventionally 'lambda'
-    for all three keys, per config/coherent_thomson.cfg).
+    Returns a short 'distance=<value> lambda = <value> m' (rectangular/circular) or 'radius=...'
+    (spherical) string describing how far the detector screen sits from the beam, read from the
+    per-run config snapshot. The config value is converted from whatever unit it is given in (via
+    faraday_frame_utils.convert_unit_to_number), then shown in laser wavelengths and in meters.
     """
+    # Imported here, not at module level: faraday_frame_utils itself imports this module.
+    from faraday_frame_utils import convert_unit_to_number, BOHR_RADIUS_M
+
     if detector_type == 'rectangular':
         value, unit = read_config_value('rectangular_detector_distance', config_path)
         label = 'distance'
@@ -288,7 +291,9 @@ def get_detector_geometry_label(detector_type, config_path):
     else:
         raise ValueError(f"Unknown detector_type '{detector_type}'")
 
-    return f"{label}={value}" + (f" {unit}" if unit else "")
+    distance_au = float(value) * convert_unit_to_number(unit, config_path)
+    distance_lambda = distance_au / convert_unit_to_number('lambda', config_path)
+    return f"{label}={distance_lambda:.6g} $\\lambda$ = {distance_au * BOHR_RADIUS_M:.4g} m"
 
 def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     """

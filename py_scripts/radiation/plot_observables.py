@@ -777,7 +777,7 @@ def plot_observables(radiation_filepath):
             add_w0_secondary_axes(ax, w0)
 
             fig.suptitle(f"{name}{title_suffix}, $\\omega$ index {i_omega} "
-                         f"($\\omega/\\omega_1$={omega_ratio:.4g}), {detector_type} detector, "
+                         f"($\\omega/\\omega_1$={omega_ratio:.4g})\n{detector_type} detector, "
                          f"{detector_geometry_label}", fontsize=11)
 
             output_name = f"observable_{tag}_omega{i_omega}.png"
