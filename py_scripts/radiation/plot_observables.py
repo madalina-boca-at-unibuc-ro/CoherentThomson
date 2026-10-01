@@ -69,7 +69,7 @@ np.gradient-based derivatives, e.g. CLAUDE.md's Fresnel-number bullet) -- a coar
 beam (small Fresnel number) may under-resolve the true spatial variation. Note the L_z density/flux
 formulas are invariant under an isotropic rescaling of x/y (x*d/dy-y*d/dx is the rotation generator,
 scale-free under x->c*x, y->c*y), so it does not matter that get_screen_coordinates returns x/y in
-the config's own length unit (e.g. 'lambda') rather than atomic units -- only the screen-integrated
+plot_field.DETECTOR_AXES_UNIT ('lambda') rather than atomic units -- only the screen-integrated
 totals below need an explicit unit conversion, since an area DOES scale with the unit choice.
 
 **Frequency convention (FIXED -- see CLAUDE.md's "missing 1/omega" bug note)**: neither .dat file
@@ -140,7 +140,9 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 from plot_field import (
+    DETECTOR_AXES_UNIT,
     read_config_value,
+    read_length,
     get_screen_coordinates,
     get_rectangular_cell_edges,
     get_detector_geometry_label,
@@ -463,14 +465,11 @@ def get_screen_area_weights_au(detector_type, config_path):
     if detector_type == 'rectangular':
         Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
-        x_min_s, x_unit = read_config_value('rectangular_detector_x_min', config_path)
-        x_max_s, _ = read_config_value('rectangular_detector_x_max', config_path)
-        y_min_s, y_unit = read_config_value('rectangular_detector_y_min', config_path)
-        y_max_s, _ = read_config_value('rectangular_detector_y_max', config_path)
-        x_min = float(x_min_s) * convert_unit_to_number(x_unit, config_path)
-        x_max = float(x_max_s) * convert_unit_to_number(x_unit, config_path)
-        y_min = float(y_min_s) * convert_unit_to_number(y_unit, config_path)
-        y_max = float(y_max_s) * convert_unit_to_number(y_unit, config_path)
+        # Each bound converted with its own unit (they may differ), straight to atomic units.
+        x_min = read_length('rectangular_detector_x_min', config_path, 'a.u.')
+        x_max = read_length('rectangular_detector_x_max', config_path, 'a.u.')
+        y_min = read_length('rectangular_detector_y_min', config_path, 'a.u.')
+        y_max = read_length('rectangular_detector_y_max', config_path, 'a.u.')
 
         w_x = _linear_trapezoidal_weights(Nx, x_min, x_max)
         w_y = _linear_trapezoidal_weights(Ny, y_min, y_max)
@@ -478,10 +477,8 @@ def get_screen_area_weights_au(detector_type, config_path):
 
     N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
     N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
-    R_min_s, r_unit = read_config_value('circular_detector_R_min', config_path)
-    R_max_s, _ = read_config_value('circular_detector_R_max', config_path)
-    R_min = float(R_min_s) * convert_unit_to_number(r_unit, config_path)
-    R_max = float(R_max_s) * convert_unit_to_number(r_unit, config_path)
+    R_min = read_length('circular_detector_R_min', config_path, 'a.u.')
+    R_max = read_length('circular_detector_R_max', config_path, 'a.u.')
 
     w_r_sq = _linear_trapezoidal_weights(N_R, R_min**2, R_max**2)
     w_phi = _linear_trapezoidal_weights(N_phi, 0.0, 2.0 * np.pi)
@@ -725,7 +722,7 @@ def plot_observables(radiation_filepath):
         # there's no strong reason to switch this one to gouraud too (see the circular branch below).
         x, y = get_rectangular_cell_edges(config_path)
         shading = 'flat'
-        axes_unit = read_config_value('rectangular_detector_x_min', config_path)[1]
+        axes_unit = DETECTOR_AXES_UNIT
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
@@ -749,7 +746,7 @@ def plot_observables(radiation_filepath):
         x = x_centers.reshape(grid_shape)
         y = y_centers.reshape(grid_shape)
         shading = 'gouraud'
-        axes_unit = read_config_value('circular_detector_R_min', config_path)[1]
+        axes_unit = DETECTOR_AXES_UNIT
 
     w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
 

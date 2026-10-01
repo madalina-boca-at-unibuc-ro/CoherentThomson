@@ -10,9 +10,11 @@ from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
-# Length unit of the spherical detector's stereographic axes: main.cpp's detector_axes_unit, which
+# Length unit of every detector type's screen axes: main.cpp's detector_axes_unit, which
 # detector_stereographic.dat (and so get_screen_coordinates' spherical branch) is also written in.
-SPHERICAL_AXES_UNIT = 'lambda'
+# Rectangular/circular bounds are converted to it key by key (read_length), since the config may give
+# each bound in its own unit, as the C++ detector factory allows.
+DETECTOR_AXES_UNIT = 'lambda'
 
 # Printed once whenever plot_radiation_component runs on incident_field.dat -- see
 # Radiation::export_incident_field_fourier's doc comment (radiation_plotter.hpp): that file holds the
@@ -41,6 +43,14 @@ def read_config_value(key, config_path=DEFAULT_CONFIG_PATH):
                 return parts[1], (parts[2] if len(parts) >= 3 else '')
     raise ValueError(f"No '{key}' key found in '{config_path}'")
 
+def read_length(key, config_path=DEFAULT_CONFIG_PATH, target_unit=DETECTOR_AXES_UNIT):
+    """Reads a length config key and converts it from its own unit to target_unit ('a.u.' for atomic
+    units), like Core::Detector's factory converts each key with its own unit."""
+    from faraday_frame_utils import convert_unit_to_number
+    value, unit = read_config_value(key, config_path)
+    return (float(value) * convert_unit_to_number(unit, config_path)
+            / convert_unit_to_number(target_unit, config_path))
+
 def _angle_radians(value_str, unit_str):
     """Converts a 'value [pi]' config pair to radians (bare numbers are assumed radians)."""
     value = float(value_str)
@@ -67,11 +77,11 @@ def get_spherical_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     # Imported here, not at module level: faraday_frame_utils itself imports this module.
     from faraday_frame_utils import convert_unit_to_number
 
-    # Converted to SPHERICAL_AXES_UNIT whatever unit the config gives it in, so these edges line up
+    # Converted to DETECTOR_AXES_UNIT whatever unit the config gives it in, so these edges line up
     # with detector_stereographic.dat's centers.
     radius_str, radius_unit = read_config_value('spherical_detector_radius', config_path)
     radius = (float(radius_str) * convert_unit_to_number(radius_unit, config_path)
-              / convert_unit_to_number(SPHERICAL_AXES_UNIT, config_path))
+              / convert_unit_to_number(DETECTOR_AXES_UNIT, config_path))
 
     N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
     N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
@@ -126,7 +136,7 @@ def get_spherical_plot_grid(config_path=DEFAULT_CONFIG_PATH):
     """
     if spherical_projection_is_well_defined(config_path):
         x_edges, y_edges = get_spherical_cell_edges(config_path)
-        return (x_edges, y_edges, f'$x_{{proj}}$ [{SPHERICAL_AXES_UNIT}]', f'$y_{{proj}}$ [{SPHERICAL_AXES_UNIT}]',
+        return (x_edges, y_edges, f'$x_{{proj}}$ [{DETECTOR_AXES_UNIT}]', f'$y_{{proj}}$ [{DETECTOR_AXES_UNIT}]',
                 'equal')
 
     N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
@@ -163,9 +173,8 @@ def get_circular_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     """
     N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
     N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
-    R_min, _ = read_config_value('circular_detector_R_min', config_path)
-    R_max, _ = read_config_value('circular_detector_R_max', config_path)
-    R_min, R_max = float(R_min), float(R_max)
+    R_min = read_length('circular_detector_R_min', config_path)
+    R_max = read_length('circular_detector_R_max', config_path)
 
     d_R_sq = (R_max**2 - R_min**2) / (N_R - 1) if N_R > 1 else 0.0
     d_phi = (2.0 * np.pi) / (N_phi - 1) if N_phi > 1 else 0.0
@@ -192,11 +201,10 @@ def get_rectangular_cell_edges(config_path=DEFAULT_CONFIG_PATH):
     """
     Nx = int(read_config_value('rectangular_detector_Nx', config_path)[0])
     Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
-    x_min, _ = read_config_value('rectangular_detector_x_min', config_path)
-    x_max, _ = read_config_value('rectangular_detector_x_max', config_path)
-    y_min, _ = read_config_value('rectangular_detector_y_min', config_path)
-    y_max, _ = read_config_value('rectangular_detector_y_max', config_path)
-    x_min, x_max, y_min, y_max = float(x_min), float(x_max), float(y_min), float(y_max)
+    x_min = read_length('rectangular_detector_x_min', config_path)
+    x_max = read_length('rectangular_detector_x_max', config_path)
+    y_min = read_length('rectangular_detector_y_min', config_path)
+    y_max = read_length('rectangular_detector_y_max', config_path)
 
     dx = (x_max - x_min) / (Nx - 1) if Nx > 1 else 0.0
     dy = (y_max - y_min) / (Ny - 1) if Ny > 1 else 0.0
@@ -228,43 +236,36 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     if detector_type == 'spherical':
         stereo_path = os.path.join(os.path.dirname(radiation_filepath), 'detector_stereographic.dat')
         stereo = pd.read_csv(stereo_path, sep=' ', comment='#')
-        return (stereo['x_proj'].to_numpy(), stereo['y_proj'].to_numpy(), f'$x_{{proj}}$ [{SPHERICAL_AXES_UNIT}]',
-                f'$y_{{proj}}$ [{SPHERICAL_AXES_UNIT}]')
+        return (stereo['x_proj'].to_numpy(), stereo['y_proj'].to_numpy(), f'$x_{{proj}}$ [{DETECTOR_AXES_UNIT}]',
+                f'$y_{{proj}}$ [{DETECTOR_AXES_UNIT}]')
 
     elif detector_type == 'rectangular':
         Nx, _ = read_config_value('rectangular_detector_Nx', config_path)
         Ny, _ = read_config_value('rectangular_detector_Ny', config_path)
-        x_min, x_unit = read_config_value('rectangular_detector_x_min', config_path)
-        x_max, _ = read_config_value('rectangular_detector_x_max', config_path)
-        y_min, y_unit = read_config_value('rectangular_detector_y_min', config_path)
-        y_max, _ = read_config_value('rectangular_detector_y_max', config_path)
-
-        x_vals = np.linspace(float(x_min), float(x_max), int(Nx))
-        y_vals = np.linspace(float(y_min), float(y_max), int(Ny))
+        x_vals = np.linspace(read_length('rectangular_detector_x_min', config_path),
+                             read_length('rectangular_detector_x_max', config_path), int(Nx))
+        y_vals = np.linspace(read_length('rectangular_detector_y_min', config_path),
+                             read_length('rectangular_detector_y_max', config_path), int(Ny))
         # Row-major (i outer, j inner), matching RectangularDetector's own point order.
         x_grid, y_grid = np.meshgrid(x_vals, y_vals, indexing='ij')
-        x_label = '$x$' + (f' [{x_unit}]' if x_unit else '')
-        y_label = '$y$' + (f' [{y_unit}]' if y_unit else '')
-        return x_grid.ravel(), y_grid.ravel(), x_label, y_label
+        return x_grid.ravel(), y_grid.ravel(), f'$x$ [{DETECTOR_AXES_UNIT}]', f'$y$ [{DETECTOR_AXES_UNIT}]'
 
     elif detector_type == 'circular':
         N_R, _ = read_config_value('circular_detector_N_R', config_path)
         N_phi, _ = read_config_value('circular_detector_N_phi', config_path)
-        R_min, r_unit = read_config_value('circular_detector_R_min', config_path)
-        R_max, _ = read_config_value('circular_detector_R_max', config_path)
+        R_min = read_length('circular_detector_R_min', config_path)
+        R_max = read_length('circular_detector_R_max', config_path)
 
         N_R = int(N_R)
         N_phi = int(N_phi)
         # Equal-area spacing (r^2 linear in i), matching CircularDetector's own construction.
-        r_vals = np.sqrt(np.linspace(float(R_min)**2, float(R_max)**2, N_R))
+        r_vals = np.sqrt(np.linspace(R_min**2, R_max**2, N_R))
         phi_vals = np.linspace(0.0, 2.0 * np.pi, N_phi)
         # Row-major (i outer over R, j inner over phi), matching CircularDetector's own point order.
         r_grid, phi_grid = np.meshgrid(r_vals, phi_vals, indexing='ij')
         x_grid = r_grid * np.cos(phi_grid)
         y_grid = r_grid * np.sin(phi_grid)
-        x_label = '$x$' + (f' [{r_unit}]' if r_unit else '')
-        y_label = '$y$' + (f' [{r_unit}]' if r_unit else '')
-        return x_grid.ravel(), y_grid.ravel(), x_label, y_label
+        return x_grid.ravel(), y_grid.ravel(), f'$x$ [{DETECTOR_AXES_UNIT}]', f'$y$ [{DETECTOR_AXES_UNIT}]'
 
     else:
         raise ValueError(f"Unknown detector_type '{detector_type}'")
@@ -388,7 +389,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
         grid_shape = (Nx, Ny)
         x, y = get_rectangular_cell_edges(config_path)
-        axes_unit = read_config_value('rectangular_detector_x_min', config_path)[1]
+        axes_unit = DETECTOR_AXES_UNIT
     elif detector_type == 'spherical':
         N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
         N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
@@ -397,7 +398,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         # Only the stereographic-projection grid (aspect == 'equal') is in length units; the
         # (theta, phi) angular fallback has no length scale for w0 to supplement.
         if aspect == 'equal':
-            axes_unit = SPHERICAL_AXES_UNIT
+            axes_unit = DETECTOR_AXES_UNIT
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
@@ -417,7 +418,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         x, y = get_circular_cell_edges(config_path)
         x_gouraud = x_centers.reshape(grid_shape)
         y_gouraud = y_centers.reshape(grid_shape)
-        axes_unit = read_config_value('circular_detector_R_min', config_path)[1]
+        axes_unit = DETECTOR_AXES_UNIT
 
     # w0 (laguerre_gauss runs only, unit-matched to axes_unit -- see
     # get_laser_lg_w0_in_axes_units) drives a supplementary top/right w0-multiple axis on every

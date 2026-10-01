@@ -263,6 +263,12 @@ When changing these functions, or moving to another compiler or machine, rerun a
 `bin/coherent_thomson_solver`, and a build with nothing to recompile does not relink, so copy each binary out
 after a `--clean-first` build before comparing.
 
+GCC 13.3 (on a server) was checked and does not show the miscompile. The workaround is kept on every machine
+anyway, deliberately, rather than made compiler-conditional.
+
+The stepped mode must stay vectorizable: after editing it, check with `-fopt-info-vec` that the stepping loops
+(`advance_phasors`) still vectorize.
+
 ## 7. Performance summary
 
 `config.cfg` with a circular 64×64 screen, 20 threads (i7-12700H), Release build. The table gives CPU time per
@@ -280,3 +286,8 @@ after a `--clean-first` build before comparing.
 The direct approx mode is slower than the simplified one because its integrand needs a division by
 $(n_0\cdot u)^2$ at every step. The trajectory integration (RK4) is negligible next to the radiation sum: a few ms
 per electron, against about 0.4 s for a 4096-point screen.
+
+`run_simulation` prints per-thread timings and CPU-seconds per electron (per screen point), computed from the
+**sum of per-thread times**, not wall-clock time. The hot loops are deliberately left uninstrumented. On a matched
+config the Release build is about 4× faster than the Python reference; an older "C++ is 3× slower" result came
+from a Debug build, which is 12–13× slower.

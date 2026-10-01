@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
-from plot_field import read_config_value, get_spherical_plot_grid, get_detector_geometry_label, SPHERICAL_AXES_UNIT
+from plot_field import read_config_value, get_spherical_plot_grid, get_detector_geometry_label, DETECTOR_AXES_UNIT
 from faraday_frame_utils import (
     convert_unit_to_number,
     get_detector_local_rotation,
@@ -207,7 +207,7 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
     # (theta, phi) angular fallback has no length scale for a w0-multiple axis to supplement.
     w0 = None
     if aspect == 'equal':
-        w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, SPHERICAL_AXES_UNIT)
+        w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, DETECTOR_AXES_UNIT)
 
     for i_omega, subset in result.groupby('i_omega'):
         subset = subset.sort_values('i_screen')
