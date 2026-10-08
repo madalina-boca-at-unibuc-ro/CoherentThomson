@@ -23,8 +23,8 @@ def get_output_folder(config_path=DEFAULT_CONFIG_PATH):
     Core::IoUtils::make_run_output_directory reads) and resolves it relative to
     the home directory, mirroring Core::IoUtils::make_run_output_directory:
     the config value is always a subfolder of '~', not an absolute path, so the
-    same .cfg still works after sync_to_remote.sh copies the repo to a
-    different machine/user.
+    same .cfg still works on another machine/user that has the repo checked
+    out (synced via git).
     """
     with open(config_path) as f:
         for line in f:

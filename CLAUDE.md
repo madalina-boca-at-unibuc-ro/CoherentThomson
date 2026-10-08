@@ -124,7 +124,10 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 
 All six `radiation_formula` modes, their formulas, the optimizations, precision limits and timings are in
 `theory/implementation_details.md`. **Keep it in sync when changing `radiation.cpp`.** Current formulas:
-`theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md` (supersedes the unsuffixed v1).
+`theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md` (supersedes the unsuffixed v1). The long-distance
+modes follow `theory/long_distance_direct_simplified_coding_guide.md` (reviewed against the exact code in
+`long_distance_implementation_review.md`). `plot_observables.py`'s angular-momentum quantities are derived in
+`theory/numerical_calculation_of_angular_momentum.md`.
 
 - **Three terms**, exported as `LR_`/`SR_`/`BR_F<mu><nu>` columns: long-range `F_l`, short-range `F_s`, boundary
   `F_b`. **Only the sum is physical**; e.g. on-axis `F_l^{03}` and `F_b^{03}` are individually large and cancel.
@@ -145,6 +148,11 @@ All six `radiation_formula` modes, their formulas, the optimizations, precision 
   constant phase `e^{ik(|x_0| + r^0(tau_m))}` is applied at reconstruction, **not** inside the tau loop
   (precision, §4.3). The stepped loops must stay vectorizable (check `-fopt-info-vec`, §6).
 - The whole beam is generated upfront and held in memory (deliberate, for now).
+- **Threading** (`simulation.cpp`): the beam is split into `num_threads` contiguous electron chunks, one
+  `std::thread` each. Each thread accumulates into its own `PackedRadiationField` (6 packed complex components per
+  point), and the per-thread fields are reduced to the full Faraday tensor after `join`. `compute_radiation` must not
+  write any shared state. `num_threads` is a required key (`0` = all hardware threads). The reported
+  "Time per electron" sums each thread's own elapsed time, so it is CPU time, not wall-clock time.
 
 ### Frequencies
 
@@ -176,7 +184,8 @@ All six `radiation_formula` modes, their formulas, the optimizations, precision 
 Flat `key value [unit]` lines. `IoUtils::convert_unit_to_number` resolves units (`lambda`, `pi`, `mc`,
 `cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...); check it before adding a unit.
 - **An unrecognized unit only warns** and assumes `1.0`, so a typo fails silently.
-- **A key with a blank value is dropped**, and `config.at(...)` then throws `std::out_of_range`.
+- **A key with a blank value is dropped**, so reading it throws `std::out_of_range` (`IoUtils::get_required`
+  names the missing key; a bare `config.at(...)` doesn't).
 - `w0` is valid only with `laser_type=laguerre_gauss`.
 - Unknown keys are ignored, so stale keys from old configs don't error.
 

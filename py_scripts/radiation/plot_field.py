@@ -6,11 +6,10 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file, DEFAULT_CONFIG_PATH
-from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
-# Length unit of every detector type's screen axes: main.cpp's detector_axes_unit, which
+# Length unit of every detector type's screen coordinates (plotted in angle, see get_angular_axes): main.cpp's detector_axes_unit, which
 # detector_stereographic.dat (and so get_screen_coordinates' spherical branch) is also written in.
 # Rectangular/circular bounds are converted to it key by key (read_length), since the config may give
 # each bound in its own unit, as the C++ detector factory allows.
@@ -270,6 +269,56 @@ def get_screen_coordinates(radiation_filepath, config_path=DEFAULT_CONFIG_PATH):
     else:
         raise ValueError(f"Unknown detector_type '{detector_type}'")
 
+# Candidate angular units for the screen-plot axes, largest first: get_angular_axes picks the first
+# one in which the screen's half-width is at least 1, so the tick labels stay 1-3 digits wide.
+_ANGLE_UNITS = (('rad', 1.0), ('mrad', 1e-3), ('$\\mu$rad', 1e-6))
+
+def get_angular_axes(detector_type, x_centers, y_centers, config_path):
+    """
+    Returns (scale, x_label, y_label, xlim, ylim) for plotting a length-unit screen (rectangular,
+    circular, or the spherical detector's stereographic projection; all in DETECTOR_AXES_UNIT) in
+    angular coordinates: multiply any DETECTOR_AXES_UNIT screen coordinate (centers or cell edges)
+    by `scale` to get the plotted value.
+
+    Flat screens use x/D (D = detector distance, = tan(theta)*cos(phi)); the spherical detector uses
+    2*x_proj/R (stereographic rho = R*tan(theta/2), so this is 2*tan(theta/2)*cos(phi)). Both reduce
+    to theta*cos(phi) near the axis. A screen grown in proportion to its distance therefore plots on
+    identical axes, so the tick labels -- and with them the panel sizes -- no longer depend on the
+    distance.
+
+    xlim/ylim are the screen's own extent (the cell *centers*' bounding box; for circular and
+    spherical screens the symmetric +-max radius), set explicitly on every panel so flat- and
+    gouraud-shaded panels, whose drawn areas differ by half a cell, share the same window.
+    """
+    if detector_type in ('rectangular', 'circular'):
+        distance = read_length(f'{detector_type}_detector_distance', config_path)
+        base_scale, x_name, y_name = 1.0 / distance, '$x/D$', '$y/D$'
+    elif detector_type == 'spherical':
+        # Same conversion as get_spherical_cell_edges, so the scale matches detector_stereographic.dat.
+        from faraday_frame_utils import convert_unit_to_number
+        radius_str, radius_unit = read_config_value('spherical_detector_radius', config_path)
+        radius = (float(radius_str) * convert_unit_to_number(radius_unit, config_path)
+                  / convert_unit_to_number(DETECTOR_AXES_UNIT, config_path))
+        base_scale, x_name, y_name = 2.0 / radius, '$2x_{proj}/R$', '$2y_{proj}/R$'
+    else:
+        raise ValueError(f"Unknown detector_type '{detector_type}'")
+
+    x_ang = np.asarray(x_centers) * base_scale
+    y_ang = np.asarray(y_centers) * base_scale
+    if detector_type == 'rectangular':
+        xlim = (x_ang.min(), x_ang.max())
+        ylim = (y_ang.min(), y_ang.max())
+    else:
+        r_max = np.hypot(x_ang, y_ang).max()
+        xlim = ylim = (-r_max, r_max)
+
+    half_width = max(abs(xlim[0]), abs(xlim[1]), abs(ylim[0]), abs(ylim[1]))
+    unit_name, unit_value = next(((name, value) for name, value in _ANGLE_UNITS if half_width >= value),
+                                 _ANGLE_UNITS[-1])
+    xlim = (xlim[0] / unit_value, xlim[1] / unit_value)
+    ylim = (ylim[0] / unit_value, ylim[1] / unit_value)
+    return base_scale / unit_value, f'{x_name} [{unit_name}]', f'{y_name} [{unit_name}]', xlim, ylim
+
 def get_detector_geometry_label(detector_type, config_path):
     """
     Returns a short 'distance=<value> lambda = <value> m' (rectangular/circular) or 'radius=...'
@@ -378,7 +427,6 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     # get_rectangular_cell_edges/get_spherical_cell_edges/get_circular_cell_edges) instead of the
     # per-point centers get_screen_coordinates returns.
     aspect = 'equal'
-    axes_unit = None
     # Circular only: gouraud-shaded panels (Re/Im/Abs below) use cell *centers* (x_gouraud/y_gouraud,
     # same shape as grid_shape); every other panel, and every other detector type, keeps flat shading
     # on cell corners (x/y, one bigger than grid_shape per axis) -- see the circular branch below for
@@ -389,16 +437,11 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         Ny = int(read_config_value('rectangular_detector_Ny', config_path)[0])
         grid_shape = (Nx, Ny)
         x, y = get_rectangular_cell_edges(config_path)
-        axes_unit = DETECTOR_AXES_UNIT
     elif detector_type == 'spherical':
         N_theta = int(read_config_value('spherical_detector_N_theta', config_path)[0])
         N_phi = int(read_config_value('spherical_detector_N_phi', config_path)[0])
         grid_shape = (N_theta, N_phi)
         x, y, x_label, y_label, aspect = get_spherical_plot_grid(config_path)
-        # Only the stereographic-projection grid (aspect == 'equal') is in length units; the
-        # (theta, phi) angular fallback has no length scale for w0 to supplement.
-        if aspect == 'equal':
-            axes_unit = DETECTOR_AXES_UNIT
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
@@ -418,14 +461,18 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
         x, y = get_circular_cell_edges(config_path)
         x_gouraud = x_centers.reshape(grid_shape)
         y_gouraud = y_centers.reshape(grid_shape)
-        axes_unit = DETECTOR_AXES_UNIT
 
-    # w0 (laguerre_gauss runs only, unit-matched to axes_unit -- see
-    # get_laser_lg_w0_in_axes_units) drives a supplementary top/right w0-multiple axis on every
-    # panel below, alongside the primary bottom/left axes already in axes_unit; None for a
-    # non-length (angular fallback) grid or a non-laguerre_gauss run, in which case
-    # add_w0_secondary_axes below is a no-op.
-    w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
+    # Length-unit screens (everything but the spherical (theta, phi) fallback, aspect 'auto') are
+    # plotted in angle, not in DETECTOR_AXES_UNIT -- see get_angular_axes: a screen grown with its
+    # distance then gets the same axes for every distance, instead of ever-wider tick labels
+    # shrinking the panels. No x/w0 secondary axis here, for the same reason: at the screen it grows
+    # with the distance (and the beam waist says little about the far-field pattern anyway).
+    xlim = ylim = None
+    if aspect == 'equal':
+        scale, x_label, y_label, xlim, ylim = get_angular_axes(detector_type, x_centers, y_centers, config_path)
+        x, y = x * scale, y * scale
+        if x_gouraud is not None:
+            x_gouraud, y_gouraud = x_gouraud * scale, y_gouraud * scale
 
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
     # laser/detector/particle/radiation layout), further split into 'emitted'/'incident'
@@ -472,21 +519,21 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
                                    vmin=vmin, vmax=vmax, shading='gouraud')
             else:
                 sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
+            if xlim is not None:
+                ax.set_xlim(xlim)
+                ax.set_ylim(ylim)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_title(title)
             ax.grid(True, alpha=0.25)
-            # shrink=0.85 (matching the Superradiant_Thomson reference plots' style) keeps the
-            # colorbar from spanning the full axis height, which otherwise crowds the secondary
-            # right y/w0 axis added below. No cbar.set_label: the panel title above already names
+            # shrink=0.85 matches the Superradiant_Thomson reference plots' style. No cbar.set_label: the panel title above already names
             # the quantity, and a second, redundant vertical label ate into the width available to
             # the right column's colorbar, misaligning it against the left column's.
             cbar = fig.colorbar(sc, ax=ax, shrink=0.85)
             if cmap == 'twilight':
                 cbar.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
                 cbar.ax.set_yticklabels(['$-\\pi$', '$-\\pi/2$', '$0$', '$\\pi/2$', '$\\pi$'])
-            add_w0_secondary_axes(ax, w0)
             cbars.append(cbar)
 
         fig.suptitle(f"Radiated field{title_suffix}, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "

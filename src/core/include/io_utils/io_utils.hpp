@@ -312,7 +312,7 @@ inline size_t get_num_threads(const ConfigMap& config) { return std::stoul(get_r
 
 // Returns the current user's home directory (via $HOME), so the config's output_folder can stay a
 // short, machine-independent subfolder name instead of a machine-specific absolute path -- e.g. so the
-// same .cfg still works after sync_to_remote.sh copies the repo to a different machine/user.
+// same .cfg still works on another machine/user that has the repo checked out (synced via git).
 inline std::string get_home_directory() {
   const char* home = std::getenv("HOME");
   if (home == nullptr) {

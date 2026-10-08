@@ -11,13 +11,20 @@ Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are 
   interpolating across the ±π wrap is misleading.
 - Colorbar alignment requires freezing the layout (`fig.canvas.draw()`, `set_layout_engine(None)`,
   `cbar.ax.set_axes_locator(None)`) before `set_position`. `constrained_layout` alone misaligns them.
-- Heatmaps of LG runs add secondary `x/w0`, `y/w0` axes (`utils/w0_axes_utils.py`). That module is a leaf: it
-  deliberately doesn't import `plot_field`, to avoid circular imports.
+- The laser heatmap of LG runs adds secondary `x/w0`, `y/w0` axes (`utils/w0_axes_utils.py`). That module is a
+  leaf: it deliberately doesn't import `plot_field`, to avoid circular imports. Radiation screen plots don't use
+  it: at the screen `x/w0` grows with the distance.
 
 ## Axes and units
 
-- Screen axes are always in `lambda` (`plot_field.DETECTOR_AXES_UNIT`, matching `main.cpp`'s
-  `detector_axes_unit`) for every detector type, whatever units the config gives. Each detector bound is converted
+- Radiation screen heatmaps (`plot_field`, `plot_observables`, `plot_spherical_components`) are **plotted in
+  angle** (`plot_field.get_angular_axes`): `x/D` for flat screens, `2x_proj/R` (= `2tan(θ/2)cosφ`) for the
+  spherical stereographic grid, in rad/mrad/μrad picked from the screen's half-width. A screen grown with its
+  distance then gets identical axes and panel sizes. Limits are set explicitly to the cell-center extent, so
+  flat- and gouraud-shaded panels share one window.
+- Screen *coordinates* are always in `lambda` (`plot_field.DETECTOR_AXES_UNIT`, matching `main.cpp`'s
+  `detector_axes_unit`) for every detector type, whatever units the config gives; observables are computed and
+  integrated in these units, and only converted to angle for plotting. Each detector bound is converted
   with its own unit (`plot_field.read_length`), as the C++ factory does, so mixed units (e.g. `R_min` in `lambda`,
   `R_max` in `w0`) are fine. Never take one key's unit for another key's value.
 - Spherical detectors near the full 4π: stereographic projection is singular at θ=π (`nan` in

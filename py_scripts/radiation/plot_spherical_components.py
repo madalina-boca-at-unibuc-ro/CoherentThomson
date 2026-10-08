@@ -20,13 +20,13 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
-from plot_field import read_config_value, get_spherical_plot_grid, get_detector_geometry_label, DETECTOR_AXES_UNIT
+from plot_field import (read_config_value, get_spherical_plot_grid, get_screen_coordinates, get_angular_axes,
+                        get_detector_geometry_label)
 from faraday_frame_utils import (
     convert_unit_to_number,
     get_detector_local_rotation,
     extract_rotated_faraday_fields,
 )
-from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -203,11 +203,14 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
     grid_shape = (N_theta, N_phi)
     x_edges, y_edges, x_label, y_label, aspect = get_spherical_plot_grid(config_path)
     detector_geometry_label = get_detector_geometry_label('spherical', config_path)
-    # Only the stereographic-projection grid (aspect == 'equal') is in length units; the
-    # (theta, phi) angular fallback has no length scale for a w0-multiple axis to supplement.
-    w0 = None
+    # The stereographic grid (aspect 'equal') is plotted in angle with explicit limits, not in
+    # DETECTOR_AXES_UNIT -- see plot_field's get_angular_axes and plot_radiation_component. The
+    # (theta, phi) fallback is already angular.
+    xlim = ylim = None
     if aspect == 'equal':
-        w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, DETECTOR_AXES_UNIT)
+        x_centers, y_centers, _, _ = get_screen_coordinates(radiation_filepath, config_path)
+        scale, x_label, y_label, xlim, ylim = get_angular_axes('spherical', x_centers, y_centers, config_path)
+        x_edges, y_edges = x_edges * scale, y_edges * scale
 
     for i_omega, subset in result.groupby('i_omega'):
         subset = subset.sort_values('i_screen')
@@ -233,21 +236,21 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
         cbars = []
         for ax, (values, title, cmap, vmin, vmax) in zip(axes.flat, panels):
             sc = ax.pcolormesh(x_edges, y_edges, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
+            if xlim is not None:
+                ax.set_xlim(xlim)
+                ax.set_ylim(ylim)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_title(title)
             ax.grid(True, alpha=0.25)
-            # shrink=0.85 (matching the Superradiant_Thomson reference plots' style) keeps the
-            # colorbar from spanning the full axis height, which otherwise crowds the secondary
-            # right y/w0 axis added below. No cbar.set_label: the panel title above already names
+            # shrink=0.85 matches the Superradiant_Thomson reference plots' style. No cbar.set_label: the panel title above already names
             # the quantity, and a second, redundant vertical label ate into the width available to
             # the right column's colorbar, misaligning it against the left column's.
             cbar = fig.colorbar(sc, ax=ax, shrink=0.85)
             if cmap == 'twilight':
                 cbar.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
                 cbar.ax.set_yticklabels(['$-\\pi$', '$-\\pi/2$', '$0$', '$\\pi/2$', '$\\pi$'])
-            add_w0_secondary_axes(ax, w0)
             cbars.append(cbar)
 
         fig.suptitle(f"${component_label}$, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "

@@ -140,15 +140,14 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 from plot_field import (
-    DETECTOR_AXES_UNIT,
     read_config_value,
     read_length,
     get_screen_coordinates,
     get_rectangular_cell_edges,
+    get_angular_axes,
     get_detector_geometry_label,
 )
 from faraday_frame_utils import C_LIGHT, convert_unit_to_number
-from utils.w0_axes_utils import get_laser_lg_w0_in_axes_units, add_w0_secondary_axes
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -709,7 +708,7 @@ def plot_observables(radiation_filepath):
 
     result, detector_type, config_path = compute_observables(radiation_filepath)
 
-    x_centers, y_centers, x_label, y_label = get_screen_coordinates(radiation_filepath, config_path)
+    x_centers, y_centers, _, _ = get_screen_coordinates(radiation_filepath, config_path)
     detector_geometry_label = get_detector_geometry_label(detector_type, config_path)
 
     aspect = 'equal'
@@ -722,7 +721,6 @@ def plot_observables(radiation_filepath):
         # there's no strong reason to switch this one to gouraud too (see the circular branch below).
         x, y = get_rectangular_cell_edges(config_path)
         shading = 'flat'
-        axes_unit = DETECTOR_AXES_UNIT
     else:
         N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
         N_phi = int(read_config_value('circular_detector_N_phi', config_path)[0])
@@ -746,9 +744,12 @@ def plot_observables(radiation_filepath):
         x = x_centers.reshape(grid_shape)
         y = y_centers.reshape(grid_shape)
         shading = 'gouraud'
-        axes_unit = DETECTOR_AXES_UNIT
 
-    w0 = get_laser_lg_w0_in_axes_units(radiation_filepath, axes_unit) if axes_unit else None
+    # Plotted in angle with explicit limits, not in DETECTOR_AXES_UNIT -- see plot_field's
+    # get_angular_axes and plot_radiation_component. Plotting only: compute_observables/
+    # integrate_observables still work in DETECTOR_AXES_UNIT.
+    scale, x_label, y_label, xlim, ylim = get_angular_axes(detector_type, x_centers, y_centers, config_path)
+    x, y = x * scale, y * scale
 
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME,
                            "incident" if is_incident else "emitted")
@@ -765,13 +766,14 @@ def plot_observables(radiation_filepath):
             fig, ax = plt.subplots(figsize=(6.5, 5.5), layout='constrained')
             sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap='RdBu_r', vmin=-abs_max, vmax=abs_max,
                               shading=shading)
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
             ax.set_aspect(aspect, adjustable='box')
             ax.set_xlabel(x_label)
             ax.set_ylabel(y_label)
             ax.set_title(symbol_label)
             ax.grid(True, alpha=0.25)
             fig.colorbar(sc, ax=ax, shrink=0.85)
-            add_w0_secondary_axes(ax, w0)
 
             fig.suptitle(f"{name}{title_suffix}, $\\omega$ index {i_omega} "
                          f"($\\omega/\\omega_1$={omega_ratio:.4g})\n{detector_type} detector, "
