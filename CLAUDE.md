@@ -80,6 +80,7 @@ python3 py_scripts/detector/plot_stereographic.py
 python3 py_scripts/detector/plot_scatter.py        # needs plot_detector_scatter=true
 python3 py_scripts/particle/plot_trajectory.py
 python3 py_scripts/particle/plot_beam_scatter.py   # needs plot_beam_scatter=true
+python3 py_scripts/particle/plot_beam_density_z.py # analytic z-density from config; + histogram if plot_beam_scatter=true
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
 python3 py_scripts/radiation/plot_all_components.py [--incident]   # plot_field over all 4 ranges x 6 (mu,nu)
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
@@ -96,6 +97,7 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 
 - `src/app/main.cpp` only orchestrates. All logic is in the static library `coherent_thomson_core` (`src/core/`),
   with public headers in `src/core/include/<module>/`. `math_utils/`, `phys_utils/`, `io_utils/` are header-only.
+  `logging/` (`Core::Logging::write_run_log`) writes `run_log.txt`.
 - Namespaces are `Core::<CamelCase of folder>` (`Core::Radiation`, `Core::PhysUtils`, ...). `PhysUtils::AtomicUnits`
   holds the constants: `c = 137.035999084`, `q_0 = -1` (signed charge), `e_0 = +1` (magnitude), `epsilon_0 = 1/(4π)`.
 - **Class + factory pattern** (`laser/`, `detector/`): `<thing>_factory.cpp` defines `create_<thing>(const
@@ -116,6 +118,14 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 - The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = forward).
 - The beam cylinder's axis follows the mean momentum (`average_px/py/pz`), not Oz. `beam_center_x/y/z` are applied
   **before** that rotation, so `beam_center_z` moves along the direction of motion.
+- Electron positions are independent random draws (no lattice). `beam_sigma_z` (required) adds an unclipped Gaussian
+  displacement to the uniform z, smoothing the cylinder's sharp ends whose `sinc` form factor otherwise leaves a
+  large coherent term at `N ~ 1e5–1e6` (`theory/gaussian_smoothed_electron_cylinder.md`). At `0` the Gaussian draw is
+  skipped, so the beam (and every output) is byte-identical to the plain cylinder. With a fixed `random_seed`, a
+  smaller `beam_particle_count` gives the first electrons of a larger one, so use different seeds for independent
+  samples.
+- `theory/table-with-R_beam.png` is the user's own guide table for choosing `beam_cylinder_radius` values. It's
+  their reference: don't act on it unless asked.
 - `CircularDetector`'s radial grid is **equal-area**: `r_i = sqrt(R_min² + i*(R_max²-R_min²)/(N_R-1))`. Anything
   reconstructing `r` from `i` must use this.
 - Every detector collapses to one exact point when its grid counts are `1`.
@@ -151,7 +161,8 @@ modes follow `theory/long_distance_direct_simplified_coding_guide.md` (reviewed 
 - **Threading** (`simulation.cpp`): the beam is split into `num_threads` contiguous electron chunks, one
   `std::thread` each. Each thread accumulates into its own `PackedRadiationField` (6 packed complex components per
   point), and the per-thread fields are reduced to the full Faraday tensor after `join`. `compute_radiation` must not
-  write any shared state. `num_threads` is a required key (`0` = all hardware threads). The reported
+  write any shared state. `num_threads` is a required key (`0` = all hardware threads; it is silently capped at the
+  hardware count and at the electron count, so check the logged "Number of threads" when timing). The reported
   "Time per electron" sums each thread's own elapsed time, so it is CPU time, not wall-clock time.
 
 ### Frequencies

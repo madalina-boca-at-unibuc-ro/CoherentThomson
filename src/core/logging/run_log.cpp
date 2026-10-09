@@ -106,6 +106,7 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   IoUtils::CylinderBeamParams beam = IoUtils::parse_cylinder_beam_params(config);
   write_kv(file, "cylinder radius", beam.radius, lambda_au);
   write_kv(file, "cylinder height", beam.height, lambda_au);
+  write_kv(file, "sigma_z", beam.sigma_z, lambda_au);
   write_kv(file, "center_x", beam.center_x, lambda_au);
   write_kv(file, "center_y", beam.center_y, lambda_au);
   write_kv(file, "center_z", beam.center_z, lambda_au);

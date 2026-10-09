@@ -231,6 +231,7 @@ inline size_t get_N_omega(const ConfigMap& config) { return std::stoul(get_requi
 struct CylinderBeamParams {
   double radius;
   double height;
+  double sigma_z;  // Gaussian smoothing of the longitudinal edges; 0 = the sharp-edged uniform cylinder
   double center_x, center_y, center_z;
   double average_px, average_py, average_pz;
   double sigma_px, sigma_py, sigma_pz;
@@ -244,6 +245,11 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   params.radius = radius_val * convert_unit_to_number(radius_unit, config);
   auto [height_val, height_unit] = split_value_and_unit(get_required(config, "beam_cylinder_height"));
   params.height = height_val * convert_unit_to_number(height_unit, config);
+  auto [sigma_z_val, sigma_z_unit] = split_value_and_unit(get_required(config, "beam_sigma_z"));
+  params.sigma_z = sigma_z_val * convert_unit_to_number(sigma_z_unit, config);
+  if (params.sigma_z < 0.0) {
+    throw std::invalid_argument("beam_sigma_z must be >= 0");
+  }
 
   auto [center_x_val, center_x_unit] = split_value_and_unit(get_required(config, "beam_center_x"));
   params.center_x = center_x_val * convert_unit_to_number(center_x_unit, config);

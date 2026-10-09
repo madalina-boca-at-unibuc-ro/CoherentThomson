@@ -11,6 +11,13 @@ Electron generate_electron(const CylinderBeamParams& params, const Core::MathUti
   double r = params.radius * std::sqrt(dis_uniform(gen));
   double phi = dis_uniform(gen) * 2.0 * MathUtils::pi;
   double z = dis_z(gen);
+  // Gaussian-smoothed cylinder (theory/gaussian_smoothed_electron_cylinder.md): a uniform z on [-H/2, H/2] plus an
+  // independent N(0, sigma_z^2) displacement, giving longitudinal form factor sinc(qH/2) * exp(-q^2 sigma_z^2 / 2).
+  // Not clipped, so the tails extend past the cylinder ends. The draw is skipped at sigma_z = 0 so the RNG stream,
+  // and hence the whole beam, is identical to the sharp-edged cylinder's.
+  if (params.sigma_z > 0.0) {
+    z += std::normal_distribution<double>(0.0, params.sigma_z)(gen);
+  }
 
   // Convert cylindrical coordinates to Cartesian coordinates (cylinder height axis along canonical Oz), then
   // apply the beam's global translation before the rotation below, so the offset itself is expressed in the
