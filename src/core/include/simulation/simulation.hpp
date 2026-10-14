@@ -85,10 +85,11 @@ struct PackedRadiationField {
 // Partitions the electron beam across a pool of worker threads; each thread accumulates its assigned
 // electrons' contributions into a private RadiationField (avoiding any cross-thread contention during
 // the per-electron work), and the thread-local fields are summed once all threads finish.
-// num_threads == 0 auto-detects via std::thread::hardware_concurrency(); a value larger than the
-// hardware maximum, or larger than the electron beam size, is clamped back down. Pass an explicit
-// value (e.g. 1) to force a specific thread count. num_threads is taken by reference and overwritten
-// with the actual thread count used, so callers can report the real value rather than the requested one.
+// num_threads == 0 auto-detects the CPUs this process may run on (the Linux affinity mask, i.e. a Slurm
+// allocation; hardware_concurrency() elsewhere); a value larger than that, or larger than the electron
+// beam size, is clamped back down. Pass an explicit value (e.g. 1) to force a specific thread count.
+// num_threads is taken by reference and overwritten with the actual thread count used, so callers can
+// report the real value rather than the requested one.
 // total_cpu_seconds is likewise taken by reference and overwritten with the sum of every thread's own
 // elapsed time (see the aggregate timing block in the .cpp), the same CPU-seconds measurement already
 // printed to stdout as "Time per electron"/"Total CPU-seconds per Electron per Screen Point" -- exposed

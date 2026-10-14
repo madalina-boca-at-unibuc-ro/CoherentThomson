@@ -11,7 +11,7 @@ scripts for plotting the laser field, electron trajectories, detector geometry, 
 
 ## Build
 
-Out-of-source build via CMake (>= 3.22), C++20:
+Out-of-source build via CMake (>= 3.21), C++20:
 
 ```
 cmake -B build/ && cmake --build build/

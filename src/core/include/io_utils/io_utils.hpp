@@ -313,7 +313,7 @@ inline size_t get_number_of_harmonics_min(const ConfigMap& config) {
 }
 
 // Raw num_threads config value: 0 means "use the maximum available", resolved by the caller
-// (Simulation::run_simulation) against std::thread::hardware_concurrency().
+// (Simulation::run_simulation) against the CPUs available to the process.
 inline size_t get_num_threads(const ConfigMap& config) { return std::stoul(get_required(config, "num_threads")); }
 
 // Returns the current user's home directory (via $HOME), so the config's output_folder can stay a

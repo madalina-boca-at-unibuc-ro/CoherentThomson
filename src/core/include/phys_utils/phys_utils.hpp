@@ -24,7 +24,7 @@ inline constexpr double mu_0 = 1.0 / (epsilon_0 * c * c);             // the vac
 // SI equivalents of the atomic units of length and time above (2018 CODATA recommended values) -- the
 // conversion basis for expressing an atomic-unit length/time in real-world units (nm, mm, fs, ...)
 // wherever a reader wants to place a run in physical terms rather than atomic units alone (e.g.
-// Logging::write_run_log's SI columns -- see CLAUDE.md's "Run log" TODO). Only length and time are
+// Logging::write_run_log's SI columns -- see CLAUDE.md's "Config file format" section). Only length and time are
 // provided since that's all today's consumer needs; extend with more (energy, field strength, ...) if
 // a future one does.
 inline constexpr double bohr_radius_m = 5.29177210903e-11;         // 1 a.u. of length, in meters

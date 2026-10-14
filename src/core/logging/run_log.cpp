@@ -26,7 +26,7 @@ double read_scaled(const ConfigMap& config, const std::string& key) {
 // SI-unit conversions (PhysUtils::AtomicUnits::bohr_radius_m/atomic_time_unit_s -- see that file for
 // the CODATA basis), used by write_kv's mm column below and directly for the handful of quantities
 // (wavelength in nm, period/pulse duration in fs) that need a different SI unit than the generic
-// length-in-mm one write_kv provides -- see CLAUDE.md's "Run log" TODO for why the SI column exists.
+// length-in-mm one write_kv provides -- see CLAUDE.md's "Config file format" section.
 double length_au_to_mm(double value_au) { return value_au * PhysUtils::AtomicUnits::bohr_radius_m * 1.0e3; }
 double length_au_to_nm(double value_au) { return value_au * PhysUtils::AtomicUnits::bohr_radius_m * 1.0e9; }
 double time_au_to_fs(double value_au) { return value_au * PhysUtils::AtomicUnits::atomic_time_unit_s * 1.0e15; }

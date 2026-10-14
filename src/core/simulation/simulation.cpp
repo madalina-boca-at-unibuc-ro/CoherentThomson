@@ -1,6 +1,10 @@
 
 #include "../include/simulation/simulation.hpp"
 
+#ifdef __linux__
+#include <sched.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -19,8 +23,29 @@ namespace Core::Simulation {
 // MathUtils::operator+= into scope explicitly so `bivector += bivector` below resolves.
 using Core::MathUtils::operator+=;
 
+namespace {
+
+// Number of CPUs this process may actually run on. On Linux that is the affinity mask, which Slurm (and
+// taskset/cgroups) restricts to the job's allocation -- std::thread::hardware_concurrency() instead reports
+// every CPU on the node (e.g. 256 on a 64-CPU Slurm job), which would oversubscribe the allocation.
+// Elsewhere, or if the mask can't be read, falls back to hardware_concurrency().
+size_t available_cpu_count() {
+#ifdef __linux__
+  cpu_set_t mask;
+  CPU_ZERO(&mask);
+  if (sched_getaffinity(0, sizeof(mask), &mask) == 0) {
+    int count = CPU_COUNT(&mask);
+    if (count > 0) return static_cast<size_t>(count);
+  }
+#endif
+  size_t hardware = std::thread::hardware_concurrency();
+  return hardware == 0 ? 1 : hardware;
+}
+
+}  // namespace
+
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser) {
-  double tau_0_traj = 0.0;  // hardcoded, to be modified and included in CLAUDE.md
+  double tau_0_traj = 0.0;  // hardcoded, to be modified (listed in CLAUDE.md's known bugs/hardcodes)
   double T = IoUtils::get_laser_period(config);
   size_t NT_traj = IoUtils::get_trajectory_NT(config);
   double d_tau_traj = T / NT_traj;
@@ -131,10 +156,13 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   Radiation::RadiationFormula radiation_formula =
       Radiation::parse_radiation_formula(IoUtils::get_required(config, "radiation_formula"));
 
-  size_t max_threads = std::thread::hardware_concurrency();
-  if (max_threads == 0) max_threads = 1;
+  size_t max_threads = available_cpu_count();
   if (num_threads == 0 || num_threads > max_threads) num_threads = max_threads;
   num_threads = std::min(num_threads, num_electrons);
+  // Printed up front (main.cpp's "Number of threads" only appears after the run finishes), so a long or
+  // killed run still shows the resolved count and the CPUs available to it (e.g. a Slurm allocation).
+  std::cout << "Using " << num_threads << " threads (requested " << IoUtils::get_num_threads(config) << ", "
+            << max_threads << " CPUs available, " << num_electrons << " electrons)\n";
 
   // One private accumulator per thread, each grid sized [N_omega][N_screen] and zero-initialized,
   // holding the packed (6-complex-element) accumulation-time Faraday representation (see

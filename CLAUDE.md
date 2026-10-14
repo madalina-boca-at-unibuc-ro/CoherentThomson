@@ -9,7 +9,8 @@ Simulates coherent (nonlinear) Thomson scattering of an intense laser pulse off 
 Pipeline (`src/app/main.cpp`): build a config-driven laser pulse and detector screen, generate an electron beam,
 integrate the first up-to-10 electrons' trajectories for `electron.dat`, run the coherent radiation calculation
 (`Simulation::run_simulation`) over the whole beam, and export `.dat` files plus `run_log.txt` into a per-run
-directory `~/<output_folder>/YYYYMMDD_HHMMSS/`. Python scripts in `py_scripts/` plot those outputs.
+directory `~/<output_folder>/YYYYMMDD_HHMMSS/` (`output_folder` is relative to `$HOME`, so one config works on
+every machine). Python scripts in `py_scripts/` plot those outputs.
 
 **Open issues** (detail in `theory/dev_notes.md`):
 - The single-electron Thomson-dipole benchmark (electron at rest, full-4π spherical detector, weak field →
@@ -27,6 +28,16 @@ directory `~/<output_folder>/YYYYMMDD_HHMMSS/`. Python scripts in `py_scripts/` 
 Two laptops share a checkout through Dropbox (under `~/Dropbox`); two servers are synced through git. Python is
 `.venv` on the laptops and Anaconda on the servers (`pyrefly.toml`/`pyrightconfig.json` point at `.venv`, so editor
 type-checking won't find the interpreter on the servers). Compilers differ between machines.
+
+**Slurm cluster** (one of the servers): head node `hpc-ctrl01`, compute nodes `hpc-node[01-20]` (256 CPUs each,
+GCC 13.3), with the home directory shared between them. Runs go on a compute node, e.g. interactively with
+`srun --partition=debug --time=01:00:00 --cpus-per-task=64 --pty bash` (`debug` caps a session at 1 h).
+- Compute nodes have no system CMake, only Anaconda's **3.21**, which is why `cmake_minimum_required` (and the
+  presets' `cmakeMinimumRequired`) is 3.21. Don't raise it.
+- Because of `-march=native`, build on the compute node that runs the job: `compile_and_run.py` inside the job does
+  that. Claude's shell may be on the head node even while the user's terminal is in a job (check `hostname`), so
+  don't build there for a compute-node run.
+- `num_threads 0` follows the job's allocation (the affinity mask), not the node's 256 CPUs.
 
 ## Commands
 
@@ -48,7 +59,7 @@ Debug is ~12–13x slower, so check the configure step's `Build type: ...` line 
   header (e.g. `phys_utils.hpp`), rebuild with `cmake --build build/ --clean-first`.
 - **Every build writes the same `bin/coherent_thomson_solver`,** and a no-op build doesn't relink. To compare
   builds, use `--clean-first` and copy each binary out right after building. The `release` and `debug` presets
-  share one `build/` directory and CMake cache.
+  share one `build/` directory and CMake cache. Both export `build/compile_commands.json`.
 - **On the laptops, Dropbox syncs `build/` and `bin/`** (gitignored, not Dropbox-ignored), so the other laptop's
   binaries/objects and changed timestamps can arrive. This may explain the missed rebuilds. If a build acts
   strangely, `--clean-first` on this machine before debugging anything else.
@@ -161,8 +172,9 @@ modes follow `theory/long_distance_direct_simplified_coding_guide.md` (reviewed 
 - **Threading** (`simulation.cpp`): the beam is split into `num_threads` contiguous electron chunks, one
   `std::thread` each. Each thread accumulates into its own `PackedRadiationField` (6 packed complex components per
   point), and the per-thread fields are reduced to the full Faraday tensor after `join`. `compute_radiation` must not
-  write any shared state. `num_threads` is a required key (`0` = all hardware threads; it is silently capped at the
-  hardware count and at the electron count, so check the logged "Number of threads" when timing). The reported
+  write any shared state. `num_threads` is a required key (`0` = every CPU in the process's affinity mask, which
+  under Slurm is the job's allocation, not the whole node; it is silently capped at that count and at the electron
+  count, so check the printed "Using N threads" line when timing). The reported
   "Time per electron" sums each thread's own elapsed time, so it is CPU time, not wall-clock time.
 
 ### Frequencies
@@ -201,7 +213,9 @@ Flat `key value [unit]` lines. `IoUtils::convert_unit_to_number` resolves units 
 - Unknown keys are ignored, so stale keys from old configs don't error.
 
 `run_log.txt` re-reads config keys the way the factories do (`read_scaled`) rather than adding getters to the
-physics classes.
+physics classes. Beside each atomic-unit value it writes SI columns (lengths in mm, wavelength in nm, period and
+duration in fs) from `PhysUtils::AtomicUnits::bohr_radius_m`/`atomic_time_unit_s` (2018 CODATA), so a run can be
+read in physical units.
 
 ## Physics notes worth knowing before comparing results
 

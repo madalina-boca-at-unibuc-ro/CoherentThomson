@@ -905,8 +905,8 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   once fixes all of them.
 - **`PhysUtils::AtomicUnits::c` (`phys_utils.hpp`) raised from the truncated `137.036` to the 2018 CODATA
   inverse fine-structure constant `137.035999084`** -- prompted by adding the SI-unit conversion constants
-  `bohr_radius_m`/`atomic_time_unit_s` to the same namespace (for `run_log.txt`'s new SI columns, see the
-  "Run log" section above) and noticing their ratio (the atomic unit of velocity) only reproduces `c_SI *
+  `bohr_radius_m`/`atomic_time_unit_s` to the same namespace (for `run_log.txt`'s new SI columns, see
+  CLAUDE.md's "Config file format" section) and noticing their ratio (the atomic unit of velocity) only reproduces `c_SI *
   alpha` to full precision against the *precise* `1/alpha`, not the old truncated value -- fixed both
   together rather than leaving the three mutually inconsistent at the 6th significant figure. This is not
   cosmetic: `c` feeds `mc`, `epsilon_0`/`mu_0`, and every formula built from them across

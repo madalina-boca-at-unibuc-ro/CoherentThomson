@@ -147,7 +147,7 @@ These are the same long-distance formulas with the same outputs; only the evalua
 ## 3. Parallel structure and loop order
 
 - **Threads.** `run_simulation` splits the beam into contiguous electron chunks, one per thread
-  (`num_threads=0` uses every hardware thread). Each thread accumulates into its own private field, and the
+  (`num_threads=0` uses every CPU in the affinity mask, i.e. a Slurm job's allocation). Each thread accumulates into its own private field, and the
   fields are summed at the end, so there is no locking. The whole beam is generated upfront.
 - **Loop order: screen point outer, $\tau$ inner.** Each screen point's $\tau$ sum accumulates in small local
   buffers that stay in cache, and the large `[N_freq][N_screen]` output array is written once per

@@ -1,0 +1,6 @@
+srun --partition=debug --time=01:00:00 --exclusive --pty bash
+
+or
+
+srun --partition=debug --time=01:00:00 --cpus-per-task=64 --pty bash
+(cpus-per-task can be up to 256)
