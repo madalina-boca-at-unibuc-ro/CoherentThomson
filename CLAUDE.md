@@ -96,7 +96,8 @@ python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu>
 python3 py_scripts/radiation/plot_all_components.py [--incident]   # plot_field over all 4 ranges x 6 (mu,nu)
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
-python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only
+python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only;
+                                                                             # --incident also needs the laser along ±Oz
 ```
 `--incident` analyzes `incident_field.dat` (the incident laser's analytic field, written only for
 rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` the scripts use
@@ -124,8 +125,19 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 
 ### Frames and geometry
 
-- The laser **always propagates along Oz**; there is a single frame everywhere. (Arbitrary laser direction was
-  removed in `d04bb89`; the old code is on the `general-laser-direction-legacy` branch.)
+- The laser propagates along `laser_direction_theta/phi` (required; `(0,0)` = +Oz), in the single lab frame used
+  everywhere. **Only the laser moves**: the beam and detector keep their own lab-frame geometry, so a tilt is a real
+  change of collision geometry. (This differs from the old `general-laser-direction-legacy` branch, removed in
+  `d04bb89`, which rotated laser, beam and detector together and so changed nothing physical.)
+  `epsilon_1/epsilon_2` (what `zeta_1/zeta_2` refer to) are `R x̂, R ŷ` with `R =
+  MathUtils::rotation_matrix_from_direction(n)`, the detector's own Oz→n rotation. It's proper, so helicity and
+  the sign of LG `l` are relative to `n` (for `θ=π`: `epsilon_1 = x̂`, `epsilon_2 = −ŷ`). `run_log.txt` prints all
+  three axes. `k1` and the `d_tau_traj` Doppler scaling (`(p⁰ − n·p)/mc`) follow `n`. Regression check: rotating
+  laser, beam momentum and a forward detector by the same `R` must give `F → Λ F Λᵀ` (verified to the 6-digit
+  output precision); `n = +Oz` is byte-identical to the pre-change code.
+- `laser_field.dat` and `laser_field_heatmap_z0.dat` are in the **laser's own frame**: the heatmap is the laser's
+  transverse plane through the waist, and both files' `Ex..Bz` are components along `(epsilon_1, epsilon_2, n)`.
+  `incident_field.dat` and `radiation_field.dat` stay lab-frame components.
 - The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = forward).
 - The beam cylinder's axis follows the mean momentum (`average_px/py/pz`), not Oz. `beam_center_x/y/z` are applied
   **before** that rotation, so `beam_center_z` moves along the direction of motion.
@@ -137,6 +149,10 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
   samples.
 - `theory/table-with-R_beam.png` is the user's own guide table for choosing `beam_cylinder_radius` values. It's
   their reference: don't act on it unless asked.
+- `MathUtils::rotation_matrix_from_direction` (detector, laser `epsilon_1/2`, beam axis; Python copy in
+  `faraday_frame_utils.py`, keep in sync) snaps to the exact ±Oz matrix only within ~1e-12 rad. It used to snap
+  at `|nz| > 0.999999`, silently ignoring every tilt below 1.41 mrad (a 0.18 mrad detector tilt did nothing).
+  Don't loosen it: small tilts are physical here (`θ_spot ~ laser tilt · ω/ω₁`).
 - `CircularDetector`'s radial grid is **equal-area**: `r_i = sqrt(R_min² + i*(R_max²-R_min²)/(N_R-1))`. Anything
   reconstructing `r` from `i` must use this.
 - Every detector collapses to one exact point when its grid counts are `1`.

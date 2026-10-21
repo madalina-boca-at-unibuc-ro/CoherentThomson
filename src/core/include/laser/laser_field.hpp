@@ -30,11 +30,12 @@ protected:
   size_t NT, N_phi;         // number of points per cycle / total number of points used in laser plotting only
                             // NT is read from the .cfg file d_phi = 2 * pi /NT, N_phi = (phi_max-phi_min)/d_phi
 
-  // The laser always propagates along canonical Oz -- unity_n/epsilon_1/epsilon_2 are therefore
-  // fixed constants ((1,0,0,1), (0,1,0,0), (0,0,1,0) respectively), set once in the constructor, not
-  // derived from any configured direction. Kept as named members (rather than inlining literals at
-  // every use site) since get_faraday_tensor, LaguerreGaussLaser::complex_amplitude, and
-  // Radiation::export_incident_field_fourier all read them generically.
+  // The laser's own frame, set once in the constructor from the configured propagation direction
+  // (laser_direction_theta/phi): unity_n = (1, n), and epsilon_1/epsilon_2 = R x^, R y^ with
+  // R = MathUtils::rotation_matrix_from_direction(n), the same rotation Detector_2D uses. R is a proper
+  // rotation, so (epsilon_1, epsilon_2, n) stays right-handed: the helicity of a given zeta_1/zeta_2 and
+  // the sign of an LG mode's l are defined relative to the propagation direction. For n = +Oz these are
+  // exactly (1,0,0,1), (0,1,0,0), (0,0,1,0).
   Core::MathUtils::RealFourVector unity_n;               // Propagation direction 4-vector (n)
   Core::MathUtils::RealFourVector epsilon_1, epsilon_2;  // Polarization direction vectors (\hat{\epsilon}),
                                                          // orthogonal to n
@@ -52,9 +53,10 @@ protected:
 
 public:
   // Constructor initializing the baseline laser characteristics shared by every wave type: temporal
-  // envelope and polarization (propagation is always along canonical Oz, see unity_n above).
+  // envelope, polarization, and the propagation direction (theta, phi in radians, see unity_n above).
   LaserField(double angular_freq, double a0, double pulse_flat_phase, double wing_sigma_phase, double delay_in,
-             double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in, size_t NT_in);
+             double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in, size_t NT_in,
+             double direction_theta, double direction_phi);
   virtual ~LaserField() = default;
 
   // Computes and returns the complete F^{\mu\nu} tensor at a given 4-vector position, from the
@@ -110,8 +112,8 @@ private:
   double w0;   // Beam waist at the focus
   double z_R;  // Rayleigh range, derived from w0 and omega: z_R = pi * w0^2 / lambda
   // Returns {amplitude, d(amplitude)/dx_loc, d(amplitude)/dy_loc} at x_mu, all evaluated together since
-  // they share almost all of their computation; x_loc/y_loc are the laser's canonical-frame transverse
-  // coordinates. The x/y derivatives are needed (unlike in the plane-wave case) to build the E and B
+  // they share almost all of their computation; x_loc/y_loc are the transverse coordinates along
+  // epsilon_1/epsilon_2. The x/y derivatives are needed (unlike in the plane-wave case) to build the E and B
   // field components along the propagation direction from the divergence-free condition.
   std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> complex_amplitude(
       const MathUtils::RealFourVector& x) const override;
@@ -119,7 +121,7 @@ private:
 public:
   LaguerreGaussLaser(double angular_freq, double a0, double pulse_flat_phase, double wing_sigma_phase, double delay_in,
                      double wing_cutoff_sigmas, MathUtils::Complex zeta_1_in, MathUtils::Complex zeta_2_in,
-                     size_t NT_in, int p_in, int l_in, double w0_in);
+                     size_t NT_in, double direction_theta, double direction_phi, int p_in, int l_in, double w0_in);
 
   int get_lg_p() const { return p; }
   int get_lg_l() const { return l; }

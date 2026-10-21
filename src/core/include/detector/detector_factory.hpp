@@ -12,7 +12,7 @@
 
 namespace Core::Detector {
 
-// Built in its own direction (detector_direction_theta/phi), within the simulation frame (the laser
-// always propagates along Oz).
+// Built in its own direction (detector_direction_theta/phi), within the simulation (lab) frame,
+// independent of the laser's own direction.
 std::unique_ptr<Detector_2D> create_detector(const ConfigMap& config);
 }  // namespace Core::Detector

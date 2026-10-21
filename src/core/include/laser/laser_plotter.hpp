@@ -8,9 +8,10 @@ namespace Core::Laser {
 void export_field_vs_phase(const LaserField& laser, const std::string& filepath);
 
 // Exports a heat map of the field intensity (Ex^2+Ey^2+Ez^2) over an x/y grid at z=0 and a fixed time
-// t. x_min/x_max/y_min/y_max are given in the same atomic units as
-// the rest of the physics (already unit-converted by the caller); axes_scale/axes_scale_string follow
-// the same "divide before writing, label the unit in a header comment" convention as
+// t, all in the laser's own frame (x/y along epsilon_1/epsilon_2, z along n; the lab frame for a laser
+// along +Oz). export_field_vs_phase likewise writes laser-frame components. x_min/x_max/y_min/y_max are given in the
+// same atomic units as the rest of the physics (already unit-converted by the caller); axes_scale/axes_scale_string
+// follow the same "divide before writing, label the unit in a header comment" convention as
 // Detector::plot_detector_scatter.
 void export_field_heatmap_z0(const LaserField& laser, double t, double x_min, double x_max, double y_min, double y_max,
                              size_t Nx, size_t Ny, double axes_scale, const std::string& axes_scale_string,

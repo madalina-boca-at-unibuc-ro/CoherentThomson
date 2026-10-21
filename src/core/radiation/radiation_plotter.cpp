@@ -113,10 +113,10 @@ void export_incident_field_fourier(const Laser::LaserField& laser, const Detecto
         y_loc = detector.get_col_coordinate(j);
       }
 
-      // Canonical-frame position (t=ct0/c, x_loc, y_loc, z_loc=0), built directly from the laser's
-      // own transverse basis vectors -- bypassing the detector's actual to_lab_frame rotation/
-      // distance entirely, so this screen sits at the laser's own waist regardless of the real
-      // detector geometry.
+      // Position (t=ct0/c, x_loc, y_loc, z_loc=0) in the laser's own frame, built directly from its
+      // transverse basis vectors epsilon_1/epsilon_2 (the field components themselves stay lab-frame) -- bypassing the
+      // detector's actual to_lab_frame rotation/ distance entirely, so this screen sits at the laser's own waist
+      // regardless of the real detector geometry.
       Core::MathUtils::RealFourVector x_mu;
       x_mu[0] = ct0;
       for (size_t mu = 1; mu < 4; ++mu) {

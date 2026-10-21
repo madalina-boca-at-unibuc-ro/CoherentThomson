@@ -50,9 +50,9 @@ int main(int argc, char* argv[]) {
       // same beam_cylinder_radius key it would use). Deliberately ignores beam_center_x/y: those are
       // applied in the beam's own local frame, before the mean-momentum rotation
       // generate_cylinder_beam performs, which generally does *not* land back on this heatmap's
-      // canonical (laser-along-Oz) frame unless the beam's mean momentum has zero transverse
-      // component -- centering the window would need reproducing that rotation here, so the window
-      // stays beam-radius-sized but always centered on the axis.
+      // plane (the laser's own transverse plane through the origin) unless the beam's mean momentum
+      // is along the laser axis -- centering the window would need reproducing that rotation here,
+      // so the window stays beam-radius-sized but always centered on the laser axis.
       // Falls back to the previous windowing (fixed field_heatmap_x/y_min/max for plane_wave,
       // +-2*w0 for laguerre_gauss, whose actual transverse scale is set by its own waist rather than
       // any beam property) only when the beam has no meaningful transverse extent to size off of

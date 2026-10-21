@@ -169,9 +169,20 @@ inline std::tuple<int, int, double> get_laser_lg_params(const ConfigMap& config)
   return {p, l, w0};
 }
 
-// Detector's own normal direction, as {theta, phi} in radians, given in the simulation frame (the
-// laser always propagates along Oz) — shared by Detector::create_detector and
-// Simulation::init_simulation_parameters so both read the same direction.
+// Laser's propagation direction, as {theta, phi} in radians, in the simulation (lab) frame -- same
+// (theta, phi) convention as get_detector_direction_angles below. Only the laser follows it: the beam
+// and the detector keep their own configured lab-frame geometry.
+inline std::pair<double, double> get_laser_direction_angles(const ConfigMap& config) {
+  auto [theta_val, theta_unit] = split_value_and_unit(get_required(config, "laser_direction_theta"));
+  double theta = theta_val * convert_unit_to_number(theta_unit, config);
+  auto [phi_val, phi_unit] = split_value_and_unit(get_required(config, "laser_direction_phi"));
+  double phi = phi_val * convert_unit_to_number(phi_unit, config);
+  return {theta, phi};
+}
+
+// Detector's own normal direction, as {theta, phi} in radians, given in the simulation (lab) frame --
+// shared by Detector::create_detector and Simulation::init_simulation_parameters so both read the same
+// direction.
 inline std::pair<double, double> get_detector_direction_angles(const ConfigMap& config) {
   auto [theta_val, theta_unit] = split_value_and_unit(get_required(config, "detector_direction_theta"));
   double theta = theta_val * convert_unit_to_number(theta_unit, config);
@@ -197,8 +208,8 @@ enum class OmegaRangeUnit { OmegaLaser, FirstHarmonicFrequency };
 inline std::pair<double, OmegaRangeUnit> get_omega_bound(const ConfigMap& config, const std::string& key) {
   auto [val, unit] = split_value_and_unit(get_required(config, key.c_str()));
   double omega = val * convert_unit_to_number(unit, config, {"omega_laser", "first_harmonic_frequency"});
-  OmegaRangeUnit unit_kind =
-      to_lower(unit) == "first_harmonic_frequency" ? OmegaRangeUnit::FirstHarmonicFrequency : OmegaRangeUnit::OmegaLaser;
+  OmegaRangeUnit unit_kind = to_lower(unit) == "first_harmonic_frequency" ? OmegaRangeUnit::FirstHarmonicFrequency
+                                                                          : OmegaRangeUnit::OmegaLaser;
   return {omega, unit_kind};
 }
 

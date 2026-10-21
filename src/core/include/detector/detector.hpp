@@ -13,7 +13,7 @@ protected:
   std::vector<MathUtils::RealFourVector> points;
 
   // The detector's own local rotation, orthogonal to its own configured direction (dir_x/y/z) within
-  // the simulation frame (the laser always propagates along Oz).
+  // the simulation (lab) frame.
   MathUtils::RotationMatrix3x3 local_rotation;
   std::array<double, 3> normal_dir;  // detector's own normal direction, in the lab frame
 
@@ -21,8 +21,7 @@ protected:
   MathUtils::RealFourVector to_lab_frame(double x_local, double y_local, double z_local) const;
 
 public:
-  // dir_x/y/z is the detector's own normal direction in the simulation frame (the laser always
-  // propagates along Oz).
+  // dir_x/y/z is the detector's own normal direction in the simulation (lab) frame.
   Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, double dir_z);
   virtual ~Detector_2D();
 

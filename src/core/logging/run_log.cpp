@@ -74,6 +74,15 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
 
   write_section(file, "Laser");
   file << "  type                        " << laser_type << "\n";
+  auto [laser_dir_theta, laser_dir_phi] = IoUtils::get_laser_direction_angles(config);
+  file << "  direction (theta,phi)       (" << laser_dir_theta / MathUtils::pi << ", " << laser_dir_phi / MathUtils::pi
+       << ")  pi\n";
+  auto write_axis = [&file](const std::string& name, const MathUtils::RealFourVector& v) {
+    file << "  " << name << std::string(28 - name.size(), ' ') << "(" << v[1] << ", " << v[2] << ", " << v[3] << ")\n";
+  };
+  write_axis("n", laser.get_unity_n());
+  write_axis("epsilon_1", laser.get_epsilon_1());
+  write_axis("epsilon_2", laser.get_epsilon_2());
   write_kv_au(file, "omega", laser.get_omega());
   write_kv_au(file, "lambda", lambda_au);
   file << "  lambda (nm)                 " << length_au_to_nm(lambda_au) << " nm\n";

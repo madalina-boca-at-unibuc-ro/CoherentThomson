@@ -7,8 +7,8 @@ radiation/faraday_frame_utils.py (Faraday-tensor <-> Cartesian E/B column mappin
 A spherical detector is the natural fit for this: every screen point already has its own natural
 observation direction (theta, phi), so there's no shared-plane assumption to violate. Each point's
 own local (theta_local, phi_local) -- Core::Detector::SphericalDetector's own cone-point
-construction, generally relative to the detector's own axis, not necessarily canonical Oz -- is
-first rotated by the detector's local_rotation (detector_direction_theta/phi) into a canonical
+construction, generally relative to the detector's own axis, not necessarily Oz -- is
+first rotated by the detector's local_rotation (detector_direction_theta/phi) into a lab-frame
 observation direction (theta_c, phi_c); the field is then projected onto the standard orthonormal
 (r_hat, theta_hat, phi_hat) basis at that direction.
 """
@@ -63,11 +63,11 @@ def get_spherical_local_angles(config_path):
 
 def get_canonical_observation_angles(config_path):
     """
-    Returns (theta_c, phi_c): each screen point's observation direction expressed in the canonical
-    frame (laser along Oz), by rotating its own local direction (get_spherical_local_angles) with
+    Returns (theta_c, phi_c): each screen point's observation direction expressed in the lab
+    (simulation) frame, by rotating its own local direction (get_spherical_local_angles) with
     the detector's own local_rotation (get_detector_local_rotation) -- equal to the local angles
-    only when detector_direction_theta/phi places the detector's axis exactly along canonical
-    +-Oz (the two cases Core::MathUtils::rotation_matrix_from_direction special-cases).
+    only when detector_direction_theta/phi places the detector's axis exactly along
+    +-Oz (the two cases, within ~1e-12 rad, Core::MathUtils::rotation_matrix_from_direction special-cases).
     """
     theta_local, phi_local = get_spherical_local_angles(config_path)
     n_local = np.stack([

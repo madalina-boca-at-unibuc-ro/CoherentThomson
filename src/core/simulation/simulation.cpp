@@ -61,14 +61,16 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
 
   // here we scale the time_step d_tau to accomodate electrons initially in motion.
   // the scale factor is (from the Doppler transofrmation of frequencies)
-  // use the formula  d_tau /= (p^0-p^3)/mc where p^0, p^3 are the components of (average) electron intial four-momentum
+  // use the formula  d_tau /= (p^0 - n.p)/mc where p is the (average) electron initial four-momentum and n the
+  // laser's propagation direction (so d_tau stays NT_traj points per laser cycle as seen by the electron)
   IoUtils::CylinderBeamParams beam_params = IoUtils::parse_cylinder_beam_params(config);
   double px = beam_params.average_px;
   double py = beam_params.average_py;
   double pz = beam_params.average_pz;
   double mc = PhysUtils::AtomicUnits::m_0 * PhysUtils::AtomicUnits::c;
   double p0 = std::sqrt(px * px + py * py + pz * pz + mc * mc);
-  d_tau_traj /= (p0 - pz) / mc;
+  MathUtils::RealFourVector n_laser = laser.get_unity_n();
+  d_tau_traj /= (p0 - (n_laser[1] * px + n_laser[2] * py + n_laser[3] * pz)) / mc;
 
   // N_frequencies is read from a different config key depending on the mode: N_harmonics (default,
   // dense_frequency_spectrum=false) vs. N_omega (dense_frequency_spectrum=true) -- see
@@ -82,14 +84,13 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
 
   MathUtils::RealFourVector p(p0, px, py, pz);
 
-  // k1 is fixed along canonical Oz (theta=0, phi=0) -- the laser's only propagation direction -- and
+  // k1 is along the laser's propagation direction (laser_direction_theta/phi), and
   // n2 is the detector's own direction (detector_direction_theta/phi), not the electron's own
   // direction of motion. The actual spectrum depends on the observation direction, but in the code we
   // calculate it at the same set of values for the entire screen. Hard coded to be N_harmonics
   // consecutive harmonics starting at N_harmonics_min by default; the omega_min/omega_max limits in
   // the input file are only honored when dense_frequency_spectrum is true (see CLAUDE.md).
-  MathUtils::RealFourVector k1 =
-      MathUtils::create_unit_light_like_vector<double>(0.0, 0.0) * laser.get_omega() / PhysUtils::AtomicUnits::c;
+  MathUtils::RealFourVector k1 = laser.get_unity_n() * laser.get_omega() / PhysUtils::AtomicUnits::c;
   auto [detector_dir_theta, detector_dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector n2 = MathUtils::create_unit_light_like_vector<double>(detector_dir_theta, detector_dir_phi);
 

@@ -10,8 +10,8 @@ create_detector(const ConfigMap& config) {
     std::cout << "Creating detector of type: " << type << "\n";  // Debug output
   }
 
-  // The detector's own normal direction, given in the simulation frame (the laser always propagates
-  // along Oz).
+  // The detector's own normal direction, given in the simulation (lab) frame, independent of the
+  // laser's own direction.
   auto [dir_theta, dir_phi] = IoUtils::get_detector_direction_angles(config);
   MathUtils::RealFourVector dir_vec = MathUtils::create_unit_light_like_vector<double>(dir_theta, dir_phi);
   double dir_x = dir_vec[1];

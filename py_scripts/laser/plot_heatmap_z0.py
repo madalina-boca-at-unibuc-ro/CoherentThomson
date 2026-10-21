@@ -71,7 +71,7 @@ def plot_field_heatmap(filepath):
     # either physical position or w0-multiples can be read directly off the plot.
     add_w0_secondary_axes(ax, w0)
 
-    plt.title("Field Intensity in Canonical z=0 Plane", fontsize=12, fontweight='bold')
+    plt.title("Field Intensity in the Laser's Transverse z=0 (Waist) Plane", fontsize=12, fontweight='bold')
     if snapshot_description:
         plt.suptitle(f"{snapshot_description} -- start of flat-top plateau", fontsize=9, y=0.98)
 

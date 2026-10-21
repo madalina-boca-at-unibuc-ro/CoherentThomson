@@ -352,10 +352,10 @@ def compute_observables(radiation_filepath):
 
     # The L_z operator (x*d/dy - y*d/dx / d/dphi, see _lz_operator) and every observable this script
     # computes implicitly assume the screen's own local x/y axes coincide with the simulation frame's
-    # x/y -- i.e. the screen normal is along the laser's Oz axis, forward or backward. The laser
-    # itself is now always fixed along Oz (see CLAUDE.md), but detector_direction_theta/phi can still
+    # x/y -- i.e. the screen normal is along Oz, forward or backward. detector_direction_theta/phi can
     # point the screen anywhere -- so that assumption isn't automatically satisfied and has to be
-    # checked explicitly, rather than silently computing a wrong L_z for a tilted screen. Checked via
+    # checked explicitly, rather than silently computing a wrong L_z for a tilted screen. The laser's
+    # own direction (laser_direction_theta/phi) is checked separately below. Checked via
     # the direction vector's own x/y components (Core::MathUtils::create_unit_light_like_vector's
     # convention: dir = (sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta))) rather than theta alone,
     # so it's robust to any equivalent (theta, phi) parametrization of +-Oz.
@@ -373,6 +373,32 @@ def compute_observables(radiation_filepath):
             "(S_z/L_z/J_z, their fluxes, u/P_z) assumes the screen is transverse to the laser's own "
             "propagation axis (Oz), which a tilted detector_direction violates. Not yet supported here; "
             "use detector_direction_theta = 0.0 pi or 1.0 pi (any detector_direction_phi).")
+
+    # The laser direction is independent of the screen's. incident_field.dat is sampled on the laser's own
+    # transverse plane (epsilon_1/epsilon_2) with lab-frame field components, so its observables only mean
+    # S_z/L_z/J_z about the laser axis when that axis is +-Oz. For radiation_field.dat the observables about
+    # the screen normal Oz stay well defined, but the 'm/omega_N (theory)' column assumes the beam's OAM
+    # axis is Oz too.
+    try:
+        laser_theta_s, laser_theta_unit = read_config_value('laser_direction_theta', config_path)
+        laser_phi_s, laser_phi_unit = read_config_value('laser_direction_phi', config_path)
+    except ValueError:
+        # Runs made before laser_direction_theta/phi existed always had the laser along +Oz.
+        laser_theta_s, laser_theta_unit, laser_phi_s, laser_phi_unit = '0.0', 'pi', '0.0', 'pi'
+    laser_theta = float(laser_theta_s) * convert_unit_to_number(laser_theta_unit, config_path)
+    laser_phi = float(laser_phi_s) * convert_unit_to_number(laser_phi_unit, config_path)
+    laser_dir_x = np.sin(laser_theta) * np.cos(laser_phi)
+    laser_dir_y = np.sin(laser_theta) * np.sin(laser_phi)
+    if abs(laser_dir_x) > transverse_tol or abs(laser_dir_y) > transverse_tol:
+        laser_dir_text = (f"laser_direction_theta/phi = ({laser_theta_s} {laser_theta_unit}, "
+                          f"{laser_phi_s} {laser_phi_unit}) does not point along (0,0,+-1)")
+        if os.path.basename(radiation_filepath) == "incident_field.dat":
+            raise ValueError(
+                f"{laser_dir_text} -- incident_field.dat's observables are only implemented for a laser "
+                "along +-Oz (its screen is the laser's own transverse plane, its field components are "
+                "lab-frame). Not yet supported here.")
+        print(f"WARNING: {laser_dir_text}. The observables below are about the screen normal Oz, but the "
+              "'m/omega_N (theory)' column assumes the laser's OAM axis is Oz, so it doesn't apply.")
 
     x_grid = y_grid = x_vals = y_vals = None
     if detector_type == 'rectangular':

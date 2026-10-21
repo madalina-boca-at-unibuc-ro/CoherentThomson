@@ -402,17 +402,21 @@ inline constexpr RotationMatrix3x3 rotation_matrix_from_direction(double nx, dou
   ny /= norm;
   nz /= norm;
 
-  // Catch edge case: already pointing perfectly along +Z (Identity Matrix)
-  if (nz > 0.999999) {
-    return {{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};
-  }
-  // Catch edge case: pointing perfectly along -Z (Flipped Matrix)
-  if (nz < -0.999999) {
-    return {{{1.0, 0.0, 0.0}, {0.0, -1.0, 0.0}, {0.0, 0.0, -1.0}}};
+  // Edge cases: (numerically) exactly along +-Z, i.e. within ~1e-12 rad of the axis (sin(pi) ~ 1.2e-16 still
+  // lands here, so theta = 0 / pi stay exact). The threshold must stay tiny: it used to be |nz| > 0.999999, which
+  // silently snapped every tilt below 1.41 mrad to the axis (a 0.18 mrad detector tilt did nothing, and a laser
+  // tilted that little got epsilon_1/2 not orthogonal to n).
+  double transverse_sq = nx * nx + ny * ny;
+  if (transverse_sq < 1e-24) {
+    if (nz > 0.0) {
+      return {{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}};  // +Z: identity
+    }
+    return {{{1.0, 0.0, 0.0}, {0.0, -1.0, 0.0}, {0.0, 0.0, -1.0}}};  // -Z: rotation by pi about x
   }
 
-  // General case using Rodrigues' shortest arc path formula
-  double k = 1.0 / (1.0 + nz);
+  // General case using Rodrigues' shortest arc path formula. k = 1/(1+nz); near -Z, 1+nz cancels
+  // catastrophically, so it's computed there as (1-nz)/(nx^2+ny^2), using (1+nz)(1-nz) = nx^2+ny^2.
+  double k = (nz >= 0.0) ? 1.0 / (1.0 + nz) : (1.0 - nz) / transverse_sq;
   RotationMatrix3x3 R;
   R[0][0] = 1.0 - nx * nx * k;
   R[0][1] = -nx * ny * k;

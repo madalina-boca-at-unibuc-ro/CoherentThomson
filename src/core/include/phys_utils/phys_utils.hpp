@@ -5,8 +5,8 @@
 namespace Core::PhysUtils::AtomicUnits {
 // Fundamental constants in atomic units
 inline constexpr double m_0 = 1.0;
-inline constexpr double e_0 = 1.0;                                    // the electron charge in modulus
-inline constexpr double q_0 = -1.0;                                   // the electron charge
+inline constexpr double e_0 = 1.0;   // the electron charge in modulus
+inline constexpr double q_0 = -1.0;  // the electron charge
 // The speed of light, i.e. the inverse fine-structure constant 1/alpha (2018 CODATA recommended
 // value, alpha^-1 = 137.035999084(21)) -- consistent with bohr_radius_m/atomic_time_unit_s below
 // (their ratio, the atomic unit of velocity, equals c_SI*alpha to the precision of both). Previously
@@ -66,8 +66,8 @@ inline double non_linear_Thomson_formula(const MathUtils::RealFourVector& k1, co
 // width); using xi^2 instead shifts the peak further off omega/omega_1=1, i.e. makes it worse, not
 // better -- see CLAUDE.md's "k1, p/q, and n2" bullet.
 //
-// p is the electron's (average) four-momentum, k1 the incident light-like four-vector (canonical-frame
-// omega_laser/c along Oz), xi the laser's peak normalized amplitude (laser.get_a0()).
+// p is the electron's (average) four-momentum, k1 the incident light-like four-vector (omega_laser/c
+// along the laser's propagation direction), xi the laser's peak normalized amplitude (laser.get_a0()).
 inline MathUtils::RealFourVector dressed_momentum(const MathUtils::RealFourVector& p,
                                                   const MathUtils::RealFourVector& k1, double xi) {
   double mc = AtomicUnits::m_0 * AtomicUnits::c;

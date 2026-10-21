@@ -58,7 +58,7 @@ def plot_laser_fields(filepath):
     axes[2, 1].set_xlabel('Phase $\\phi$ (cycles)', fontsize=12)
 
     # Adjust layout padding so titles and axes labels don't overlap
-    plt.suptitle(f"Spacetime Field Profiles for {os.path.basename(filepath)}", fontsize=14, fontweight='bold', y=0.98)
+    plt.suptitle(f"Spacetime Field Profiles (laser frame) for {os.path.basename(filepath)}", fontsize=14, fontweight='bold', y=0.98)
     plt.tight_layout()
 
     # Save a high-res diagnostic image into a per-module subfolder of the run directory's

@@ -46,18 +46,17 @@ def convert_unit_to_number(unit, config_path):
 def rotation_matrix_from_direction(nx, ny, nz):
     """
     Python mirror of Core::MathUtils::rotation_matrix_from_direction (math_utils.hpp): the 3x3
-    rotation mapping local +z onto the given direction, including its two hardcoded near-degenerate
-    cases (exactly +z / exactly -z).
+    rotation mapping local +z onto the given direction, including its two hardcoded degenerate cases
+    (within ~1e-12 rad of +z / -z) and the stable 1/(1+nz) near -z. Keep the two in sync.
     """
     norm = np.sqrt(nx * nx + ny * ny + nz * nz)
     if norm < 1e-12:
         return np.eye(3)
     nx, ny, nz = nx / norm, ny / norm, nz / norm
-    if nz > 0.999999:
-        return np.eye(3)
-    if nz < -0.999999:
-        return np.diag([1.0, -1.0, -1.0])
-    k = 1.0 / (1.0 + nz)
+    transverse_sq = nx * nx + ny * ny
+    if transverse_sq < 1e-24:
+        return np.eye(3) if nz > 0.0 else np.diag([1.0, -1.0, -1.0])
+    k = 1.0 / (1.0 + nz) if nz >= 0.0 else (1.0 - nz) / transverse_sq
     return np.array([
         [1.0 - nx * nx * k, -nx * ny * k, nx],
         [-nx * ny * k, 1.0 - ny * ny * k, ny],
@@ -82,7 +81,7 @@ def extract_rotated_faraday_fields(data):
     """
     Returns a dict of six complex numpy arrays per range (Ex/Ey/Ez/Bx/By/Bz, suffixed '_l' for
     long-range, '_s' for short-range, '_b' for boundary), read directly out of radiation_field.dat's
-    F^{mu nu} columns (the laser always propagates along canonical Oz, so no rotation is needed).
+    F^{mu nu} columns, as lab-frame components (no rotation is applied).
     '_b' is identically zero when the run used radiation_formula="direct" -- see
     theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
 
