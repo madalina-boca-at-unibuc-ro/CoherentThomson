@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/include/build_info/build_info.hpp"
 #include "../core/include/detector/detector_factory.hpp"
 #include "../core/include/detector/detector_plotter.hpp"
 #include "../core/include/io_utils/config_parser.hpp"
@@ -32,9 +33,21 @@ int main(int argc, char* argv[]) {
     // Read the configuration file and print the configurations parsed.
     ConfigMap simulation_config = IoUtils::read_config_file(config_path, true);
 
+    // Optional (default false), unlike most keys, so older configs keep working. Checked before the run directory
+    // exists, so a refused run leaves nothing behind.
+    std::cout << "Build: " << BuildInfo::describe() << "\n";
+    auto require_clean = simulation_config.find("require_clean_build");
+    if (require_clean != simulation_config.end() && require_clean->second == "true") {
+      BuildInfo::require_clean_build();
+    }
+
     std::string run_output_dir = IoUtils::make_run_output_directory(simulation_config);
     std::cout << "Writing run output to " << run_output_dir << "\n";
     IoUtils::copy_config_to_run_directory(config_path, run_output_dir);
+    if (BuildInfo::git_dirty) {
+      BuildInfo::write_source_patch(run_output_dir + "/source.patch");
+      std::cout << "Warning: built from uncommitted changes; wrote them to " << run_output_dir << "/source.patch\n";
+    }
 
     auto laser = Laser::create_laser(simulation_config);
     Laser::export_field_vs_phase(*laser, run_output_dir + "/laser_field.dat");

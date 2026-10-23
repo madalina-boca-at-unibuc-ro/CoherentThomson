@@ -82,6 +82,15 @@ Debug is ~12–13x slower, so check the configure step's `Build type: ...` line 
   make it depend on the GCC version.
   Details: `theory/implementation_details.md` §6.
 
+**Build provenance (reproducibility):** every build runs `cmake/build_info.cmake`, which embeds the git commit,
+dirty state (untracked files count), compiler, flags and build host into the binary (`Core::BuildInfo`,
+`build_info/`; the generated `build/src/core/build_info_data.cpp` is rewritten only when it changes, so no-op
+builds still don't relink). `run_log.txt`'s `Build` section prints it, with the run host. A dirty build also
+embeds the uncommitted changes and writes them to `<run>/source.patch`: `git apply` it on a checkout of the
+recorded commit to get the built tree back. Config key `require_clean_build true` (optional, default `false`)
+refuses to run a dirty build before any output is written. Use it for publication runs. The git state is read when
+you build, not when you run, so commit first, then build.
+
 **Iterating on code changes:** copy a config (don't edit `config/config.cfg` in place unless the task is about the
 default config) and drop `beam_particle_count` to e.g. `50`; run time scales with electron count. Configs:
 - `config/config.cfg`: default, for current experiments; its parameters change freely.
@@ -254,6 +263,7 @@ modes follow `theory/long_distance_direct_simplified_coding_guide.md` (reviewed 
 Flat `key value [unit]` lines. `IoUtils::convert_unit_to_number` resolves units (`lambda`, `pi`, `mc`,
 `cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...); check it before adding a unit.
 - **An unrecognized unit only warns** and assumes `1.0`, so a typo fails silently.
+- Keys are required (`get_required`) except `require_clean_build`.
 - **A key with a blank value is dropped**, so reading it throws `std::out_of_range` (`IoUtils::get_required`
   names the missing key; a bare `config.at(...)` doesn't).
 - `w0` is valid only with `laser_type=laguerre_gauss`.

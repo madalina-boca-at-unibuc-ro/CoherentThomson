@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <tuple>
 
+#include "../include/build_info/build_info.hpp"
 #include "../include/io_utils/io_utils.hpp"
 #include "../include/math_utils/math_constants.hpp"
 #include "../include/math_utils/math_utils.hpp"
@@ -72,6 +73,32 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
        << "Everything here is derived from config.cfg (also copied verbatim into this run directory) plus what "
           "the solver actually computed from it -- meant for identifying at a glance what a given run's "
           "output actually corresponds to, without re-deriving units/derived quantities by hand.\n";
+
+  // Captured at build time (cmake/build_info.cmake). To reproduce: check out git commit, `git apply source.patch`
+  // if the build was dirty, build on a machine like build host, and run with config.cfg.
+  write_section(file, "Build");
+  file << "  git commit                  " << BuildInfo::git_commit << "\n";
+  file << "  git commit date             " << BuildInfo::git_commit_date << "\n";
+  if (!BuildInfo::git_available) {
+    file << "  git state                   unknown (no git information at build time)\n";
+  } else if (BuildInfo::git_dirty) {
+    file << "  git state                   DIRTY: uncommitted changes, saved as source.patch in this directory\n";
+    std::string status = BuildInfo::git_status;
+    size_t start = 0;
+    while (start < status.size()) {
+      size_t end = status.find('\n', start);
+      if (end == std::string::npos) end = status.size();
+      file << "                                " << status.substr(start, end - start) << "\n";
+      start = end + 1;
+    }
+  } else {
+    file << "  git state                   clean\n";
+  }
+  file << "  compiler                    " << BuildInfo::compiler << "\n";
+  file << "  build type                  " << BuildInfo::build_type << "\n";
+  file << "  flags                       " << BuildInfo::cxx_flags << "\n";
+  file << "  build host                  " << BuildInfo::build_host << "\n";
+  file << "  run host                    " << BuildInfo::run_host() << "\n";
 
   write_section(file, "Laser");
   file << "  type                        " << laser_type << "\n";

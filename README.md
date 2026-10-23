@@ -34,6 +34,14 @@ Or configure, build, and run in one step:
 python3 py_scripts/compile_and_run.py [config_file]
 ```
 
+### Reproducibility
+
+Each build records the git commit it was built from, whether there were uncommitted changes (untracked files
+included), the compiler, flags and host. Every run writes these to the `Build` section of its `run_log.txt`. If the
+build had uncommitted changes, the run folder also gets `source.patch`: check out the recorded commit and
+`git apply source.patch` to recover the exact sources. For publication runs, commit, rebuild, and set
+`require_clean_build true` in the config so that a build from uncommitted changes refuses to run.
+
 ## Visualizing output
 
 Every script plots the most recent run by default; an optional trailing argument selects a run folder instead.
