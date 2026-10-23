@@ -17,6 +17,14 @@ protected:
   MathUtils::RotationMatrix3x3 local_rotation;
   std::array<double, 3> normal_dir;  // detector's own normal direction, in the lab frame
 
+  // |X| per screen point (distance from the lab origin), filled alongside `points`. The radiation code splits
+  // the propagation phase as e^{ik|X|} e^{ik(R - |X|)}, the first factor shared by every electron at that point
+  // (theory/stabilize_phase_split_proposal.md).
+  std::vector<double> point_distances;
+
+  // Appends a point given in the detector's own local frame, rotated into the lab frame, with its |X|.
+  void add_point(double x_local, double y_local, double z_local);
+
   // Rotates a point given in the detector's own local frame into the lab frame via local_rotation.
   MathUtils::RealFourVector to_lab_frame(double x_local, double y_local, double z_local) const;
 
@@ -30,6 +38,7 @@ public:
   size_t get_total_points() const { return N1 * N2; }
   MathUtils::RealFourVector get_point(size_t ix) const { return points.at(ix); }
   const std::array<double, 3>& get_normal_direction() const { return normal_dir; }
+  double get_point_distance(size_t ix) const { return point_distances[ix]; }
 
   std::pair<size_t, size_t> get_grid_indices(size_t index) const { return {index / N2, index % N2}; }
 
@@ -41,6 +50,7 @@ public:
     N1 = 1;
     N2 = 1;
     points.resize(1);
+    point_distances.resize(1);
   }
 
   // Pure virtual function: This handles the one-to-one mapping to 3D space

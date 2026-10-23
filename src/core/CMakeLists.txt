@@ -9,6 +9,7 @@ add_library(coherent_thomson_core STATIC
     particle/electron_factory.cpp
     particle/electron_plotter.cpp
     simulation/simulation.cpp
+    simulation/form_factor.cpp
     radiation/radiation.cpp
     radiation/radiation_plotter.cpp
     logging/run_log.cpp

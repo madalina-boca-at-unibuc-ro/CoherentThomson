@@ -241,6 +241,7 @@ inline size_t get_N_omega(const ConfigMap& config) { return std::stoul(get_requi
 // initial-motion Doppler scaling of d_tau).
 struct CylinderBeamParams {
   double radius;
+  bool radius_from_lg_table;  // true when beam_cylinder_radius < 0 selected the radius via lg_beam_radius_in_w0
   double height;
   double sigma_z;  // Gaussian smoothing of the longitudinal edges; 0 = the sharp-edged uniform cylinder
   double center_x, center_y, center_z;
@@ -248,12 +249,42 @@ struct CylinderBeamParams {
   double sigma_px, sigma_py, sigma_pz;
 };
 
+// Beam radius, in units of w0, just larger than the Laguerre-Gauss (p, l) mode's transverse extent
+// (theory/table of beam electron radius in units of w_0 for different p,l.md). The mode profile depends on l only
+// through |l|. Throws outside the tabulated p = 0..4, |l| = 0..6.
+inline double lg_beam_radius_in_w0(int p, int l) {
+  static constexpr double table[5][7] = {{1.86, 2.15, 2.37, 2.56, 2.72, 2.87, 3.01},
+                                         {2.44, 2.65, 2.84, 3.00, 3.15, 3.29, 3.41},
+                                         {2.87, 3.06, 3.22, 3.37, 3.50, 3.63, 3.75},
+                                         {3.24, 3.40, 3.55, 3.68, 3.81, 3.93, 4.04},
+                                         {3.56, 3.71, 3.84, 3.97, 4.09, 4.20, 4.31}};
+  const int abs_l = std::abs(l);
+  if (p < 0 || p > 4 || abs_l > 6) {
+    throw std::invalid_argument("beam_cylinder_radius < 0 selects the radius from the LG table, which covers only "
+                                "p = 0..4 and |l| = 0..6 (got p = " +
+                                std::to_string(p) + ", l = " + std::to_string(l) + ")");
+  }
+  return table[p][abs_l];
+}
+
 // Picks the cylinder-beam keys (with unit conversion) out of the config into a CylinderBeamParams.
+// A negative beam_cylinder_radius (its unit then ignored) means lg_beam_radius_in_w0(p, l) * w0, for a
+// laguerre_gauss laser only.
 inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   CylinderBeamParams params;
 
   auto [radius_val, radius_unit] = split_value_and_unit(get_required(config, "beam_cylinder_radius"));
-  params.radius = radius_val * convert_unit_to_number(radius_unit, config);
+  params.radius_from_lg_table = radius_val < 0.0;
+  if (params.radius_from_lg_table) {
+    if (get_required(config, "laser_type") != "laguerre_gauss") {
+      throw std::invalid_argument("beam_cylinder_radius < 0 (radius from the LG table) requires "
+                                  "laser_type = laguerre_gauss");
+    }
+    auto [p, l, w0] = get_laser_lg_params(config);
+    params.radius = lg_beam_radius_in_w0(p, l) * w0;
+  } else {
+    params.radius = radius_val * convert_unit_to_number(radius_unit, config);
+  }
   auto [height_val, height_unit] = split_value_and_unit(get_required(config, "beam_cylinder_height"));
   params.height = height_val * convert_unit_to_number(height_unit, config);
   auto [sigma_z_val, sigma_z_unit] = split_value_and_unit(get_required(config, "beam_sigma_z"));

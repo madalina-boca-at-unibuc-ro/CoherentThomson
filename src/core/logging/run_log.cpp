@@ -49,8 +49,9 @@ void write_section(std::ofstream& file, const std::string& title) {
 }  // namespace
 
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
-                   size_t num_electrons, const Simulation::simulation_parameters& sim_par, size_t num_threads,
-                   double simulation_elapsed_seconds, double total_cpu_seconds, const std::string& filepath) {
+                   size_t num_electrons, const Simulation::simulation_parameters& sim_par,
+                   const Simulation::FormFactor& form_factor, size_t num_threads, double simulation_elapsed_seconds,
+                   double total_cpu_seconds, const std::string& filepath) {
   std::ofstream file(filepath);
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file for run log export: " + filepath);
@@ -114,6 +115,9 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  particle count              " << num_electrons << "\n";
   IoUtils::CylinderBeamParams beam = IoUtils::parse_cylinder_beam_params(config);
   write_kv(file, "cylinder radius", beam.radius, lambda_au);
+  if (beam.radius_from_lg_table) {
+    file << "  (cylinder radius from the LG (p, |l|) table: beam_cylinder_radius < 0)\n";
+  }
   write_kv(file, "cylinder height", beam.height, lambda_au);
   write_kv(file, "sigma_z", beam.sigma_z, lambda_au);
   write_kv(file, "center_x", beam.center_x, lambda_au);
@@ -198,6 +202,30 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     file << "    last  = " << last << "  (" << last / sim_par.fundamental_frequency << " omega_1)\n";
     file << "    step  = " << step << "  (evenly spaced)\n";
   }
+
+  // theory/thomson_form_factor_diagnostic.md. Wavevectors are listed in a.u. (1/bohr) and, in brackets, in units of
+  // k_L = omega_L/c.
+  write_section(file, "Initial form factor b(q) = (1/N) sum_j exp(i q.r_j(0)),  q = k_s - k_L");
+  const double k_L_mag = laser.get_omega() / c;
+  auto write_wavevector = [&file, k_L_mag](const std::string& name, const MathUtils::RealFourVector& v) {
+    file << "  " << name << std::string(28 - name.size(), ' ') << "(" << v[1] << ", " << v[2] << ", " << v[3]
+         << ") a.u.   [(" << v[1] / k_L_mag << ", " << v[2] / k_L_mag << ", " << v[3] / k_L_mag << ") k_L]\n";
+  };
+  const MathUtils::RealFourVector& P = form_factor.mean_momentum;
+  file << "  N                           " << form_factor.num_electrons << "\n";
+  file << "  mean p (px,py,pz)           (" << P[1] / mc << ", " << P[2] / mc << ", " << P[3] / mc << ")  mc\n";
+  file << "  mean beta                   (" << P[1] / P[0] << ", " << P[2] / P[0] << ", " << P[3] / P[0] << ")\n";
+  file << "  dressed momentum            (" << form_factor.dressed_momentum[0] << ", "
+       << form_factor.dressed_momentum[1] << ", " << form_factor.dressed_momentum[2] << ", "
+       << form_factor.dressed_momentum[3] << ")  a.u.\n";
+  write_kv_au(file, "omega_s", form_factor.omega_s);
+  file << "  omega_s / laser omega       " << form_factor.omega_s / laser.get_omega() << "\n";
+  write_wavevector("k_L", form_factor.k_L);
+  write_wavevector("k_s", form_factor.k_s);
+  write_wavevector("q", form_factor.q);
+  file << "  b (re, im)                  (" << form_factor.b.real() << ", " << form_factor.b.imag() << ")\n";
+  file << "  |b|                         " << std::abs(form_factor.b) << "\n";
+  file << "  |b|^2                       " << std::norm(form_factor.b) << "\n";
 
   write_section(file, "Run");
   file << "  num_threads (resolved)      " << num_threads << "\n";

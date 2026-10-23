@@ -301,11 +301,18 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       1 / (2 * MathUtils::pi) * PhysUtils::AtomicUnits::q_0 /
       (4 * MathUtils::pi * PhysUtils::AtomicUnits::epsilon_0 * PhysUtils::AtomicUnits::c * PhysUtils::AtomicUnits::c);
 
+  // The radiation formulas carry only e^{ik(R - |X|)}; e^{ik|X|} (|X| = the screen point's distance from the
+  // origin) is applied here, once per (frequency, screen point), so its rounding is shared by every electron
+  // rather than drawn per electron (theory/stabilize_phase_split_proposal.md). The exported field keeps the full
+  // e^{ikR}.
   for (size_t i_omega = 0; i_omega < N_omega; ++i_omega) {
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {
-      result.field[i_omega][i_screen].long_range *= general_factor;
-      result.field[i_omega][i_screen].short_range *= general_factor;
-      result.field[i_omega][i_screen].boundary *= general_factor;
+      // general_factor is negative (signed charge q_0), and std::polar needs a non-negative modulus.
+      MathUtils::Complex factor =
+          general_factor * std::polar(1.0, frequencies_list[i_omega] * detector.get_point_distance(i_screen));
+      result.field[i_omega][i_screen].long_range *= factor;
+      result.field[i_omega][i_screen].short_range *= factor;
+      result.field[i_omega][i_screen].boundary *= factor;
     }
   }
 

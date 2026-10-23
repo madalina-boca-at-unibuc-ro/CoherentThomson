@@ -2,7 +2,7 @@
 
 Simulates coherent (nonlinear) Thomson scattering of an intense laser pulse off a relativistic electron beam.
 
-Given a config-driven laser pulse (plane wave or Laguerre-Gauss mode, always propagating along Oz) and a detector
+Given a config-driven laser pulse (plane wave or Laguerre-Gauss mode, along a configurable direction) and a detector
 screen (rectangular, circular, or spherical), the solver generates an electron beam, integrates each electron's
 relativistic trajectory in the laser field, and coherently sums the radiated field (as the antisymmetric Faraday
 bivector, per frequency/screen point) across the whole beam, in parallel over electrons. Output is exported as
@@ -46,8 +46,11 @@ python3 py_scripts/detector/plot_stereographic.py
 python3 py_scripts/detector/plot_scatter.py        # only if plot_detector_scatter=true
 python3 py_scripts/particle/plot_trajectory.py
 python3 py_scripts/particle/plot_beam_scatter.py   # only if plot_beam_scatter=true
+python3 py_scripts/particle/plot_beam_density_z.py # analytic z-density; + histogram if plot_beam_scatter=true
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
 python3 py_scripts/radiation/plot_all_components.py [--incident]
+python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary|total> <mu> <nu> [run_folder]
+                                                   # or `radial_phase all`; flat detectors only (theory/post_processing.md)
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical detector
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # angular momentum / energy observables

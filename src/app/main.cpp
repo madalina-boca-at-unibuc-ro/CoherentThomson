@@ -16,6 +16,7 @@
 #include "../core/include/particle/electron_factory.hpp"
 #include "../core/include/particle/electron_plotter.hpp"
 #include "../core/include/radiation/radiation_plotter.hpp"
+#include "../core/include/simulation/form_factor.hpp"
 #include "../core/include/simulation/simulation.hpp"
 
 int main(int argc, char* argv[]) {
@@ -135,6 +136,12 @@ int main(int argc, char* argv[]) {
       Detector::plot_detector_scatter(*detector, run_output_dir, detector_axes_scale, detector_axes_unit);
     }
 
+    // Initial-position form factor at the screen center's Thomson fundamental
+    // (theory/thomson_form_factor_diagnostic.md).
+    Simulation::FormFactor form_factor = Simulation::compute_form_factor(electron_beam, *laser, *detector);
+    std::cout << "Initial form factor b = (" << form_factor.b.real() << ", " << form_factor.b.imag()
+              << "), |b| = " << std::abs(form_factor.b) << "\n";
+
     if (IoUtils::get_required(simulation_config, "dense_frequency_spectrum") == "true" &&
         detector->get_total_points() != 1) {
       std::cerr << "Error: dense_frequency_spectrum=true requires a detector collapsed to a single point, "
@@ -175,8 +182,8 @@ int main(int argc, char* argv[]) {
                 << "' has no flat local (x, y) plane (only rectangular/circular are supported).\n";
     }
 
-    Logging::write_run_log(simulation_config, *laser, *detector, electron_beam.size(), sim_par, num_threads,
-                           simulation_elapsed.count(), total_cpu_seconds, run_output_dir + "/run_log.txt");
+    Logging::write_run_log(simulation_config, *laser, *detector, electron_beam.size(), sim_par, form_factor,
+                           num_threads, simulation_elapsed.count(), total_cpu_seconds, run_output_dir + "/run_log.txt");
     std::cout << "Successfully exported run log to " << run_output_dir << "/run_log.txt\n";
 
   } catch (const std::exception& e) {

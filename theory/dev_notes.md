@@ -8,6 +8,15 @@ investigations, bug fixes, cross-checks against the Python reference
 Entries are historical: where one disagrees with the code, the code (and `CLAUDE.md`) wins. Known stale detail:
 `general_factor` is `q_0 / (2*pi * 4*pi*epsilon_0*c^2)` (`simulation.cpp`), not the `1/(2*pi*c)` quoted below.
 
+- **Moved out of `CLAUDE.md` on 2026-10-23.**
+  - The current laser direction (`laser_direction_theta/phi`, only the laser moves) differs from the old
+    `general-laser-direction-legacy` branch, removed in `d04bb89`, which rotated laser, beam and detector together
+    and so changed nothing physical.
+  - `MathUtils::rotation_matrix_from_direction` used to snap to the exact ±Oz matrix at `|nz| > 0.999999`,
+    silently ignoring every tilt below 1.41 mrad (a 0.18 mrad detector tilt did nothing). It now snaps only
+    within ~1e-12 rad.
+  - The `<a²> = a0²/2` dressing in the frequencies was confirmed three ways; see the `q` entry below.
+
 - **`LaguerreGaussLaser`'s transverse-mode physics still isn't physics-reviewed against the reference formula**
   (Allen, Beijersbergen, Spreeuw & Woerdman, Phys. Rev. A 45, 8185 (1992); Siegman, "Lasers", ch. 17).
   `complex_amplitude` (`laser_field.cpp`) returns `{amplitude, d/dx_loc, d/dy_loc}` via the product rule on

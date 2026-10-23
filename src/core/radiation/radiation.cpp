@@ -67,7 +67,23 @@ inline void add_boundary_term(MathUtils::ComplexBivector& boundary_bivector, siz
 // terms below change. Shared verbatim by both the simplified and direct forms (see
 // theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Common notation" section) -- the two
 // forms differ only in their PREFACT terms, never in this phase.
-inline double radiation_phase_argument(const MathUtils::RealFourVector& x, double R) { return x[0] + R; }
+//
+// The propagation distance enters as R - |X|, not R: e^{ik|X|} is applied once per (frequency, screen point) in
+// Simulation::run_simulation, so its rounding is shared by every electron at that point
+// (theory/stabilize_phase_split_proposal.md). With R itself in the argument, k*R ~ 1e9-1e15 rad at far screens
+// would be rounded independently per (electron, tau, screen point).
+inline double radiation_phase_argument(const MathUtils::RealFourVector& x, double delta_R) { return x[0] + delta_R; }
+
+// R - |X| for screen point X and particle position r, with R = |X - r| and |X| (Detector_2D::get_point_distance)
+// already computed: R^2 - |X|^2 = |r|^2 - 2 X.r, divided by R + |X|. Avoids subtracting the two large, nearly
+// equal numbers R and |X|; the result is ~ -n.r, set by the particle's position alone, whatever the screen's
+// distance, angle or orientation.
+inline double distance_minus_reference(const MathUtils::RealFourVector& X, const MathUtils::RealFourVector& r,
+                                       double X_norm, double R) {
+  double X_dot_r = X[1] * r[1] + X[2] * r[2] + X[3] * r[3];
+  double r_sq = r[1] * r[1] + r[2] * r[2] + r[3] * r[3];
+  return (r_sq - 2.0 * X_dot_r) / (R + X_norm);
+}
 
 // Long-range PREFACT term (multiplies the shared bivector term n_R0^alpha u^beta - n_R0^beta
 // u^alpha). Frequency-dependent: proportional to freq/R. `inv_R` (rather than R) is taken as a
@@ -223,6 +239,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
   // which otherwise dominates runtime as pure memory traffic once N_tau*N_d*N_freq is large.
   for (size_t i_d = 0; i_d < N_d; i_d++) {
     const MathUtils::RealFourVector detector_point = detector.get_point(i_d);
+    const double point_distance = detector.get_point_distance(i_d);
     std::fill(local_long.begin(), local_long.end(), MathUtils::ComplexBivector{});
     std::fill(local_short.begin(), local_short.end(), MathUtils::ComplexBivector{});
     std::fill(local_boundary.begin(), local_boundary.end(), MathUtils::ComplexBivector{});
@@ -324,7 +341,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
       double tau_weight = d_tau;
       if (N_tau > 1 && (i_tau == 0 || i_tau == N_tau - 1)) tau_weight *= 0.5;
 
-      double phase_base = radiation_phase_argument(x, R);
+      double phase_base = radiation_phase_argument(x, distance_minus_reference(detector_point, x, point_distance, R));
 
       // cexp, frequencies_list[0]'s phase factor, and cexp_step, the constant spacing's phase
       // factor, are each computed via one cos/sin evaluation (std::polar(1, theta) ==
@@ -396,7 +413,10 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
 // otherwise dominate the argument and cost ~1e-9 rad of rounding per tau, amplified by the tau-sum
 // cancellation at weak harmonics. The in-loop phase stays frequency-independent, so the evenly-spaced
 // recurrence applies. Only the spatial position is shifted by r(tau_m); the time is not reset (its constant
-// part is in the reconstruction factor), so relative phases between electrons are kept.
+// part is in the reconstruction factor), so relative phases between electrons are kept. The constant itself is
+// further split as e^{ik|X|} e^{ik(|x_0| - |X| + r^0(tau_m))}, with |x_0| - |X| from distance_minus_reference and
+// e^{ik|X|} applied per (frequency, screen point) in Simulation::run_simulation, so k|x_0| ~ 1e9-1e15 rad is never
+// rounded per electron (theory/stabilize_phase_split_proposal.md).
 //
 // GCC's SLP vectorizer miscompiles this function under -O3 -march=native (seen with GCC 15.2): the
 // complex accumulation in the i_freq loop below then returns wrong sums at every frequency after the
@@ -528,9 +548,11 @@ void compute_radiation_long_distance(const Particle::Electron& electron, const s
           -e[0], -e[1], -e[2], e[0] * n0[1] - n0[0] * e[1], e[0] * n0[2] - n0[0] * e[2], e[1] * n0[2] - n0[1] * e[2]};
     }
     double inv_x0_norm = 1.0 / x0_norm;
-    double constant_phase = x0_norm + reference[0];  // |x_0| + r^0(tau_m), taken out of the tau loop
+    // |x_0| - |X| + r^0(tau_m), taken out of the tau loop; e^{ik|X|} is applied in run_simulation.
+    double constant_phase =
+        distance_minus_reference(detector_point, reference, detector.get_point_distance(i_d), x0_norm) + reference[0];
     for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
-      // e^{ik(|x_0| + r^0(tau_m))}/|x_0|; the simplified bulk p_a also carries ik (guide 5.2), while the
+      // e^{ik(|x_0| - |X| + r^0(tau_m))}/|x_0|; the simplified bulk p_a also carries ik (guide 5.2), while the
       // direct p_a is complete as accumulated (guide 5.1).
       MathUtils::Complex amplitude = std::polar(inv_x0_norm, frequencies_list[i_freq] * constant_phase);
       MathUtils::Complex bulk_factor =
@@ -651,7 +673,7 @@ void compute_radiation_long_distance_stepped(const Particle::Electron& electron,
     size_t block_size = std::min(L, N_d - block_begin);
 
     // Per-screen-point geometry; slots past block_size repeat the last point and are never stored.
-    double D[L], nx[L], ny[L], nz[L], e1x[L], e1y[L], e1z[L], e2x[L], e2y[L], e2z[L];
+    double D[L], delta_R[L], nx[L], ny[L], nz[L], e1x[L], e1y[L], e1z[L], e2x[L], e2y[L], e2z[L];
     for (size_t l = 0; l < L; ++l) {
       size_t i_d = block_begin + std::min(l, block_size - 1);
       const MathUtils::RealFourVector detector_point = detector.get_point(i_d);
@@ -677,6 +699,7 @@ void compute_radiation_long_distance_stepped(const Particle::Electron& electron,
       for (double& component : e1)
         component /= e1_norm;
       D[l] = x0_norm;
+      delta_R[l] = distance_minus_reference(detector_point, reference, detector.get_point_distance(i_d), x0_norm);
       nx[l] = n0[0];
       ny[l] = n0[1];
       nz[l] = n0[2];
@@ -812,7 +835,8 @@ void compute_radiation_long_distance_stepped(const Particle::Electron& electron,
             -e[0], -e[1], -e[2], e[0] * ny[l] - nx[l] * e[1], e[0] * nz[l] - nx[l] * e[2], e[1] * nz[l] - ny[l] * e[2]};
       }
       double inv_x0_norm = 1.0 / D[l];
-      double constant_phase = D[l] + reference[0];  // |x_0| + r^0(tau_m), kept out of the stepped phase
+      // |x_0| - |X| + r^0(tau_m), kept out of the stepped phase; e^{ik|X|} is applied in run_simulation.
+      double constant_phase = delta_R[l] + reference[0];
       for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
         MathUtils::Complex amplitude = std::polar(inv_x0_norm, frequencies_list[i_freq] * constant_phase);
         MathUtils::Complex bulk_factor =

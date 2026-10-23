@@ -345,11 +345,17 @@ def get_detector_geometry_label(detector_type, config_path):
     distance_lambda = distance_au / convert_unit_to_number('lambda', config_path)
     return f"{label}={distance_lambda:.6g} $\\lambda$ = {distance_au * BOHR_RADIUS_M:.4g} m"
 
-def plot_radiation_component(range_type, mu, nu, radiation_filepath):
+def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_transform=None, png_subdir=None,
+                             title_note=None):
     """
     Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
     F^{mu nu} of the requested (long_range/short_range/boundary/total) Faraday tensor over
     the detector screen, one figure per configured frequency.
+
+    Optional hooks for post-processing scripts (plot_processed.py): `field_transform(field, omega_ratio)`
+    maps each frequency's complex field (i_screen order; omega_ratio = that row's omega/omega_1) to the
+    plotted one, `png_subdir` replaces the 'emitted'/'incident' output subfolder, and `title_note`
+    is appended to the component label in the panel titles.
 
     'boundary' is identically zero when the run used radiation_formula="direct" -- see
     theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
@@ -479,11 +485,14 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
     # subfolders (rather than leaving the real run's own PNGs bare in png_folder/radiation/) so both
     # sets sit side by side with parallel, equally-named paths instead of one being the implicit
     # default.
-    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME,
-                           "incident" if is_incident else "emitted")
+    if png_subdir is None:
+        png_subdir = "incident" if is_incident else "emitted"
+    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME, png_subdir)
     os.makedirs(png_dir, exist_ok=True)
 
     component_label = f"F^{{{mu}{nu}}}_{{\\mathrm{{{range_type}}}}}"
+    if title_note is not None:
+        component_label += title_note
 
     for i_omega, subset in data.groupby('i_omega'):
         subset = subset.sort_values('i_screen')
@@ -491,6 +500,9 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath):
 
         re_values = subset[re_col].to_numpy()
         im_values = subset[im_col].to_numpy()
+        if field_transform is not None:
+            field = field_transform(re_values + 1j * im_values, omega_value)
+            re_values, im_values = field.real, field.imag
         abs_values = np.hypot(re_values, im_values)
         phase_values = np.arctan2(im_values, re_values)
 

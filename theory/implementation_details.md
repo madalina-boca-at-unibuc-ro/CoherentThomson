@@ -200,8 +200,29 @@ This changes no physics and costs no speed. It is purely a precision fix:
 - With the constant outside, its rounding is a single overall phase per (electron, screen point) that nothing
   amplifies. The float64 error at h6 fell from $1.4\times10^{-5}$ to $5\times10^{-9}$ against an 80-bit reference.
 
-The exact modes still carry $R\approx|\mathbf x_0|$ inside the loop, so their weak-harmonic results are limited
-to about $10^{-5}$ by this rounding.
+The constant itself is further split as $e^{ik|\mathbf X|}\,e^{ik(|\mathbf x_0|-|\mathbf X|+r^0(\tau_m))}$, see §4.5.
+
+### 4.5 Screen-point distance split (all modes)
+
+Even outside the $\tau$ loop, $k|\mathbf x_0|$ ($10^9$–$10^{15}$ rad at far screens) was rounded separately for
+every electron, at about $k|\mathbf x_0|\cdot10^{-16}$ rad. That decorrelates the electrons, and it grows like
+$\gamma^4$ at a fixed Fresnel number ($k\propto\gamma^2$, $D\propto\gamma^2$). The exact modes had it worse:
+$R$ was inside the $\tau$ loop, rounded at every step and amplified by the weak-harmonic cancellation. Now every
+mode uses, for screen point $\mathbf X$,
+
+$$
+e^{ikR}=e^{ik|\mathbf X|}\,e^{ik(R-|\mathbf X|)},\qquad
+R-|\mathbf X|=\frac{|\mathbf r|^2-2\,\mathbf X\cdot\mathbf r}{R+|\mathbf X|}\approx-\mathbf n\cdot\mathbf r ,
+$$
+
+an exact identity (`distance_minus_reference` in `radiation.cpp`; $|\mathbf X|$ is
+`Detector_2D::get_point_distance`). $R-|\mathbf X|$ depends only on the particle's position, not on the screen's
+distance, angle or orientation. $e^{ik|\mathbf X|}$ is applied once per (frequency, screen point) in
+`run_simulation`, next to `general_factor`, so its rounding is shared by every electron at that point. The
+exported field still carries the full $e^{ikR}$. Per-electron $\mathbf n_0$, $1/|\mathbf x_0|$ and trajectories are
+untouched. Measurements are in `stabilize_phase_split_proposal.md`; in short, all modes now converge to 6–7 digits
+in $D^2|F|^2$ up to $kD\sim5\times10^{17}$, where the old code had lost the off-axis pattern from $kD\sim10^{13}$,
+and the exact modes run ~40% faster (smaller sin/cos arguments).
 
 ### 4.4 Stepped phase (the `*_approx` modes)
 
@@ -241,7 +262,7 @@ modes agree to $\lesssim10^{-7}$, mostly to all 7 digits printed in `radiation_f
 
 - **Weak harmonics cancel strongly.** In the $\tau$ sum at h2 and above, the result is up to $10^4$ times smaller
   than the sum of the magnitudes of its terms, so any per-step error is amplified by that factor. This affects
-  both the rounding of the phase (§4.3) and the quadrature error.
+  both the rounding of the phase (§4.3, §4.5) and the quadrature error.
 - **Exact `simplified` at weak harmonics.** Its $F_l$ and $F_b$ are individually large and cancel, so its
   trapezoid error is amplified. On `config.cfg` with `trajectory_NT=100`, it differs from `direct` by 10% at h2
   and about 100% at h3. The difference shrinks 4× per doubling of `trajectory_NT`, so it is quadrature error,
@@ -282,6 +303,9 @@ The stepped mode must stay vectorizable: after editing it, check with `-fopt-inf
 | `long_distance_direct` | 41 ns | 79 ns |
 | `long_distance_simplified_approx` | **11 ns** | **24 ns** |
 | `long_distance_direct_approx` | **18 ns** | **31 ns** |
+
+The exact-mode rows predate §4.5, which made those modes about 40% faster (0.53 → 0.32 s per electron on a
+256-point screen); the long-distance rows are unchanged by it.
 
 The direct approx mode is slower than the simplified one because its integrand needs a division by
 $(n_0\cdot u)^2$ at every step. The trajectory integration (RK4) is negligible next to the radiation sum: a few ms

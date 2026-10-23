@@ -5,6 +5,7 @@
 #include "../detector/detector.hpp"
 #include "../io_utils/config_map.hpp"
 #include "../laser/laser_field.hpp"
+#include "../simulation/form_factor.hpp"
 #include "../simulation/simulation.hpp"
 
 namespace Core::Logging {
@@ -24,9 +25,11 @@ namespace Core::Logging {
 // used here (not simulation_elapsed_seconds) to derive the per-electron/per-screen-point/per-cycle
 // timing figure, for the same reason run_simulation itself prefers it over wall-clock time: dividing
 // wall-clock time by electron/screen-point count would understate the true per-unit cost by roughly
-// num_threads, since electrons are processed in parallel, not sequentially.
+// num_threads, since electrons are processed in parallel, not sequentially. `form_factor` is
+// Simulation::compute_form_factor's result for this run's beam, written as its own section.
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
-                   size_t num_electrons, const Simulation::simulation_parameters& sim_par, size_t num_threads,
-                   double simulation_elapsed_seconds, double total_cpu_seconds, const std::string& filepath);
+                   size_t num_electrons, const Simulation::simulation_parameters& sim_par,
+                   const Simulation::FormFactor& form_factor, size_t num_threads, double simulation_elapsed_seconds,
+                   double total_cpu_seconds, const std::string& filepath);
 
 }  // namespace Core::Logging

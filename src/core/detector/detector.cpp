@@ -15,6 +15,7 @@ namespace Core::Detector {
 Detector_2D::Detector_2D(size_t n1, size_t n2, double dir_x, double dir_y, double dir_z)
     : N1(n1), N2(n2), local_rotation(MathUtils::rotation_matrix_from_direction(dir_x, dir_y, dir_z)) {
   points.reserve(n1 * n2);
+  point_distances.reserve(n1 * n2);
   MathUtils::RealFourVector normal_dir_4 = to_lab_frame(0.0, 0.0, 1.0);
   normal_dir = {normal_dir_4[1], normal_dir_4[2], normal_dir_4[3]};
 }
@@ -24,6 +25,13 @@ Detector_2D::~Detector_2D() {}  // Explicitly defines the virtual destructor anc
 MathUtils::RealFourVector Detector_2D::to_lab_frame(double x_local, double y_local, double z_local) const {
   std::array<double, 3> p = MathUtils::rotate3d(local_rotation, {x_local, y_local, z_local});
   return MathUtils::RealFourVector(0.0, p[0], p[1], p[2]);
+}
+
+void Detector_2D::add_point(double x_local, double y_local, double z_local) {
+  points.push_back(to_lab_frame(x_local, y_local, z_local));
+  const MathUtils::RealFourVector& X = points.back();
+  // From the stored lab point, so that |X|^2 and the X.r used in R - |X| refer to the same (rounded) point.
+  point_distances.push_back(std::sqrt(X[1] * X[1] + X[2] * X[2] + X[3] * X[3]));
 }
 
 void Detector_2D::print_info() const {
@@ -62,7 +70,7 @@ SphericalDetector::SphericalDetector(size_t N_theta, size_t N_phi, double R, dou
       double y_local = radius * sin_theta * std::sin(phi);
       double z_local = radius * cos_theta;
 
-      points.push_back(to_lab_frame(x_local, y_local, z_local));
+      add_point(x_local, y_local, z_local);
     }
   }
 }
@@ -105,7 +113,7 @@ RectangularDetector::RectangularDetector(size_t Nx, size_t Ny, double D, double 
     for (size_t j = 0; j < N2; ++j) {
       double x_local = x_min + static_cast<double>(i) * dx;
       double y_local = y_min + static_cast<double>(j) * dy;
-      points.push_back(to_lab_frame(x_local, y_local, distance));
+      add_point(x_local, y_local, distance);
     }
   }
 }
@@ -145,7 +153,7 @@ CircularDetector::CircularDetector(size_t N_R, size_t N_phi, double D, double r_
       double x_local = r * std::cos(phi);
       double y_local = r * std::sin(phi);
 
-      points.push_back(to_lab_frame(x_local, y_local, distance));
+      add_point(x_local, y_local, distance);
     }
   }
 }
