@@ -1,5 +1,6 @@
 #include "../include/radiation/radiation_plotter.hpp"
 
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -76,6 +77,37 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
   std::cout << "Successfully exported radiation field to " << filepath << "\n";
 }
 
+namespace {
+
+// F'^{ab} = Lambda^a_k Lambda^b_l F^{kl}, with Lambda's spatial rows the laser-frame axes (epsilon_1, epsilon_2, n)
+// in lab components and Lambda^0_0 = 1: the lab tensor's components in the laser's own frame. Identity for a laser
+// along +Oz (epsilon_1 = x, epsilon_2 = y, n = z).
+MathUtils::ComplexFourTensor to_laser_frame(const MathUtils::ComplexFourTensor& F, const MathUtils::RealFourVector& e1,
+                                            const MathUtils::RealFourVector& e2, const MathUtils::RealFourVector& n) {
+  std::array<std::array<double, 4>, 4> lambda{};
+  lambda[0][0] = 1.0;
+  for (size_t k = 1; k < 4; ++k) {
+    lambda[1][k] = e1[k];
+    lambda[2][k] = e2[k];
+    lambda[3][k] = n[k];
+  }
+  MathUtils::ComplexFourTensor result;
+  for (size_t a = 0; a < 4; ++a) {
+    for (size_t b = 0; b < 4; ++b) {
+      MathUtils::Complex sum = 0.0;
+      for (size_t k = 0; k < 4; ++k) {
+        for (size_t l = 0; l < 4; ++l) {
+          sum += lambda[a][k] * lambda[b][l] * F[k][l];
+        }
+      }
+      result[a][b] = sum;
+    }
+  }
+  return result;
+}
+
+}  // namespace
+
 void export_incident_field_fourier(const Laser::LaserField& laser, const Detector::Detector_2D& detector,
                                    double fundamental_frequency, const std::string& filepath) {
   std::string detector_type = detector.get_type_name();
@@ -114,9 +146,10 @@ void export_incident_field_fourier(const Laser::LaserField& laser, const Detecto
       }
 
       // Position (t=ct0/c, x_loc, y_loc, z_loc=0) in the laser's own frame, built directly from its
-      // transverse basis vectors epsilon_1/epsilon_2 (the field components themselves stay lab-frame) -- bypassing the
-      // detector's actual to_lab_frame rotation/ distance entirely, so this screen sits at the laser's own waist
-      // regardless of the real detector geometry.
+      // transverse basis vectors epsilon_1/epsilon_2 -- bypassing the detector's actual to_lab_frame rotation/
+      // distance entirely, so this screen sits at the laser's own waist regardless of the real detector geometry.
+      // The field components are written in the same laser frame (see to_laser_frame), so the file shows the
+      // laser as if it propagated along +Oz, whatever laser_direction_theta/phi is.
       Core::MathUtils::RealFourVector x_mu;
       x_mu[0] = ct0;
       for (size_t mu = 1; mu < 4; ++mu) {
@@ -124,7 +157,8 @@ void export_incident_field_fourier(const Laser::LaserField& laser, const Detecto
       }
 
       size_t i_screen = i * N2 + j;
-      incident_field.field[0][i_screen].long_range = laser.get_complex_faraday_tensor(x_mu);
+      incident_field.field[0][i_screen].long_range = to_laser_frame(laser.get_complex_faraday_tensor(x_mu), eps1,
+                                                                    eps2, laser.get_unity_n());
       // short_range and boundary stay default-constructed (identically zero): the incident field has
       // no such split, it's simply "the whole field" -- see this function's own doc comment.
     }

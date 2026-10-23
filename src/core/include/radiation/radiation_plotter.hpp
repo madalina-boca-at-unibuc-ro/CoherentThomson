@@ -29,6 +29,8 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
 // Reuses the detector's own local 2D grid (get_row_coordinate/get_col_coordinate, ignoring
 // to_lab_frame's rotation/distance entirely) so the incident-field screen has identical size/resolution/i_screen
 // ordering to the actual radiation_field.dat from the same run -- directly comparable side by side.
+// Unlike radiation_field.dat (lab-frame components), positions AND components are in the laser's own
+// frame (epsilon_1, epsilon_2, n): the file shows the laser unrotated, as if it propagated along +Oz.
 // Evaluated at the middle of the pulse's flat-top plateau (phi = (get_phi_min()+get_phi_max())/2,
 // i.e. envelope = 0, peak amplitude) -- see LaserField::get_complex_faraday_tensor's own doc comment
 // for why the exact instant chosen doesn't matter. Only rectangular and circular detectors have a

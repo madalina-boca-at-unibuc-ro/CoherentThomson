@@ -640,6 +640,27 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   `c` (the theory doc's own in-line sanity check for `P_z` reduces to exactly `dP_z/domega = c * du/domega` for a
   paraxial wave). Independent confirmation the new formulas are implemented correctly, not just that the two
   intermediate factors (`epsilon_0` vs. `epsilon_0*c^2`) happen to cancel by construction.
+- **`Lambda_zz/P_z` sign on a backward screen was a frame mix in `plot_observables.py`, not physics (fixed
+  2026-10-23).** The `L_z` operator was taken on the screen's local grid while `E`/`B` (so `S_z`, `P_z`) are lab
+  components. For `detector_direction_theta = π` the local frame is lab `(x, −y, −z)`, so `L_z` came out about
+  `−z_lab` and the ratio had exactly the wrong sign. Fix: `L_z(lab) = det(R_⊥)·L_z(local)` (`lz_sign`, from the
+  detector rotation, or the laser's for `incident_field.dat`). The propagation direction itself cancels in
+  `Lambda_zz/P_z` (both are fluxes along z), and `J_z` about lab z is conserved, so the emitted harmonic keeps the
+  laser's sign about lab z. The theory column now uses `m = laser_lg_l·sign(n_laser,z)` (`l` is relative to the
+  laser's own direction) and `N m/omega_N = m/omega_1` for harmonic `N`. After the fix, with `p = l = 2`:
+  backward screen, laser +z (`20261023_135826`): `+0.598, +0.717` vs `+0.605` (N = 1, 2), incident `436.1` vs
+  `439.0`; forward screen, laser −z (`20261023_133047`): `−0.470, −0.155` vs `−0.605`, incident `−436.1` vs
+  `−439.0`. Signs now agree everywhere. The two runs are the **same** head-on geometry mirrored (laser and
+  `average_pz` both flipped, screen along the electron's motion in both), not forward vs. backward emission; they
+  differ in `circular_detector_R_max` (5 vs 20 `w0`) and `beam_particle_count` (32768 vs 8192), so the magnitude
+  gap is about screen size and electron count (coherent ∝ N², incoherent ∝ N). Also, `N_F = a²/(D λ_s)` ≈ 2.3 for
+  the emitted wavelength there (`a = 80.5 λ`, `D = 2e6 λ`, `λ_s ≈ λ/725`), so not far field.
+  Per photon about +z (`ω·flux/P_z`), circular polarization, `m = 2`, run `135826`: N = 1 `S = 1.000, L = 1.978,
+  J = 2.978`; N = 2 `S = 1.000, L = 4.737, J = 5.737`; incident `S = 1.000, L = 1.987`. This looks like
+  `J = N(m+σ)` with the spin staying ±1, i.e. `L = N(m+σ)−σ` (5 at N = 2), not `N m` (4). Not yet settled.
+  As the user pointed out, flipping only the screen at `γ ≠ 0` is not a clean test either: `k_s` differs by ~`4γ²`
+  between the two directions, and in the long-distance limit `k_s Z` sets the coherence condition. The clean
+  forward-vs-backward check is electrons at rest, with the distance and detector size chosen for that `k_s`.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,

@@ -17,9 +17,15 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
 - The single-electron Thomson-dipole benchmark (electron at rest, full-4π spherical detector, weak field →
   `1+cos²θ` for circular polarization) has **not** been reproduced yet. Don't trust absolute intensities/angular
   patterns for more complex setups until it is.
-- `plot_observables.py`'s `Lambda_zz/P_z` matches the theoretical `m/omega_N` in magnitude (~0.6%) but has the
-  **opposite sign** on the backward-detector config. Planned check: flip only `detector_direction_theta` 0↔1 π
-  and the sign of `average_pz`, keeping `|l|` and the electron count.
+- `plot_observables.py`'s `Lambda_zz/P_z` now has the right sign everywhere (the old backward-screen sign flip was
+  a local-grid vs. lab-component mix, fixed with `lz_sign`; dev notes). Theory column: `L_N/omega_N` with
+  `L_N = N(m+σ)−σ` for the emitted harmonics (`J = N(m+σ)` per photon, spin stays `σ`; `σ = 2 Im(ζ₁*ζ₂)`, 0 for
+  linear), `m` and `σ` times `sign(n_laser,z)` (about lab +z); `m/omega` with `m = laser_lg_l` for `--incident`
+  (laser frame). Measured on a backward run (`p = l = 2`, circular): N = 1 `0.598` vs `0.605`, N = 2 `0.717` vs
+  `0.756` (~5% low; was ~18% high against `N m`). Per photon there: `S = 1`, `L ≈ 4.74`, `J ≈ 5.74` at N = 2. A mirrored run
+  (laser and `average_pz` both flipped, `R_max` 20 vs 5 `w0`, 8192 vs 32768 electrons) was much further off. With
+  `γ ≠ 0`, flipping only the screen changes `k_s` by ~`4γ²` and so the coherence/Fresnel regime; the clean
+  forward-vs-backward check is electrons at rest (dev notes).
 - The initial form factor `b(q)` (`Simulation::compute_form_factor`, `simulation/form_factor.cpp`; spec in
   `theory/thomson_form_factor_diagnostic.md`) is one scalar, printed to stdout and `run_log.txt`, at harmonic 1
   along the detector normal, from one serial pass over the stored beam using the generated beam's mean momentum
@@ -134,8 +140,8 @@ python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary
                                                    # (theory/post_processing.md); -> png_folder/radiation/processed/<processing>/
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
-python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only;
-                                                                             # --incident also needs the laser along ±Oz
+python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only
+                                                                             # (--incident: any laser direction)
 ```
 `--incident` analyzes `incident_field.dat` (the incident laser's analytic field, written only for
 rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` the scripts use
@@ -163,6 +169,8 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 
 ### Frames and geometry
 
+- **Baseline orientation** (`config/config.cfg`): electrons and screen along +Oz, laser along −Oz (head-on,
+  `laser_direction_theta 1.0 pi`). The forward screen's local frame is the lab frame, so its plots need no mirror.
 - The laser propagates along `laser_direction_theta/phi` (required; `(0,0)` = +Oz), in the single lab frame used
   everywhere. **Only the laser moves**: the beam and detector keep their own lab-frame geometry, so a tilt is a real
   change of collision geometry.
@@ -172,7 +180,11 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
   three axes. `k1` and the `d_tau_traj` Doppler scaling (`(p⁰ − n·p)/mc`) follow `n`.
 - `laser_field.dat` and `laser_field_heatmap_z0.dat` are in the **laser's own frame**: the heatmap is the laser's
   transverse plane through the waist, and both files' `Ex..Bz` are components along `(epsilon_1, epsilon_2, n)`.
-  `incident_field.dat` and `radiation_field.dat` stay lab-frame components.
+  `incident_field.dat` is in the laser's own frame too (grid on its `(epsilon_1, epsilon_2)` plane at the waist,
+  `F^{mu nu}` rotated to `(epsilon_1, epsilon_2, n)`), so it always shows the laser unrotated, as if along +Oz.
+  Runs built before this change wrote lab-frame components there (same thing only for a laser along +Oz).
+  `radiation_field.dat` stays lab-frame components on the detector's local grid (mirrored `(x, −y)` on a screen
+  facing −Oz).
 - The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = forward).
 - The beam cylinder's axis follows the mean momentum (`average_px/py/pz`), not Oz. `beam_center_x/y/z` are applied
   **before** that rotation, so `beam_center_z` moves along the direction of motion.

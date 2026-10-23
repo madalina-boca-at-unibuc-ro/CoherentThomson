@@ -37,9 +37,16 @@ Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are 
 
 - Computes the SAM/OAM/TAM densities `S_z`/`L_z`/`J_z`, the fluxes `Sigma_zz`/`Lambda_zz`/`Flux_tot`, and the
   energy `u`/`P_z`, per `theory/numerical_calculation_of_angular_momentum.md`.
-- The `L_z` operator is `x∂y−y∂x` (rectangular, `np.gradient`) or a periodic `∂φ` (circular).
+- The `L_z` operator is `x∂y−y∂x` (rectangular, `np.gradient`) or a periodic `∂φ` (circular), taken on the
+  screen's **local** grid and multiplied by `lz_sign = det(R_⊥)` (−1 for a screen facing −Oz, whose local frame is
+  lab `(x, −y, −z)`), so every observable is about lab +z. `E`/`B` are lab components; don't drop `lz_sign`.
+  `--incident` needs no correction (`lz_sign = 1`): `incident_field.dat` is entirely in the laser's own frame, for
+  any laser or detector direction.
+- The theoretical `Lambda_zz/P_z`: `(N(m+σ)−σ)/omega_N` for the emitted harmonics (`σ = 2 Im(ζ₁*ζ₂)`, the laser
+  spin; `N m/omega_N` for linear), with `m`, `σ` times `sign(n_laser,z)` (about lab +z); `m/omega` with
+  `m = laser_lg_l` for `--incident`.
 - The angular-momentum quantities divide by the true `omega` (not `omega/omega_1`), recovered from
   `fundamental_frequency` in `run_log.txt`.
-- Sanity checks it prints: each flux/density ratio ≈ `±c` (holds to ~3e-5), and `Lambda_zz/P_z` ≈ `m/omega_N`.
+- Sanity checks it prints: each flux/density ratio ≈ `±c` (holds to ~3e-5), and `Lambda_zz/P_z` ≈ the theory column.
 - It appends its screen-integrated tables to `run_log.txt`, replacing only its own section by exact header match
   (`_find_run_log_sections`). Don't reintroduce a "truncate after first marker" approach.

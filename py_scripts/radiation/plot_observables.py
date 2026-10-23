@@ -110,20 +110,22 @@ not-necessarily-close-to-C_LIGHT ratio for that one pair -- expected, not itself
 **OAM-to-energy ratio**: a third table (_ENERGY_NORMALIZED_PAIRS, Lambda_zz/P_z -- the orbital
 angular-momentum *flux* over the energy *flux*/Poynting vector, not the density pair L_z/u this used
 before) divides the screen-integrated orbital-AM-flux total by the screen-integrated energy-flux
-total, expected to land close to m/omega_N (inverse time, atomic units; m = the beam's own
-topological charge, i.e. config.cfg's laser_lg_l; omega_N = that row's actual raw angular frequency,
-(omega/omega_1)*fundamental_frequency_au, fundamental_frequency_au read back out of run_log.txt by
-_read_fundamental_frequency_au) -- the angular-momentum/energy = m/omega relation for radiation
-carrying m units of angular momentum per photon of energy omega (hbar=1). Since flux = c * density
+total, expected to land close to L_N/omega_N with L_N = N(m+s)-s (s = the laser's spin per photon; for
+linear polarization N*m/omega_N) (inverse time, atomic units; m = the beam's own
+topological charge, i.e. config.cfg's laser_lg_l; N = the harmonic order, round(omega/omega_1);
+omega_N = that row's actual raw angular frequency, (omega/omega_1)*fundamental_frequency_au,
+fundamental_frequency_au read back out of run_log.txt by _read_fundamental_frequency_au) -- the N-th
+harmonic carries J = N(m+s) units of angular momentum per photon of energy omega_N (hbar=1), of which the
+spin is s (see add_theoretical_oam_energy_ratio). For --incident (the laser's own
+single frequency, not a harmonic) the prediction stays m/omega, with everything (grid, components, m)
+in the laser's own frame. Since flux = c * density
 for both the numerator and denominator (see _RATIO_PAIRS' own C_LIGHT check), Lambda_zz/P_z and
 L_z/u are algebraically identical (the c cancels) -- the flux pair is used here because Lambda_zz/P_z
 draws on the B-field bilinears (never used by L_z/u, which is pure-E), so agreement between this
-ratio and the theoretical m/omega_N is an independent check on the flux formulas too, not just a
-restatement of the density one. The theoretical m/omega_N value is appended alongside the numerical
-ratio (not just quoted once in the caption) so every row can be checked directly, since omega_N
-scales with harmonic index N and a single caption value would only be valid for N=1 (see CLAUDE.md's
-"missing 1/omega" bug-fix note for why this needs the run's actual raw omega_1, not the dimensionless
-omega/omega_1 ratio the .dat files export).
+ratio and the theoretical value is an independent check on the flux formulas too, not just a
+restatement of the density one. The theoretical value is appended alongside the numerical ratio on
+every row (see add_theoretical_oam_energy_ratio), using the run's actual raw omega_1, not the
+dimensionless omega/omega_1 ratio the .dat files export.
 
 Reuses plot_field.py's screen-geometry/cell-edge reconstruction directly (same CLI shape:
 [path_to_run_folder] [--incident]), and the same is_incident split into
@@ -147,7 +149,7 @@ from plot_field import (
     get_angular_axes,
     get_detector_geometry_label,
 )
-from faraday_frame_utils import C_LIGHT, convert_unit_to_number
+from faraday_frame_utils import C_LIGHT, convert_unit_to_number, get_detector_local_rotation
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -208,11 +210,11 @@ _RATIO_PAIRS = (
 )
 
 # (numerator column, denominator column, ratio label). Lambda_zz/P_z is the OAM-to-energy ratio: for
-# radiation carrying m units of angular momentum per photon of energy omega (hbar=1, atomic units),
-# int_dLambdazz_domega/int_dPz_domega is expected to land close to m/omega_N (inverse time, atomic
-# units, omega_N the row's actual raw angular frequency -- see this module's own "OAM-to-energy
-# ratio" doc comment for why the flux pair is used instead of the algebraically-identical density
-# pair L_z/u). See CLAUDE.md's "missing 1/omega" bug-fix note, whose own int_dJz_domega/int_du_domega
+# the N-th harmonic, carrying orbital L_N = N(m+s)-s units of angular momentum per photon of energy omega_N
+# (hbar=1, atomic units, s the laser spin), int_dLambdazz_domega/int_dPz_domega is expected to land close to
+# L_N/omega_N (inverse time, omega_N the row's actual raw angular frequency -- see this module's own
+# "OAM-to-energy ratio" doc comment for why the flux pair is used instead of the algebraically-identical
+# density pair L_z/u). See CLAUDE.md's "missing 1/omega" bug-fix note, whose own int_dJz_domega/int_du_domega
 # check (the sum of S_z/u and L_z/u) motivated this fix in the first place. Kept in its own
 # tuple/table rather than folded into _RATIO_PAIRS above: that table's caption specifically expects
 # C_LIGHT, which does not apply here.
@@ -315,6 +317,24 @@ def _lz_operator(detector_type, E, x_grid=None, y_grid=None, x_vals=None, y_vals
     return _periodic_phi_derivative(E)
 
 
+def _read_laser_direction(config_path):
+    """
+    Returns (n, label): the laser's lab-frame unit propagation direction n (laser_direction_theta/phi,
+    Core::MathUtils::create_unit_light_like_vector's convention) and a 'laser_direction_theta/phi =
+    (...)' label for messages.
+    """
+    try:
+        theta_s, theta_unit = read_config_value('laser_direction_theta', config_path)
+        phi_s, phi_unit = read_config_value('laser_direction_phi', config_path)
+    except ValueError:
+        # Runs made before laser_direction_theta/phi existed always had the laser along +Oz.
+        theta_s, theta_unit, phi_s, phi_unit = '0.0', 'pi', '0.0', 'pi'
+    theta = float(theta_s) * convert_unit_to_number(theta_unit, config_path)
+    phi = float(phi_s) * convert_unit_to_number(phi_unit, config_path)
+    n = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
+    return n, f"laser_direction_theta/phi = ({theta_s} {theta_unit}, {phi_s} {phi_unit})"
+
+
 def compute_observables(radiation_filepath):
     """
     Returns (result, detector_type, config_path). `result` has one row per radiation_field.dat row
@@ -350,55 +370,53 @@ def compute_observables(radiation_filepath):
             "theory/numerical_calculation_of_angular_momentum.md's angular-momentum calculation is "
             "only implemented for those two (its own 'Target Screens' instruction).")
 
-    # The L_z operator (x*d/dy - y*d/dx / d/dphi, see _lz_operator) and every observable this script
-    # computes implicitly assume the screen's own local x/y axes coincide with the simulation frame's
-    # x/y -- i.e. the screen normal is along Oz, forward or backward. detector_direction_theta/phi can
-    # point the screen anywhere -- so that assumption isn't automatically satisfied and has to be
-    # checked explicitly, rather than silently computing a wrong L_z for a tilted screen. The laser's
-    # own direction (laser_direction_theta/phi) is checked separately below. Checked via
-    # the direction vector's own x/y components (Core::MathUtils::create_unit_light_like_vector's
-    # convention: dir = (sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta))) rather than theta alone,
-    # so it's robust to any equivalent (theta, phi) parametrization of +-Oz.
-    theta_s, theta_unit = read_config_value('detector_direction_theta', config_path)
-    phi_s, phi_unit = read_config_value('detector_direction_phi', config_path)
-    theta = float(theta_s) * convert_unit_to_number(theta_unit, config_path)
-    phi = float(phi_s) * convert_unit_to_number(phi_unit, config_path)
-    dir_x = np.sin(theta) * np.cos(phi)
-    dir_y = np.sin(theta) * np.sin(phi)
+    is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
     transverse_tol = 1e-9
-    if abs(dir_x) > transverse_tol or abs(dir_y) > transverse_tol:
-        raise ValueError(
-            f"detector_direction_theta/phi = ({theta_s} {theta_unit}, {phi_s} {phi_unit}) does not point "
-            "along (0,0,1) or (0,0,-1) in the simulation frame -- every observable this script computes "
-            "(S_z/L_z/J_z, their fluxes, u/P_z) assumes the screen is transverse to the laser's own "
-            "propagation axis (Oz), which a tilted detector_direction violates. Not yet supported here; "
-            "use detector_direction_theta = 0.0 pi or 1.0 pi (any detector_direction_phi).")
-
-    # The laser direction is independent of the screen's. incident_field.dat is sampled on the laser's own
-    # transverse plane (epsilon_1/epsilon_2) with lab-frame field components, so its observables only mean
-    # S_z/L_z/J_z about the laser axis when that axis is +-Oz. For radiation_field.dat the observables about
-    # the screen normal Oz stay well defined, but the 'm/omega_N (theory)' column assumes the beam's OAM
-    # axis is Oz too.
-    try:
-        laser_theta_s, laser_theta_unit = read_config_value('laser_direction_theta', config_path)
-        laser_phi_s, laser_phi_unit = read_config_value('laser_direction_phi', config_path)
-    except ValueError:
-        # Runs made before laser_direction_theta/phi existed always had the laser along +Oz.
-        laser_theta_s, laser_theta_unit, laser_phi_s, laser_phi_unit = '0.0', 'pi', '0.0', 'pi'
-    laser_theta = float(laser_theta_s) * convert_unit_to_number(laser_theta_unit, config_path)
-    laser_phi = float(laser_phi_s) * convert_unit_to_number(laser_phi_unit, config_path)
-    laser_dir_x = np.sin(laser_theta) * np.cos(laser_phi)
-    laser_dir_y = np.sin(laser_theta) * np.sin(laser_phi)
-    if abs(laser_dir_x) > transverse_tol or abs(laser_dir_y) > transverse_tol:
-        laser_dir_text = (f"laser_direction_theta/phi = ({laser_theta_s} {laser_theta_unit}, "
-                          f"{laser_phi_s} {laser_phi_unit}) does not point along (0,0,+-1)")
-        if os.path.basename(radiation_filepath) == "incident_field.dat":
+    if is_incident:
+        # incident_field.dat (Radiation::export_incident_field_fourier) is entirely in the laser's own frame:
+        # the grid is its (epsilon_1, epsilon_2) plane at the waist and the field components are along
+        # (epsilon_1, epsilon_2, n). Every observable is then about the laser's own axis, for any
+        # laser_direction_theta/phi and detector direction, and needs no frame correction.
+        lz_sign = 1.0
+    else:
+        # The L_z operator (x*d/dy - y*d/dx / d/dphi, see _lz_operator) and every observable this script
+        # computes assume the screen's own local x/y plane is the simulation frame's x/y plane -- i.e. the
+        # screen normal is along Oz, forward or backward. detector_direction_theta/phi can point the screen
+        # anywhere, so that is checked explicitly rather than silently computing a wrong L_z for a tilted
+        # screen. Checked via the direction vector's own x/y components
+        # (Core::MathUtils::create_unit_light_like_vector's convention: dir = (sin(theta)*cos(phi),
+        # sin(theta)*sin(phi), cos(theta))) rather than theta alone, so it's robust to any equivalent
+        # (theta, phi) parametrization of +-Oz.
+        theta_s, theta_unit = read_config_value('detector_direction_theta', config_path)
+        phi_s, phi_unit = read_config_value('detector_direction_phi', config_path)
+        theta = float(theta_s) * convert_unit_to_number(theta_unit, config_path)
+        phi = float(phi_s) * convert_unit_to_number(phi_unit, config_path)
+        dir_x = np.sin(theta) * np.cos(phi)
+        dir_y = np.sin(theta) * np.sin(phi)
+        if abs(dir_x) > transverse_tol or abs(dir_y) > transverse_tol:
             raise ValueError(
-                f"{laser_dir_text} -- incident_field.dat's observables are only implemented for a laser "
-                "along +-Oz (its screen is the laser's own transverse plane, its field components are "
-                "lab-frame). Not yet supported here.")
-        print(f"WARNING: {laser_dir_text}. The observables below are about the screen normal Oz, but the "
-              "'m/omega_N (theory)' column assumes the laser's OAM axis is Oz, so it doesn't apply.")
+                f"detector_direction_theta/phi = ({theta_s} {theta_unit}, {phi_s} {phi_unit}) does not point "
+                "along (0,0,1) or (0,0,-1) in the simulation frame -- every observable this script computes "
+                "(S_z/L_z/J_z, their fluxes, u/P_z) assumes the screen is transverse to Oz, which a tilted "
+                "detector_direction violates. Not yet supported here; use detector_direction_theta = 0.0 pi or "
+                "1.0 pi (any detector_direction_phi).")
+
+        # The observables are about the screen normal Oz, but the theoretical OAM/energy column assumes the
+        # laser's OAM axis is Oz too.
+        laser_dir, laser_dir_label = _read_laser_direction(config_path)
+        if abs(laser_dir[0]) > transverse_tol or abs(laser_dir[1]) > transverse_tol:
+            print(f"WARNING: {laser_dir_label} does not point along (0,0,+-1). The observables below are about "
+                  "the screen normal Oz, but the theoretical OAM/energy column assumes the laser's OAM axis is "
+                  "Oz, so it doesn't apply.")
+
+        # The screen grid (x, y or r, phi) is in the detector's local frame, but E/B (hence S_z, P_z) are
+        # lab-frame components. For a backward-facing screen the local (x, y, z) is the lab (x, -y, -z)
+        # (rotation_matrix_from_direction's -Oz case), so the local-grid L_z operator is about -z_lab.
+        # x*d/dy - y*d/dx is invariant under a rotation of the plane and flips under a reflection, so
+        # L_z(lab) = det(R_perp) * L_z(local), with R_perp the transverse 2x2 block of the local->lab
+        # rotation: +1 facing +Oz, -1 facing -Oz.
+        local_rotation = get_detector_local_rotation(config_path)
+        lz_sign = float(np.sign(np.linalg.det(local_rotation[:2, :2])))
 
     x_grid = y_grid = x_vals = y_vals = None
     if detector_type == 'rectangular':
@@ -440,9 +458,9 @@ def compute_observables(radiation_filepath):
 
         Ex_grid, Ey_grid, Ez_grid = (a.reshape(grid_shape) for a in (Ex, Ey, Ez))
         Bx_grid, By_grid, Bz_grid = (a.reshape(grid_shape) for a in (Bx, By, Bz))
-        LEx = _lz_operator(detector_type, Ex_grid, x_grid, y_grid, x_vals, y_vals)
-        LEy = _lz_operator(detector_type, Ey_grid, x_grid, y_grid, x_vals, y_vals)
-        LEz = _lz_operator(detector_type, Ez_grid, x_grid, y_grid, x_vals, y_vals)
+        LEx = lz_sign * _lz_operator(detector_type, Ex_grid, x_grid, y_grid, x_vals, y_vals)
+        LEy = lz_sign * _lz_operator(detector_type, Ey_grid, x_grid, y_grid, x_vals, y_vals)
+        LEz = lz_sign * _lz_operator(detector_type, Ez_grid, x_grid, y_grid, x_vals, y_vals)
 
         dLz = (2.0 * EPSILON_0 / omega_au) * np.imag(
             np.conj(Ex_grid) * LEx + np.conj(Ey_grid) * LEy + np.conj(Ez_grid) * LEz).ravel()
@@ -539,7 +557,7 @@ def compute_ratio_table(integrated, pairs):
     Returns a DataFrame (one row per i_omega) of numerator/denominator ratios for each
     (numerator column, denominator column, label) entry in `pairs` -- called with _RATIO_PAIRS
     (flux/density, expected ~ C_LIGHT) and _ENERGY_NORMALIZED_PAIRS (OAM/energy, expected ~
-    m/omega_N). A near-zero denominator (e.g. S_z for a near-cancelling spin term at high
+    (N(m+s)-s)/omega_N). A near-zero denominator (e.g. S_z for a near-cancelling spin term at high
     topological charge) gives a noise-dominated ratio for that one pair -- expected, not a bug.
     """
     rows = []
@@ -552,19 +570,47 @@ def compute_ratio_table(integrated, pairs):
     return pd.DataFrame(rows)
 
 
-def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m):
+_THEORY_COLUMN = '(N(m+s)-s)/omega_N (theory)'
+_THEORY_COLUMN_INCIDENT = 'm/omega (theory)'
+
+
+def _read_laser_spin(config_path):
     """
-    Adds an 'm/omega_N (theory)' column to an _ENERGY_NORMALIZED_PAIRS ratio table: the theoretical
-    OAM/energy ratio m/omega_N for that row's own actual raw angular frequency omega_N =
-    (omega/omega_1)*fundamental_frequency_au -- computed per row (not once from omega_1 alone) since
-    omega_N scales with harmonic index N, so the theoretical target is only m/omega_1 at the
-    fundamental itself. Meant to sit next to the numerical Lambda_zz/P_z column so the two can be
-    compared directly row by row, rather than only quoted once in a caption.
+    The laser's spin per photon along its own propagation direction, sigma = 2 Im(conj(zeta_1) zeta_2) with
+    (zeta_1, zeta_2) normalized as create_laser does: +1 for the default circular zeta_1=(1,0), zeta_2=(0,1)
+    (checked against the run's own S_z/P_z), 0 for linear, in between for elliptical.
+    """
+    zeta = [complex(float(read_config_value(f'laser_zeta_{i}_re', config_path)[0]),
+                    float(read_config_value(f'laser_zeta_{i}_im', config_path)[0])) for i in (1, 2)]
+    norm_sq = abs(zeta[0]) ** 2 + abs(zeta[1]) ** 2
+    return 2.0 * (np.conj(zeta[0]) * zeta[1]).imag / norm_sq
+
+
+def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m, sigma, is_incident):
+    """
+    Adds the theoretical OAM/energy ratio column to an _ENERGY_NORMALIZED_PAIRS ratio table, next to
+    the numerical Lambda_zz/P_z column so the two can be compared row by row.
+
+    Emitted field (_THEORY_COLUMN): the N-th harmonic absorbs N laser photons, each carrying m + sigma
+    (orbital + spin), so J_N = N(m+sigma) per emitted photon, whose spin stays sigma (S_z/P_z*omega = +-1 on
+    the runs checked, not N*sigma). The orbital part is L_N = N(m+sigma) - sigma, and the target is
+    L_N/omega_N, with N = round(omega/omega_1) (exact in the default harmonic mode, the nearest harmonic for
+    dense_frequency_spectrum=true) and omega_N the row's own raw frequency
+    (omega/omega_1)*fundamental_frequency_au. N = 1 gives m/omega_1; linear polarization (sigma = 0) gives
+    N m/omega_N = m/omega_1 on every harmonic.
+
+    Incident field (_THEORY_COLUMN_INCIDENT): the laser's own single frequency, not a harmonic of
+    omega_1, so the target stays m/omega.
     """
     ratios = ratios.copy()
-    omega_N_au = ratios['omega'].to_numpy() * fundamental_frequency_au
+    omega_ratio = ratios['omega'].to_numpy()
+    omega_au = omega_ratio * fundamental_frequency_au
     with np.errstate(divide='ignore', invalid='ignore'):
-        ratios['m/omega_N (theory)'] = m / omega_N_au
+        if is_incident:
+            ratios[_THEORY_COLUMN_INCIDENT] = m / omega_au
+        else:
+            N = np.round(omega_ratio)
+            ratios[_THEORY_COLUMN] = (N * (m + sigma) - sigma) / omega_au
     return ratios
 
 
@@ -660,7 +706,7 @@ def _append_ratio_table_to_run_log(run_dir, ratios, pairs, header, caption_lines
     Appends (or, on a re-run, replaces) a numerator/denominator ratio table (`pairs`, as computed by
     compute_ratio_table) in the run's own run_log.txt, one row per frequency. Shared by
     append_ratios_to_run_log (_RATIO_PAIRS, expected ~ C_LIGHT) and append_energy_ratios_to_run_log
-    (_ENERGY_NORMALIZED_PAIRS, expected ~ m/omega_N). `extra_value_columns` (column name already
+    (_ENERGY_NORMALIZED_PAIRS, expected ~ (N(m+s)-s)/omega_N). `extra_value_columns` (column name already
     present in `ratios`, e.g. from add_theoretical_oam_energy_ratio) are printed as extra columns
     as-is, after the `pairs` ratio columns -- not computed as a ratio of two other columns themselves.
     """
@@ -694,26 +740,40 @@ def append_ratios_to_run_log(run_dir, ratios, label_suffix=""):
                                     caption_lines, label_suffix=label_suffix)
 
 
-def append_energy_ratios_to_run_log(run_dir, ratios, m, label_suffix=""):
+def append_energy_ratios_to_run_log(run_dir, ratios, m, sigma, is_incident, label_suffix=""):
     """
     Appends (or, on a re-run, replaces) the OAM-to-energy ratio table (_ENERGY_NORMALIZED_PAIRS,
-    compute_ratio_table, plus the theoretical 'm/omega_N (theory)' column from
-    add_theoretical_oam_energy_ratio) in the run's own run_log.txt, one row per frequency -- the
-    numerical Lambda_zz/P_z column is expected to match the theoretical column, both ~ m/omega_N
-    (inverse time, atomic units) for radiation carrying m units of angular momentum per photon of
-    energy omega (hbar=1 units); see CLAUDE.md's "missing 1/omega" bug-fix note.
+    compute_ratio_table, plus the theoretical column from add_theoretical_oam_energy_ratio) in the
+    run's own run_log.txt, one row per frequency -- the numerical Lambda_zz/P_z column is expected to
+    match the theoretical column (inverse time, atomic units, hbar=1).
     """
-    caption_lines = [
-        f"  m (topological charge, config.cfg's laser_lg_l) = {m}. Each row's Lambda_zz/P_z is the "
-        "angular-momentum flux integrated over the screen divided by the energy flux integrated over "
-        "the screen; 'm/omega_N (theory)' is the theoretical prediction m/omega_N for that same row's "
-        "own actual raw angular frequency omega_N (not just omega_1) -- the two columns are expected "
-        "to agree, for radiation carrying m units of angular momentum per photon of energy omega "
-        "(hbar=1).",
-    ]
+    if is_incident:
+        caption_lines = [
+            f"  m (config.cfg's laser_lg_l, in the laser's own frame) = {m}. Each row's Lambda_zz/P_z is the "
+            "angular-momentum flux integrated over the screen divided by the energy flux integrated over the "
+            "screen, both about/along the laser's own propagation axis.",
+        ]
+    else:
+        caption_lines = [
+            f"  m (topological charge about lab +z: config.cfg's laser_lg_l times the sign of the laser's "
+            f"z direction) = {m}, s (laser spin per photon about lab +z, 2 Im(conj(zeta_1) zeta_2) times the "
+            f"same sign) = {sigma:+.6g}. Each row's Lambda_zz/P_z is the angular-momentum flux integrated over "
+            "the screen divided by the energy flux integrated over the screen, both about/along lab +z.",
+        ]
+    if is_incident:
+        theory_column = _THEORY_COLUMN_INCIDENT
+        caption_lines.append(
+            f"  '{theory_column}' is m/omega for that row's own raw angular frequency omega (the laser "
+            "carries m units of angular momentum per photon of energy omega, hbar=1).")
+    else:
+        theory_column = _THEORY_COLUMN
+        caption_lines.append(
+            f"  '{theory_column}' is the orbital part L_N/omega_N, N = round(omega/omega_1): the N-th "
+            "harmonic carries J = N(m+s) per photon of energy omega_N = N*omega_1, of which the spin is s, so "
+            "L_N = N(m+s) - s (hbar=1). N = 1 gives m/omega_1; s = 0 (linear) gives m/omega_1 on every harmonic.")
     _append_ratio_table_to_run_log(run_dir, ratios, _ENERGY_NORMALIZED_PAIRS, _RUN_LOG_ENERGY_RATIO_HEADER,
                                     caption_lines, label_suffix=label_suffix,
-                                    extra_value_columns=('m/omega_N (theory)',))
+                                    extra_value_columns=(theory_column,))
 
 
 def plot_observables(radiation_filepath):
@@ -822,13 +882,22 @@ def plot_observables(radiation_filepath):
     append_ratios_to_run_log(run_dir, ratios, label_suffix=label_suffix)
 
     fundamental_frequency_au = _read_fundamental_frequency_au(run_dir)
+    # laser_lg_l is the topological charge relative to the laser's own propagation direction n. The incident
+    # observables are in the laser's own frame, so m = laser_lg_l there. The emitted ones are about lab +z, so
+    # m = laser_lg_l * sign(n_z): a laser along -Oz with l = 2 carries -2 per photon about +z.
+    # The laser spin sigma is likewise relative to n, and flips with it about lab +z.
     m = int(read_config_value('laser_lg_l', config_path)[0])
+    sigma = _read_laser_spin(config_path)
+    if not is_incident:
+        n_sign = int(np.sign(_read_laser_direction(config_path)[0][2]))
+        m *= n_sign
+        sigma *= n_sign
     energy_ratios = compute_ratio_table(integrated, _ENERGY_NORMALIZED_PAIRS)
-    energy_ratios = add_theoretical_oam_energy_ratio(energy_ratios, fundamental_frequency_au, m)
-    print(f"OAM-to-energy ratios (m={m}; numerical Lambda_zz/P_z column expected to match the "
-          "theoretical m/omega_N column):")
+    energy_ratios = add_theoretical_oam_energy_ratio(energy_ratios, fundamental_frequency_au, m, sigma, is_incident)
+    print(f"OAM-to-energy ratios (m={m}, s={sigma:+.6g}; numerical Lambda_zz/P_z column expected to match the "
+          "theoretical column):")
     print(energy_ratios.to_string(index=False))
-    append_energy_ratios_to_run_log(run_dir, energy_ratios, m, label_suffix=label_suffix)
+    append_energy_ratios_to_run_log(run_dir, energy_ratios, m, sigma, is_incident, label_suffix=label_suffix)
 
 
 if __name__ == "__main__":
