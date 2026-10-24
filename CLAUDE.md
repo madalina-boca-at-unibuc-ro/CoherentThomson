@@ -18,23 +18,15 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   `1+cos²θ` for circular polarization) has **not** been reproduced yet. Don't trust absolute intensities/angular
   patterns for more complex setups until it is.
 - `plot_observables.py`'s `Lambda_zz/P_z` now has the right sign everywhere (the old backward-screen sign flip was
-  a local-grid vs. lab-component mix, fixed with `lz_sign`; dev notes). Theory column: `L_N/omega_N` with
-  `L_N = N(m+σ)−σ` for the emitted harmonics (`J = N(m+σ)` per photon, spin stays `σ`; `σ = 2 Im(ζ₁*ζ₂)`, 0 for
-  linear), `m` and `σ` times `sign(n_laser,z)` (about lab +z); `m/omega` with `m = laser_lg_l` for `--incident`
-  (laser frame). Measured on a backward run (`p = l = 2`, circular): N = 1 `0.598` vs `0.605`, N = 2 `0.717` vs
-  `0.756` (~5% low; was ~18% high against `N m`). Per photon there: `S = 1`, `L ≈ 4.74`, `J ≈ 5.74` at N = 2. A mirrored run
-  (laser and `average_pz` both flipped, `R_max` 20 vs 5 `w0`, 8192 vs 32768 electrons) was much further off. With
-  `γ ≠ 0`, flipping only the screen changes `k_s` by ~`4γ²` and so the coherence/Fresnel regime; the clean
-  forward-vs-backward check is electrons at rest (dev notes).
-- The initial form factor `b(q)` (`Simulation::compute_form_factor`, `simulation/form_factor.cpp`; spec in
-  `theory/thomson_form_factor_diagnostic.md`) is one scalar, printed to stdout and `run_log.txt`, at harmonic 1
-  along the detector normal, from one serial pass over the stored beam using the generated beam's mean momentum
-  (not the configured `average_p`). It uses the **dressed** `omega_s` (same `non_linear_Thomson_formula` +
-  `dressed_momentum` as the radiation frequencies, the user's choice over the spec's undressed one) but keeps
-  `q = k_s − k_L`. **Unsettled:** once `omega_s` is dressed, `K_s·P ≠ K_L·P`, and shifting an electron along its
-  free worldline suggests the consistent phase uses `q = k_s − (K_s·P / K_L·P) k_L` (undressed mean `P`). This was
-  derived without a check. The ratio is ~0.98 head-on at `a0 = 0.2` (negligible there) but matters more in tilted
-  geometries. Settle it before relying on `b` away from head-on collisions.
+  a local-grid vs. lab-component mix, fixed with `lz_sign`). Theory column: `L_N/omega_N` with
+  `L_N = N(m+σ)−σ` for the emitted harmonics (`σ = 2 Im(ζ₁*ζ₂)`, 0 for linear; `m`, `σ` times `sign(n_laser,z)`);
+  `m/omega` with `m = laser_lg_l` for `--incident`. Still ~5% low at N = 2 and not settled; measurements, and why
+  flipping only the screen at `γ ≠ 0` isn't a clean test, are in dev notes.
+- The initial form factor `b(q)` (`Simulation::compute_form_factor`; spec `theory/thomson_form_factor_diagnostic.md`)
+  is one scalar at harmonic 1 along the detector normal, using the generated beam's mean momentum (not the
+  configured `average_p`), printed to stdout and `run_log.txt`. It uses the dressed `omega_s` with
+  `q = k_s − k_L`, which may be inconsistent away from head-on collisions (dev notes). Don't rely on `b` in tilted
+  geometries until that's settled.
 - `LaguerreGaussLaser`'s mode formula isn't physics-reviewed against the literature (Allen et al. PRA 45, 8185
   (1992); Siegman ch. 17), though its derivatives match finite differences. `PhysUtils::non_linear_Thomson_formula`
   is flagged in-code as still needing review.
@@ -70,7 +62,7 @@ python3 py_scripts/compile_and_run.py <config_file>        # configure + build +
 `CMakeLists.txt` forces it over any cached or IDE-supplied `CMAKE_BUILD_TYPE`. Another type needs
 `-DCOHERENT_THOMSON_ALLOW_NON_RELEASE=ON` (the `debug` preset sets it), which stays cached until you pass `=OFF`.
 Debug is ~12–13x slower, so check the configure step's `Build type: ...` line before trusting any timing.
-`-march=native` means a binary must be built on the machine that runs it.
+`-march=native` means a binary must be built on the machine that runs it (on the cluster: see Machines).
 
 **Build traps, check these first:**
 - **Incremental rebuilds have missed header dependencies** (not root-caused). After editing a widely-included
@@ -181,8 +173,8 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 - `laser_field.dat` and `laser_field_heatmap_z0.dat` are in the **laser's own frame**: the heatmap is the laser's
   transverse plane through the waist, and both files' `Ex..Bz` are components along `(epsilon_1, epsilon_2, n)`.
   `incident_field.dat` is in the laser's own frame too (grid on its `(epsilon_1, epsilon_2)` plane at the waist,
-  `F^{mu nu}` rotated to `(epsilon_1, epsilon_2, n)`), so it always shows the laser unrotated, as if along +Oz.
-  Runs built before this change wrote lab-frame components there (same thing only for a laser along +Oz).
+  `F^{mu nu}` rotated to `(epsilon_1, epsilon_2, n)`), so it always shows the laser unrotated, as if along +Oz
+  (older runs: lab frame; dev notes).
   `radiation_field.dat` stays lab-frame components on the detector's local grid (mirrored `(x, −y)` on a screen
   facing −Oz).
 - The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = forward).

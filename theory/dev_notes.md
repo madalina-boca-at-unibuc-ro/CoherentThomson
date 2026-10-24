@@ -661,6 +661,21 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   As the user pointed out, flipping only the screen at `γ ≠ 0` is not a clean test either: `k_s` differs by ~`4γ²`
   between the two directions, and in the long-distance limit `k_s Z` sets the coherence condition. The clean
   forward-vs-backward check is electrons at rest, with the distance and detector size chosen for that `k_s`.
+  **Follow-up (same commit, `53d9a0c`):** the theory column was switched from `N m/omega_N` to
+  `L_N/omega_N` with `L_N = N(m+σ)−σ`, `σ = 2 Im(ζ₁*ζ₂)` (0 for linear), both `m` and `σ` times
+  `sign(n_laser,z)`; `--incident` keeps `m/omega`. On run `135826`: N = 1 `0.598` vs `0.605`, N = 2 `0.717` vs
+  `0.756`, so ~5% low at N = 2 (it was ~18% high against `N m`). The mirrored run `133047` stays much further off.
+- **`incident_field.dat` moved to the laser's own frame (commit `53d9a0c`).** Grid on the laser's
+  `(epsilon_1, epsilon_2)` plane at the waist, `F^{mu nu}` rotated to `(epsilon_1, epsilon_2, n)`. Runs built
+  before this wrote lab-frame components there, which is the same thing only for a laser along +Oz; read older
+  runs' `incident_field.dat` accordingly.
+- **Initial form factor `b(q)` (`simulation/form_factor.cpp`): dressed `omega_s`, `q` unsettled.** It deviates
+  from `theory/thomson_form_factor_diagnostic.md` by using the **dressed** `omega_s` (same
+  `non_linear_Thomson_formula` + `dressed_momentum` as the radiation frequencies; the user's choice over the spec's
+  undressed one) while keeping `q = k_s − k_L`. Once `omega_s` is dressed, `K_s·P ≠ K_L·P`, and shifting an
+  electron along its free worldline suggests the consistent phase uses `q = k_s − (K_s·P / K_L·P) k_L` (undressed
+  mean `P`). Derived without a check. The ratio is ~0.98 head-on at `a0 = 0.2` (negligible there) but larger in
+  tilted geometries. Settle before relying on `b` away from head-on collisions.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,
