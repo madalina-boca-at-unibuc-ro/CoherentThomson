@@ -21,6 +21,8 @@ Derived, per frequency:
   two ratios above; a mismatch means the screen is not in the far field or the field there is not transverse.
 - P_z/(c u), expected to be n_z for the same reason.
 Ratios are masked where P_z is below 1e-3 of its maximum (between harmonics the field is noise).
+The summary (values at the P_z peak, spin per photon over the scan) is printed and written to the run's
+run_log.txt under its own section, replaced on a re-run.
 
 The dotted reference line is the laser spin sigma = 2 Im(zeta_1* zeta_2) times sign(n_laser,z), the emitted
 photon's spin that plot_observables.py's theory column assumes ("spin stays sigma").
@@ -52,10 +54,12 @@ from plot_observables import (
     _read_fundamental_frequency_au,
     _read_laser_direction,
     _read_laser_spin,
+    _write_run_log_section,
 )
 from faraday_frame_utils import C_LIGHT, get_detector_local_rotation, rotation_matrix_from_direction
 
 _RATIO_MASK_FRACTION = 1e-3
+_RUN_LOG_SECTION_HEADER = "Point-spectrum observables (plot_point_spectrum_observables.py)"
 
 
 def get_observation_directions(radiation_filepath, config_path, n_points):
@@ -137,8 +141,9 @@ def _masked(subset, column):
     return values
 
 
-def print_summary(result):
+def summary_lines(result, sigma_ref):
     """Per screen point: the values at the P_z peak and the photon-averaged spin over the whole scan."""
+    lines = [f"  Reference: laser sigma * sign(n_laser,z) = {sigma_ref:+.6g} (spin per photon about +z)."]
     for i_screen, subset in result.groupby('i_screen'):
         subset = subset.sort_values('omega')
         peak = subset.loc[subset['dPz'].abs().idxmax()]
@@ -146,11 +151,18 @@ def print_summary(result):
         # Spin per photon over the scan: int Sigma_zz domega / int (P_z/omega) domega.
         photons = np.trapezoid(subset['dPz'].to_numpy() / omega_au, omega_au)
         mean_spin = np.trapezoid(subset['dSigmazz'].to_numpy(), omega_au) / photons
-        print(f"screen point {i_screen} (n_z = {peak['n_z']:.9f}):")
-        print(f"  P_z peak at omega/omega_1 = {peak['omega']:.6g}: omega Sigma_zz/P_z = {peak['spin_flux_ratio']:+.6g}, "
-              f"omega S_z/u = {peak['spin_density_ratio']:+.6g}, V n_z = {peak['V_nz']:+.6g}, "
-              f"P_z/(c u) = {peak['flux_density_ratio']:.6g}")
-        print(f"  spin per photon over the scan (int Sigma_zz / int P_z/omega) = {mean_spin:+.6g}")
+        lines += [
+            f"  screen point {i_screen}: n_z = {peak['n_z']:.12f}, scan omega/omega_1 = "
+            f"{subset['omega'].min():.6g} .. {subset['omega'].max():.6g} ({len(subset)} points)",
+            f"    P_z peak at omega/omega_1 = {peak['omega']:.6g}: dP_z/domega = {peak['dPz']:.6e} a.u., "
+            f"du/domega = {peak['du']:.6e} a.u.",
+            f"    omega Sigma_zz/P_z = {peak['spin_flux_ratio']:+.10f}",
+            f"    omega S_z/u        = {peak['spin_density_ratio']:+.10f}",
+            f"    V n_z              = {peak['V_nz']:+.10f}",
+            f"    P_z/(c u)          = {peak['flux_density_ratio']:+.10f}",
+            f"    spin per photon over the scan (int Sigma_zz / int P_z/omega) = {mean_spin:+.10f}",
+        ]
+    return lines
 
 
 def plot_point_spectrum_observables(radiation_filepath):
@@ -216,7 +228,9 @@ def plot_point_spectrum_observables(radiation_filepath):
     print(f"Successfully saved plot to {output_img}")
     plt.close(fig)
 
-    print_summary(result)
+    lines = summary_lines(result, sigma_ref)
+    print('\n'.join(lines))
+    _write_run_log_section(os.path.dirname(radiation_filepath), _RUN_LOG_SECTION_HEADER, lines)
 
 
 if __name__ == "__main__":
