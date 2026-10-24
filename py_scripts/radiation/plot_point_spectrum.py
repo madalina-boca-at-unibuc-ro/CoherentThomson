@@ -1,3 +1,12 @@
+"""
+Fine spectrum at a screen point: Re/Im/Abs/Phase of one F^{mu nu} vs omega/omega_1, read from
+radiation_field.dat. The counterpart of plot_field.py's plot_radiation_component, which renders one 2D field
+map per frequency instead (the wrong plot when frequency, not screen position, is the interesting axis; see the
+dense_frequency_spectrum config key, which collapses the run to a single screen point).
+
+Shared with plot_point_spectrum_all.py and plot_point_spectrum_observables.py: the data reader, the per-range
+component extraction (get_point_component), the output folder and the harmonic markers.
+"""
 import sys
 import os
 import numpy as np
@@ -9,42 +18,64 @@ from utils.run_output_utils import find_latest_output_file
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
-def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
-    """
-    Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
-    F^{mu nu} of the requested (long_range/short_range/boundary) Faraday tensor as a
-    function of omega, read from radiation_field.dat -- the "fine spectrum at
-    a point" counterpart of radiation/plot_field.py's plot_radiation_component,
-    which instead renders one 2D field-map PNG per frequency (the wrong shape
-    of plot when frequency, not screen position, is the interesting axis; see
-    the dense_frequency_spectrum config key).
+RANGE_TYPES = ('long', 'short', 'boundary', 'total')
+_RANGE_PREFIXES = {'long': ('LR',), 'short': ('SR',), 'boundary': ('BR',), 'total': ('LR', 'SR', 'BR')}
+OMEGA_LABEL = "$\\omega / \\omega_1$"
 
-    'boundary' is identically zero when the run used radiation_formula="direct" -- see
-    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
 
-    Draws one line per distinct i_screen (normally just one, if the detector
-    that produced radiation_field.dat was collapsed to a single point per the
-    dense_frequency_spectrum convention -- degrades gracefully to an overlaid
-    multi-line plot otherwise).
-    """
-    prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
-    re_col = f'{prefix}_F{mu}{nu}_re'
-    im_col = f'{prefix}_F{mu}{nu}_im'
-
+def read_radiation_data(radiation_filepath):
     try:
-        data = pd.read_csv(radiation_filepath, sep=' ', comment='#')
+        return pd.read_csv(radiation_filepath, sep=' ', comment='#')
     except Exception as e:
         print(f"Error reading file '{radiation_filepath}': {e}")
         sys.exit(1)
 
-    if not {re_col, im_col}.issubset(data.columns):
-        print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
-        sys.exit(1)
 
-    # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
-    # laser/detector/particle/radiation layout).
-    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME)
+def get_point_component(data, range_type, mu, nu):
+    """
+    Complex F^{mu nu} of `range_type` (long/short/boundary/total), one value per row of `data`.
+
+    'total' is the physical field LR+SR+BR. BR is identically zero for radiation_formula="direct" (see
+    theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md, Form 2's boundary term), and SR for the
+    long_distance_* formulas; in the LD modes only the total is meaningful. BR columns missing from an old run
+    count as zero in 'total'.
+    """
+    value = np.zeros(len(data), dtype=complex)
+    for prefix in _RANGE_PREFIXES[range_type]:
+        re_col, im_col = f'{prefix}_F{mu}{nu}_re', f'{prefix}_F{mu}{nu}_im'
+        if not {re_col, im_col}.issubset(data.columns):
+            if range_type == 'total' and prefix == 'BR':
+                continue
+            print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
+            sys.exit(1)
+        value += data[re_col].to_numpy() + 1j * data[im_col].to_numpy()
+    return value
+
+
+def get_point_spectrum_png_dir(radiation_filepath):
+    """png_folder/radiation/point_spectrum/ of the run, created if needed."""
+    png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME, "point_spectrum")
     os.makedirs(png_dir, exist_ok=True)
+    return png_dir
+
+
+def mark_harmonics(ax, omega):
+    """Dashed vertical lines at the integer harmonics N inside the plotted omega/omega_1 range."""
+    for N in range(int(np.ceil(omega.min())), int(np.floor(omega.max())) + 1):
+        if N >= 1:
+            ax.axvline(N, color='tab:red', linestyle='--', linewidth=0.8, alpha=0.6, zorder=0)
+
+
+def plot_point_spectrum(range_type, mu, nu, radiation_filepath, data=None):
+    """
+    Plots Re, Im, |.| and arg (2x2 grid) of F^{mu nu} of `range_type` vs omega/omega_1, one line per distinct
+    i_screen (normally one: dense_frequency_spectrum keeps a single screen point). `data` lets a caller that
+    plots many components read radiation_field.dat once.
+    """
+    if data is None:
+        data = read_radiation_data(radiation_filepath)
+    field = get_point_component(data, range_type, mu, nu)
+    png_dir = get_point_spectrum_png_dir(radiation_filepath)
 
     component_label = f"F^{{{mu}{nu}}}_{{\\mathrm{{{range_type}}}}}"
 
@@ -54,16 +85,13 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
     for i_screen, subset in data.groupby('i_screen'):
         subset = subset.sort_values('omega')
         omega = subset['omega'].to_numpy()
-        re_values = subset[re_col].to_numpy()
-        im_values = subset[im_col].to_numpy()
-        abs_values = np.hypot(re_values, im_values)
-        phase_values = np.arctan2(im_values, re_values)
+        values = field[subset.index.to_numpy()]
 
         label = f'screen point {i_screen}'
-        ax_re.plot(omega, re_values, marker='.', label=label)
-        ax_im.plot(omega, im_values, marker='.', label=label)
-        ax_abs.plot(omega, abs_values, marker='.', label=label)
-        ax_phase.plot(omega, phase_values, marker='.', label=label)
+        ax_re.plot(omega, values.real, marker='.', label=label)
+        ax_im.plot(omega, values.imag, marker='.', label=label)
+        ax_abs.plot(omega, np.abs(values), marker='.', label=label)
+        ax_phase.plot(omega, np.angle(values), marker='.', label=label)
 
     n_screen = data['i_screen'].nunique()
 
@@ -74,29 +102,47 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath):
     ax_phase.set_ylim(-np.pi, np.pi)
 
     for ax in axes.flat:
-        ax.set_xlabel("$\\omega / \\omega_1$ (units of the fundamental)")
+        mark_harmonics(ax, data['omega'].to_numpy())
+        ax.set_xlabel(OMEGA_LABEL)
         ax.grid(True, which='major')
         if n_screen > 1:
             ax.legend(fontsize=8)
 
-    fig.suptitle(f"Radiation spectrum vs. $\\omega/\\omega_1$ ({n_screen} screen point"
+    fig.suptitle(f"Radiation spectrum vs. {OMEGA_LABEL} ({n_screen} screen point"
                  f"{'s' if n_screen != 1 else ''})", fontsize=13, fontweight='bold')
     plt.tight_layout()
 
-    output_name = f"point_spectrum_{range_type}_F{mu}{nu}.png"
-    output_img = os.path.join(png_dir, output_name)
+    output_img = os.path.join(png_dir, f"point_spectrum_{range_type}_F{mu}{nu}.png")
     plt.savefig(output_img, dpi=200, bbox_inches='tight')
     print(f"Successfully saved plot to {output_img}")
     plt.close(fig)
 
+
+def resolve_radiation_file(run_folder):
+    """radiation_field.dat of `run_folder`, or of the latest run when `run_folder` is None."""
+    if run_folder is not None:
+        input_file = os.path.join(run_folder, "radiation_field.dat")
+        if not os.path.exists(input_file):
+            print(f"Error: '{input_file}' not found")
+            sys.exit(1)
+        return input_file
+    try:
+        input_file = find_latest_output_file("radiation_field.dat")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"Usage error: {e}")
+        sys.exit(1)
+    print(f"No folder given; using latest run: {input_file}")
+    return input_file
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary> <mu> <nu> [path_to_run_folder]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary|total> <mu> <nu> [path_to_run_folder]")
         sys.exit(1)
 
     range_type = sys.argv[1]
-    if range_type not in ('long', 'short', 'boundary'):
-        print("Error: first argument must be 'long', 'short', or 'boundary'")
+    if range_type not in RANGE_TYPES:
+        print("Error: first argument must be 'long', 'short', 'boundary', or 'total'")
         sys.exit(1)
 
     try:
@@ -110,17 +156,5 @@ if __name__ == "__main__":
         print("Error: mu and nu must each be in [0, 3]")
         sys.exit(1)
 
-    if len(sys.argv) >= 5:
-        input_file = os.path.join(sys.argv[4], "radiation_field.dat")
-        if not os.path.exists(input_file):
-            print(f"Error: '{input_file}' not found")
-            sys.exit(1)
-    else:
-        try:
-            input_file = find_latest_output_file("radiation_field.dat")
-        except (ValueError, FileNotFoundError) as e:
-            print(f"Usage error: {e}")
-            sys.exit(1)
-        print(f"No folder given; using latest run: {input_file}")
-
+    input_file = resolve_radiation_file(sys.argv[4] if len(sys.argv) >= 5 else None)
     plot_point_spectrum(range_type, mu, nu, input_file)

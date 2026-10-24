@@ -59,7 +59,9 @@ python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu>
 python3 py_scripts/radiation/plot_all_components.py [--incident]
 python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary|total> <mu> <nu> [run_folder]
                                                    # or `radial_phase all`; flat detectors only (theory/post_processing.md)
-python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
+python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary|total> <mu> <nu>   # dense_frequency_spectrum=true
+python3 py_scripts/radiation/plot_point_spectrum_all.py            # every range/component + |F| overviews
+python3 py_scripts/radiation/plot_point_spectrum_observables.py    # local spin/energy densities and fluxes vs omega
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical detector
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # angular momentum / energy observables
 ```

@@ -130,7 +130,11 @@ python3 py_scripts/radiation/plot_all_components.py [--incident]   # plot_field 
 python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary|total> <mu> <nu> [run_folder]
                                                    # or `radial_phase all`; F·e^{-ik_N(R-Z)}, flat detectors only
                                                    # (theory/post_processing.md); -> png_folder/radiation/processed/<processing>/
-python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary> <mu> <nu>   # dense_frequency_spectrum=true
+python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary|total> <mu> <nu> [run_folder]
+                                                   # dense_frequency_spectrum=true; -> png_folder/radiation/point_spectrum/
+python3 py_scripts/radiation/plot_point_spectrum_all.py [run_folder]          # 4 ranges x 6 components + |F| overviews
+python3 py_scripts/radiation/plot_point_spectrum_observables.py [run_folder]  # S_z, Sigma_zz, u, P_z + spin/photon
+                                                   # ratios; local only (no L_z/Lambda_zz: they need a screen grid)
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only
                                                                              # (--incident: any laser direction)
