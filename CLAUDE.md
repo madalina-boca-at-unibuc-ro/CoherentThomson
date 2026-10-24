@@ -95,6 +95,8 @@ default config) and drop `beam_particle_count` to e.g. `50`; run time scales wit
 - `config/config_cross_check.cfg`: parameter-matched to the Python reference's `main.py` `INPUTS` (mapping and
   date in its header). Use it for every C++-vs-Python comparison, and update it when those `INPUTS` change.
 - `config/config_initial_momentum.cfg`.
+- `config/config_spectrum.cfg`: `dense_frequency_spectrum true` on a single screen point (for the
+  `plot_point_spectrum*.py` scripts).
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols, 2-space indent). **There is no test suite**
 and no enforced lint command.
@@ -116,6 +118,8 @@ and no enforced lint command.
 With no arguments, every script plots the latest run. The optional trailing argument is a **run folder**, not a
 `.dat` path. PNGs go to `<run>/png_folder/<module>/`. Each script sets `MODULE_NAME` from its own folder name;
 don't hardcode it. Rendering conventions and `plot_observables.py` internals: `py_scripts/PLOTTING_NOTES.md`.
+`plot_observables.py` and `plot_point_spectrum_observables.py` also **write** their summary tables into the run's
+`run_log.txt`, each replacing only its own section on a re-run, so a `run_log.txt` isn't purely C++ output.
 
 ```
 python3 py_scripts/laser/plot_field.py
