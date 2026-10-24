@@ -20,9 +20,12 @@ Derived, per frequency:
   rotation_matrix_from_direction(n), the convention the laser's sigma uses). Far from the source this matches the
   two ratios above; a mismatch means the screen is not in the far field or the field there is not transverse.
 - P_z/(c u), expected to be n_z for the same reason.
-Ratios are masked where P_z is below 1e-3 of its maximum (between harmonics the field is noise).
-The summary (values at the P_z peak, spin per photon over the scan) is printed and written to the run's
-run_log.txt under its own section, replaced on a re-run.
+Ratios are masked where P_z is below 1e-3 of its maximum within the same harmonic window round(omega/omega_1)
+(between peaks the field is noise; per window so weak harmonics aren't masked by the strongest).
+Two figures: point_spectrum_observables.png (linear) and point_spectrum_observables_log.png (|value| of the four
+spectral panels on a log axis, for scans over several harmonics orders of magnitude apart).
+The summary (per harmonic window: values at its P_z peak, spin per photon over the window) is printed and
+written to the run's run_log.txt under its own section, replaced on a re-run.
 
 The dotted reference line is the laser spin sigma = 2 Im(zeta_1* zeta_2) times sign(n_laser,z), the emitted
 photon's spin that plot_observables.py's theory column assumes ("spin stays sigma").
@@ -59,6 +62,7 @@ from plot_observables import (
 from faraday_frame_utils import C_LIGHT, get_detector_local_rotation, rotation_matrix_from_direction
 
 _RATIO_MASK_FRACTION = 1e-3
+_LOG_DYNAMIC_RANGE = 1e30
 _RUN_LOG_SECTION_HEADER = "Point-spectrum observables (plot_point_spectrum_observables.py)"
 
 
@@ -136,47 +140,63 @@ def compute_point_observables(radiation_filepath, data):
 
 
 def _masked(subset, column):
+    """
+    `column` with NaN where |P_z| is below _RATIO_MASK_FRACTION of its peak within the same harmonic window
+    (round(omega/omega_1) = N), so a scan over several harmonics orders of magnitude apart keeps the weak ones.
+    """
     values = subset[column].to_numpy().copy()
-    values[np.abs(subset['dPz'].to_numpy()) < _RATIO_MASK_FRACTION * np.abs(subset['dPz']).max()] = np.nan
+    abs_pz = np.abs(subset['dPz'])
+    window_peak = abs_pz.groupby(np.round(subset['omega'])).transform('max').to_numpy()
+    values[abs_pz.to_numpy() < _RATIO_MASK_FRACTION * window_peak] = np.nan
     return values
 
 
 def summary_lines(result, sigma_ref):
-    """Per screen point: the values at the P_z peak and the photon-averaged spin over the whole scan."""
+    """
+    Per screen point and harmonic window (round(omega/omega_1) = N): the values at that window's P_z peak and
+    the photon-averaged spin over the window.
+    """
     lines = [f"  Reference: laser sigma * sign(n_laser,z) = {sigma_ref:+.6g} (spin per photon about +z)."]
     for i_screen, subset in result.groupby('i_screen'):
         subset = subset.sort_values('omega')
-        peak = subset.loc[subset['dPz'].abs().idxmax()]
-        omega_au = subset['omega_au'].to_numpy()
-        # Spin per photon over the scan: int Sigma_zz domega / int (P_z/omega) domega.
-        photons = np.trapezoid(subset['dPz'].to_numpy() / omega_au, omega_au)
-        mean_spin = np.trapezoid(subset['dSigmazz'].to_numpy(), omega_au) / photons
-        lines += [
-            f"  screen point {i_screen}: n_z = {peak['n_z']:.12f}, scan omega/omega_1 = "
-            f"{subset['omega'].min():.6g} .. {subset['omega'].max():.6g} ({len(subset)} points)",
-            f"    P_z peak at omega/omega_1 = {peak['omega']:.6g}: dP_z/domega = {peak['dPz']:.6e} a.u., "
-            f"du/domega = {peak['du']:.6e} a.u.",
-            f"    omega Sigma_zz/P_z = {peak['spin_flux_ratio']:+.10f}",
-            f"    omega S_z/u        = {peak['spin_density_ratio']:+.10f}",
-            f"    V n_z              = {peak['V_nz']:+.10f}",
-            f"    P_z/(c u)          = {peak['flux_density_ratio']:+.10f}",
-            f"    spin per photon over the scan (int Sigma_zz / int P_z/omega) = {mean_spin:+.10f}",
-        ]
+        lines.append(f"  screen point {i_screen}: n_z = {subset['n_z'].iloc[0]:.12f}, scan omega/omega_1 = "
+                     f"{subset['omega'].min():.6g} .. {subset['omega'].max():.6g} ({len(subset)} points)")
+        for N, window in subset.groupby(np.round(subset['omega']).astype(int)):
+            peak = window.loc[window['dPz'].abs().idxmax()]
+            omega_au = window['omega_au'].to_numpy()
+            # Spin per photon over the window: int Sigma_zz domega / int (P_z/omega) domega.
+            if len(window) > 1:
+                photons = np.trapezoid(window['dPz'].to_numpy() / omega_au, omega_au)
+                mean_spin = np.trapezoid(window['dSigmazz'].to_numpy(), omega_au) / photons
+            else:
+                mean_spin = peak['spin_flux_ratio']
+            lines += [
+                f"    N = {N} (omega/omega_1 = {window['omega'].min():.6g} .. {window['omega'].max():.6g}, "
+                f"{len(window)} points): P_z peak at omega/omega_1 = {peak['omega']:.6g}",
+                f"      dP_z/domega = {peak['dPz']:.6e} a.u., du/domega = {peak['du']:.6e} a.u.",
+                f"      omega Sigma_zz/P_z = {peak['spin_flux_ratio']:+.10f}",
+                f"      omega S_z/u        = {peak['spin_density_ratio']:+.10f}",
+                f"      V n_z              = {peak['V_nz']:+.10f}",
+                f"      P_z/(c u)          = {peak['flux_density_ratio']:+.10f}",
+                f"      spin per photon over the window (int Sigma_zz / int P_z/omega) = {mean_spin:+.10f}",
+            ]
     return lines
 
 
-def plot_point_spectrum_observables(radiation_filepath):
-    data = read_radiation_data(radiation_filepath)
-    result, sigma_ref = compute_point_observables(radiation_filepath, data)
-    png_dir = get_point_spectrum_png_dir(radiation_filepath)
+def draw_observables_figure(result, sigma_ref, png_dir, log_scale):
+    """
+    The 2x3 observables figure. With `log_scale`, the four spectral panels show |value| on a log axis
+    (S_z, Sigma_zz are signed; P_z is negative on a backward screen), clipped _LOG_DYNAMIC_RANGE below the
+    largest value; the two ratio panels stay linear.
+    """
     n_screen = result['i_screen'].nunique()
 
     fig, axes = plt.subplots(2, 3, figsize=(17, 9), sharex=True)
     panels = (
-        (axes[0, 0], 'dSz', r'Spin AM density $d\mathcal{S}_z/d\omega$'),
-        (axes[0, 1], 'dSigmazz', r'Spin AM flux $d\Sigma_{zz}/d\omega$'),
-        (axes[1, 0], 'du', r'Energy density $du/d\omega$'),
-        (axes[1, 1], 'dPz', r'Energy flux $dP_z/d\omega$'),
+        (axes[0, 0], 'dSz', r'd\mathcal{S}_z/d\omega', 'Spin AM density'),
+        (axes[0, 1], 'dSigmazz', r'd\Sigma_{zz}/d\omega', 'Spin AM flux'),
+        (axes[1, 0], 'du', r'du/d\omega', 'Energy density'),
+        (axes[1, 1], 'dPz', r'dP_z/d\omega', 'Energy flux'),
     )
     ax_spin, ax_flux = axes[0, 2], axes[1, 2]
     multi = n_screen > 1
@@ -185,8 +205,10 @@ def plot_point_spectrum_observables(radiation_filepath):
         subset = subset.sort_values('omega')
         omega = subset['omega'].to_numpy()
         suffix = f' (point {i_screen})' if multi else ''
-        for ax, column, _ in panels:
-            ax.plot(omega, subset[column].to_numpy(), marker='.', markersize=3, label=f'point {i_screen}')
+        for ax, column, _, _ in panels:
+            values = subset[column].to_numpy()
+            ax.plot(omega, np.abs(values) if log_scale else values, marker='.', markersize=3,
+                    label=f'point {i_screen}')
         ax_spin.plot(omega, _masked(subset, 'spin_flux_ratio'), marker='.', markersize=3,
                      label=r'$\omega\,\Sigma_{zz}/P_z$' + suffix)
         ax_spin.plot(omega, _masked(subset, 'spin_density_ratio'), linestyle='--',
@@ -199,8 +221,13 @@ def plot_point_spectrum_observables(radiation_filepath):
     ax_spin.axhline(sigma_ref, color='black', linestyle=':', linewidth=1,
                     label=rf'laser $\sigma\,\mathrm{{sign}}(n_{{L,z}}) = {sigma_ref:+.3g}$')
 
-    for ax, _, title in panels:
-        ax.set_title(title)
+    for ax, column, symbol, name in panels:
+        ax.set_title(f"{name} $|{symbol}|$" if log_scale else f"{name} ${symbol}$")
+        if log_scale:
+            ax.set_yscale('log')
+            top = np.abs(result[column]).max()
+            if top > 0:
+                ax.set_ylim(bottom=max(ax.get_ylim()[0], top / _LOG_DYNAMIC_RANGE))
         if multi:
             ax.legend(fontsize=8)
     # All four ratios lie in [-1, 1]; fixed limits keep matplotlib from switching to an offset axis when they
@@ -218,15 +245,23 @@ def plot_point_spectrum_observables(radiation_filepath):
     for ax in axes[-1]:
         ax.set_xlabel(OMEGA_LABEL)
 
-    fig.suptitle(f"Local observables vs. {OMEGA_LABEL} ({n_screen} screen point{'s' if multi else ''}; "
-                 f"ratios masked where $P_z < {_RATIO_MASK_FRACTION:g}\\,P_z^{{max}}$)",
-                 fontsize=13, fontweight='bold')
+    fig.suptitle(f"Local observables vs. {OMEGA_LABEL}{' (log scale)' if log_scale else ''} ({n_screen} screen "
+                 f"point{'s' if multi else ''}; ratios masked where $P_z < {_RATIO_MASK_FRACTION:g}\\,P_z^{{max}}$ "
+                 "of each harmonic)", fontsize=13, fontweight='bold')
     plt.tight_layout()
 
-    output_img = os.path.join(png_dir, "point_spectrum_observables.png")
+    output_img = os.path.join(png_dir, f"point_spectrum_observables{'_log' if log_scale else ''}.png")
     plt.savefig(output_img, dpi=200, bbox_inches='tight')
     print(f"Successfully saved plot to {output_img}")
     plt.close(fig)
+
+
+def plot_point_spectrum_observables(radiation_filepath):
+    data = read_radiation_data(radiation_filepath)
+    result, sigma_ref = compute_point_observables(radiation_filepath, data)
+    png_dir = get_point_spectrum_png_dir(radiation_filepath)
+    for log_scale in (False, True):
+        draw_observables_figure(result, sigma_ref, png_dir, log_scale)
 
     lines = summary_lines(result, sigma_ref)
     print('\n'.join(lines))
