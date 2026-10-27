@@ -5,7 +5,8 @@ Stage 2 of `theory/LG_mode_decomposition.md`. Task spec: `theory/lg_screen_decom
 
 ```
 python3 py_scripts/radiation/lg_decomposition.py [--incident] [--harmonic N] [--component plus minus Ex Ey]
-    [--l L] [--p-min P] [--p-max P] [--w0 20,25,30 [--w0-unit lambda|w0|a.u.]] [--n-w0 K] [run_folder]
+    [--l L] [--p-min P] [--p-max P] [--w0 20,25,30 [--w0-unit lambda|w0|a.u.]] [--n-w0 K]
+    [--scan-z0 [--n-z0 K] | --z0 -1000,0,1000 [--z0-unit lambda|w0|a.u.]] [run_folder]
 python3 py_scripts/radiation/lg_decomposition.py --self-test
 ```
 
@@ -146,6 +147,20 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
     is small, and here it is 5%. Resolved by the `a0` test below: at `a0 = 0.1` it isn't a single Gaussian (the
     ponderomotive radial phase); at `a0 = 0.01` it is, with the laser's waist.
 
+## Waist-position scan (`--scan-z0`)
+
+Off by default (the basis waist is at the origin). With `--scan-z0` the basis waist also moves along the
+propagation, `s → s − z0`, over 41 values in `±3 z_R` of the `w0` scan's central waist (`--n-z0`, or an explicit
+`--z0` list). Every `(w0, z0)` pair is fitted, and the reported pair is chosen as before: the one where a single
+mode holds the largest share of `Σ|c|²` among interpretable fits. The coefficients then refer to the waist plane
+at `z0`. `lg_decomposition.dat` gains `z0_au`, `z0_lambdaL` and `dominant_share` columns, the series-waist
+`z0_series_lambdaL` is measured from the origin, and `lg_w0_z0_map_omega<i>_<component>.png` maps the dominant
+share and `eps` over the grid. The `w0` curves of the other plots are at the reported `z0`. About 25 s for one
+component at two frequencies on a 256 x 64 screen.
+
+This catches a beam whose waist is not at the origin, e.g. one focused by a phase across the source, which a
+basis at the origin spreads over several `p` (self-test 4: 78% instead of 100% in one mode).
+
 ## Series waist
 
 For a target that is one `LG_0^l` beam with its own waist `w` and waist position `z0` (any complex beam parameter
@@ -184,6 +199,9 @@ with a single `l` and with `p = 0, 1` in the basis.
    - Series waist: a single `LG_0^l` beam outside the basis (`l = 0`: `w = 1.3 w_b`, `z0 = 0` and `w = 0.8 w_b`,
      `z0 = 0.3 z_R`; `l = 2`: `w = 1.3 w_b`, `z0 = −0.4 z_R`), fitted with `p = 0..8` on a wide fine screen:
      `w0`, `z0` recovered to ~1e-8 and the two `t` agree, which fixes the signs of `z0` and the `|l|` factor.
+   - Waist-position scan: `LG_1^2` with `w = 1.3 w_b` at `z0 = 0.5 z_R` on a 5 x 5 `(w0, z0)` grid containing it;
+     the true pair is picked with all of `Σ|c|²` in `(1, 2)`. With the basis waist at the origin the best share is
+     0.78.
 2. **Incident field, run `20260929_002928`** (LG `p = 2, l = 2`, `w0 = 25 λ`, `ζ = (1, i)`, screen radius
    `50 λ`): all power is in `E_+` with `l = +2` (ring FFT: 1.0). At `w0 = 25 λ`, `c_{2,2}` is the only nonzero
    coefficient (the others are ~1e-9 of it), `eps = 1.1e-7` (the 6-digit `.dat` precision), and `eps` rises
@@ -238,12 +256,35 @@ with a single `l` and with `p = 0, 1` in the basis.
    `E_+` with `l = 0`, series waist 25.000 λ at `z0 = 0.0009 λ`. This tests Gouy and curvature, which the waist
    check couldn't, and caught a curvature-sign bug in `LaguerreGaussLaser` (with the old sign `eps = 0.94`;
    `theory/dev_notes.md`).
+6. **Electrons at rest, `a0 = 0.01` vs 0.1** (runs `20261027_194300`, `config_expansion_rest.cfg`, and
+   `20261027_204817`, `config_expansion_rest_a0_01.cfg`; 65536 electrons on a `2 w0` disk at `z = 0`, Gaussian
+   laser `w0 = 25 λ` along −Oz, backscatter screen at `2e4 λ = 10 z_R`). `E_-`:
+
+   | | `a0 = 0.01` | `a0 = 0.1`, waist at the origin | `a0 = 0.1`, `--scan-z0` |
+   |---|---|---|---|
+   | N = 1 reported | 24.9 λ, `p = 0` 99.98% | 24.4 λ, `p = 0` 79% (`p = 1` 15%) | **17.9 λ at `z0 = 914 λ`**, `p = 0` 95% |
+   | N = 1 Stage 1 `w0_far` | 24.9 λ | 16.7 λ | |
+   | N = 2 reported | 18.0 λ, `p = 0` 99.87% | 10.8 λ, `p = 1` 45% (no single mode) | **7.6 λ at `z0 = 542 λ`**, `p = 0` 90% |
+   | power outside the expected `l` (N = 1, N = 2) | 0.07%, 2.4% | 0.07%, 0.6% | |
+
+   - At `a0 = 0.01` both harmonics are single modes with the source's waist at the origin: `w0` for N = 1 and
+     `w0/√2` (17.7 λ) for N = 2, whose source goes as `a²`.
+   - At `a0 = 0.1` the azimuthal content is unchanged; all the damage is radial, and `t = c_1/c_0 ≈ 0.44 e^{0.48iπ}`
+     is nearly imaginary, the signature of a waist shift. **N = 1 is a focused beam:** a thin lens of focal length
+     `f ≈ 2000 λ ≈ z_R` on the 25 λ source gives a 17.9 λ waist at 976 λ (`w' = w0·√(f²/(f²+z_R²))`,
+     `z0 = f z_R²/(f² + z_R²)`), against 17.9 λ at 914 λ fitted (`z0` step 130 λ). Its phase at `r = w0` is
+     0.98 rad, the size estimated for the dressing (the drift along the laser and the frequency shift both follow
+     `a(r)²`). The remaining 5% (`p = 2, 3`) is the non-quadratic part of that Gaussian-shaped phase.
+   - **N = 2 is focused more strongly than this predicts.** Its source has the same phase profile per unit `k`
+     (`N` times the phase, `N` times `k`), so the same `f` would give 12.6 λ at 980 λ; the fit gives 7.6 λ at
+     542 λ, i.e. `f ≈ 930 λ`. Not understood.
 
 ## Open points
 
 - **N = 1's `p = 1` content (31% at `a0 = 0.1`) is ponderomotive dressing**, not a displaced waist or the
-  incoherent background (Verification 4). Not yet checked quantitatively: the predicted radial phase profile
-  against the fitted field, and the scaling with `a0²` and with the pulse length.
+  incoherent background (Verification 4). At rest it acts as a focusing lens of `f ≈ z_R` (Verification 6). Not
+  yet checked: the predicted radial phase profile against the fitted field, the scaling of `1/f` with `a0²` and
+  the pulse length, and why N = 2 is focused about twice as strongly.
 - **Speckle:** ~1% of the screen power is incoherent, at every `l`. Halving it needs 2x the electrons (it scales as
   `1/n`); not tested.
 - **N = 2 has 9% of `E_-` power at `l = 0`** instead of `−1`. That alone puts `eps` near 0.3, and it would lower

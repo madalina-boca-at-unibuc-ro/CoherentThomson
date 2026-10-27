@@ -58,6 +58,10 @@ _COMPONENTS = ('plus', 'minus', 'Ex', 'Ey')
 # second-moment estimate (_estimate_w0).
 _W0_SCAN_FACTOR = 2.0
 _N_W0_DEFAULT = 41
+# Optional waist-position scan (--scan-z0): _N_Z0_DEFAULT points over +-_Z0_SCAN_ZR Rayleigh ranges of the w0
+# scan's central waist.
+_N_Z0_DEFAULT = 41
+_Z0_SCAN_ZR = 3.0
 # Weighted design matrix condition number above which the coefficients are flagged as not interpretable.
 _COND_WARN = 1e8
 # Components with a smaller share of the transverse power (E_+ vs E_-) get no coefficient figure: their fit is noise.
@@ -241,14 +245,16 @@ def _dominant_share(coeffs):
 
 def _choose_w0(fits):
     """
-    The reported (w0, fit) of a scan: the trial w0 at which one mode holds the largest share of sum|c|^2, among the
-    interpretable fits (|captured - (1 - eps^2)| < _CAPTURED_TOL, i.e. the modes are orthonormal on the screen;
-    all fits if none is). For a single LG_p^l beam that is its own waist, whatever p and l. The smallest-eps w0 is
-    not used: with several p free and a w0-independent residual, eps(w0) is flat and its minimum is set by noise.
+    The reported (w0, z0, fit) of a scan (items of `fits`; z0 = 0 unless the waist position is scanned): the
+    trial at which one mode holds the largest share of sum|c|^2, among the interpretable fits
+    (|captured - (1 - eps^2)| < _CAPTURED_TOL, i.e. the modes are orthonormal on the screen; all fits if none
+    is). For a single LG_p^l beam that is its own waist (and waist position), whatever p and l. The smallest-eps
+    w0 is not used: with several p free and a w0-independent residual, eps(w0) is flat and its minimum is set by
+    noise.
     """
     interpretable = [item for item in fits
-                     if abs(item[1]['captured'] - (1.0 - item[1]['eps'] ** 2)) < _CAPTURED_TOL]
-    return max(interpretable or fits, key=lambda item: _dominant_share(item[1]['coeffs']))
+                     if abs(item[-1]['captured'] - (1.0 - item[-1]['eps'] ** 2)) < _CAPTURED_TOL]
+    return max(interpretable or fits, key=lambda item: _dominant_share(item[-1]['coeffs']))
 
 
 def _radius_containing(fraction, power, r):
@@ -298,17 +304,27 @@ def _parse_w0_values(w0_spec, unit, config_path):
     return values
 
 
+def _parse_z0_values(z0_spec, unit, config_path):
+    """'-1000,0,1000' in `unit` -> atomic units (any sign: the basis waist's position along the propagation)."""
+    values = [float(t) * convert_unit_to_number(unit, config_path) for t in z0_spec.split(',') if t.strip()]
+    if not values:
+        raise ValueError(f"--z0 needs one or more comma-separated values, got '{z0_spec}'")
+    return values
+
+
 # --------------------------------------------------------------------------------------------------------------
 # Run analysis
 # --------------------------------------------------------------------------------------------------------------
 
 def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_min=0, p_max=3, w0_spec=None,
-                  w0_unit='lambda', n_w0=_N_W0_DEFAULT):
+                  w0_unit='lambda', n_w0=_N_W0_DEFAULT, scan_z0=False, z0_spec=None, z0_unit='lambda',
+                  n_z0=_N_Z0_DEFAULT):
     """
-    Fits every selected component at every (selected) frequency for every trial w0. Returns (table, summary,
-    context): `table` one row per (i_omega, component, w0); `summary` one row per (i_omega, component) with the
-    reported w0 (_choose_w0), the smallest-eps one, and the helicity/azimuthal diagnostics; `context` the run-level
-    parameters.
+    Fits every selected component at every (selected) frequency for every trial w0 and, with scan_z0 (or an
+    explicit z0_spec), every trial waist position z0 of the basis (s -> s - z0; default z0 = 0, the origin).
+    Returns (table, summary, context): `table` one row per (i_omega, component, w0, z0); `summary` one row per
+    (i_omega, component) with the reported (w0, z0) (_choose_w0), the smallest-eps one, and the helicity/azimuthal
+    diagnostics; `context` the run-level parameters.
     """
     run_dir = os.path.dirname(field_filepath)
     is_incident = os.path.basename(field_filepath) == "incident_field.dat"
@@ -401,29 +417,45 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
             else:
                 w0_est = _estimate_w0(target, weights, r, l_values[0], s, k)
                 w0_list = list(w0_est * np.geomspace(1.0 / _W0_SCAN_FACTOR, _W0_SCAN_FACTOR, n_w0))
+            if z0_spec:
+                z0_list = _parse_z0_values(z0_spec, z0_unit, config_path)
+            elif scan_z0:
+                # +-_Z0_SCAN_ZR Rayleigh ranges of the scan's central waist, odd count so that z0 = 0 is included.
+                z_R_centre = 0.5 * k * math.sqrt(w0_list[0] * w0_list[-1]) ** 2
+                z0_list = list(np.linspace(-_Z0_SCAN_ZR * z_R_centre, _Z0_SCAN_ZR * z_R_centre, 2 * (n_z0 // 2) + 1))
+            else:
+                z0_list = [0.0]
 
             fits = []
-            for w0 in w0_list:
-                fit = fit_modes(target, build_basis(modes, r, phi, s, w0, k), weights)
-                fits.append((w0, fit))
-                row = {'i_omega': i_omega, 'omega': omega_ratio, 'N': N, 'component': name,
-                       'l': '/'.join(str(l) for l in l_values), 'w0_au': w0, 'w0_lambdaL': w0 / lambda_L,
-                       'eps': fit['eps'], 'captured': fit['captured'], 'cond': fit['cond'], 'rank': fit['rank'],
-                       'norm_sq': np.sum(power)}
-                for (p, l), c in zip(modes, fit['coeffs']):
-                    row[f'c_p{p}_l{l}_re'], row[f'c_p{p}_l{l}_im'] = c.real, c.imag
-                series = series_waist(fit['coeffs'], modes, w0, k)
-                if series is not None:
-                    row['w0_series_lambdaL'] = series['w0'] / lambda_L
-                    row['z0_series_lambdaL'] = series['z0'] / lambda_L
-                table_rows.append(row)
+            for z0 in z0_list:
+                for w0 in w0_list:
+                    fit = fit_modes(target, build_basis(modes, r, phi, s - z0, w0, k), weights)
+                    fits.append((w0, z0, fit))
+                    row = {'i_omega': i_omega, 'omega': omega_ratio, 'N': N, 'component': name,
+                           'l': '/'.join(str(l) for l in l_values), 'w0_au': w0, 'w0_lambdaL': w0 / lambda_L,
+                           'z0_au': z0, 'z0_lambdaL': z0 / lambda_L, 'eps': fit['eps'], 'captured': fit['captured'],
+                           'cond': fit['cond'], 'rank': fit['rank'], 'norm_sq': np.sum(power),
+                           'dominant_share': _dominant_share(fit['coeffs'])}
+                    for (p, l), c in zip(modes, fit['coeffs']):
+                        row[f'c_p{p}_l{l}_re'], row[f'c_p{p}_l{l}_im'] = c.real, c.imag
+                    series = series_waist(fit['coeffs'], modes, w0, k)
+                    if series is not None:
+                        row['w0_series_lambdaL'] = series['w0'] / lambda_L
+                        row['z0_series_lambdaL'] = (z0 + series['z0']) / lambda_L
+                    table_rows.append(row)
 
-            w0_min_eps, fit_min_eps = min(fits, key=lambda item: item[1]['eps'])
-            best_w0, best = _choose_w0(fits)
-            summary.update(w0_best=best_w0, w0_list=w0_list, fit=best, w0_min_eps=w0_min_eps, fit_min_eps=fit_min_eps,
+            w0_min_eps, z0_min_eps, fit_min_eps = min(fits, key=lambda item: item[-1]['eps'])
+            best_w0, best_z0, best = _choose_w0(fits)
+            series = series_waist(best['coeffs'], modes, best_w0, k)
+            if series is not None:
+                series['z0'] += best_z0          # relative to the basis waist plane -> from the origin
+            summary.update(w0_best=best_w0, z0_best=best_z0, w0_list=w0_list, z0_list=z0_list, fit=best,
+                           w0_min_eps=w0_min_eps, z0_min_eps=z0_min_eps, fit_min_eps=fit_min_eps,
                            edge_of_scan=len(w0_list) > 1 and best_w0 in (w0_list[0], w0_list[-1]),
-                           series=series_waist(best['coeffs'], modes, best_w0, k))
-            w_s = best_w0 * math.sqrt(1.0 + (s / (0.5 * k * best_w0 ** 2)) ** 2)
+                           z0_edge_of_scan=len(z0_list) > 1 and best_z0 in (z0_list[0], z0_list[-1]),
+                           series=series)
+            s_waist = s - best_z0
+            w_s = best_w0 * math.sqrt(1.0 + (s_waist / (0.5 * k * best_w0 ** 2)) ** 2)
             summary['step_over_width'] = grid_step / (w_s ** 2 if detector_type == 'circular' else w_s)
             if s > 0.0:
                 # Exact spherical phase k(sqrt(s^2+r^2) - s) minus the paraxial k r^2/(2s) the LG modes assume.
@@ -466,13 +498,18 @@ def _summary_lines(summary_rows, context, table_name):
             continue
         dominant = int(np.argmax(np.abs(fit['coeffs'])))
         p_dom, l_dom = row['modes'][dominant]
+        if len(row['z0_list']) > 1:
+            lines.append(f"    basis waist position z0 = {row['z0_best'] / lambda_L:.6g} lambda_L along propagation "
+                         f"(scan {row['z0_list'][0] / lambda_L:.4g}..{row['z0_list'][-1] / lambda_L:.4g}, "
+                         f"{len(row['z0_list'])} values{'; AT SCAN EDGE' if row['z0_edge_of_scan'] else ''}), with")
         lines.append(f"    w0 = {row['w0_best'] / lambda_L:.6g} lambda_L, where (p,l) = ({p_dom},{l_dom}) holds "
                      f"{_dominant_share(fit['coeffs']):.4g} of sum|c|^2 (scan {row['w0_list'][0] / lambda_L:.4g}"
                      f"..{row['w0_list'][-1] / lambda_L:.4g}, {len(row['w0_list'])} values"
                      f"{'; AT SCAN EDGE' if row['edge_of_scan'] else ''}): eps = {fit['eps']:.4e}, captured = "
                      f"{fit['captured']:.6f}, cond = {fit['cond']:.3e}, status: {fit['status']}")
         lines.append(f"    smallest eps = {row['fit_min_eps']['eps']:.4e} at w0 = {row['w0_min_eps'] / lambda_L:.6g} "
-                     "lambda_L (a basis label, not the beam's waist)")
+                     f"lambda_L" + (f", z0 = {row['z0_min_eps'] / lambda_L:.6g} lambda_L" if len(row['z0_list']) > 1
+                                    else "") + " (a basis label, not the beam's waist)")
         step_ratio, step_max = row['step_over_width'], _MAX_STEP_OVER_WIDTH[context['detector_type']]
         step_label = 'r^2 step / w(s)^2' if context['detector_type'] == 'circular' else 'grid step / w(s)'
         if step_ratio > step_max:
@@ -517,7 +554,7 @@ def _plot(table, summary_rows, context):
     for i_omega, subset in table.groupby('i_omega'):
         fig, (ax_eps, ax_c) = plt.subplots(1, 2, figsize=(11, 4.2), layout='constrained')
         for row in (r for r in summary_rows if r['i_omega'] == i_omega and r['fit'] is not None):
-            curve = subset[subset['component'] == row['component']]
+            curve = subset[(subset['component'] == row['component']) & (subset['z0_au'] == row['z0_best'])]
             label = f"{row['component']} (l = {curve['l'].iloc[0]})"
             ax_eps.semilogx(curve['w0_lambdaL'], curve['eps'], 'o-', ms=3, label=label)
             c_sq = np.abs(row['fit']['coeffs']) ** 2
@@ -547,17 +584,56 @@ def _plot(table, summary_rows, context):
                   f"fraction {row['helicity_fraction']:.3g} < {_MIN_HELICITY_FRACTION_PLOT:g}.")
             continue
         _plot_coefficients(table, row, context, png_dir)
+        if len(row['z0_list']) > 1:
+            _plot_w0_z0_map(table, row, context, png_dir)
+
+
+def _plot_w0_z0_map(table, row, context, png_dir):
+    """
+    z0 scan only: the dominant mode's share of sum|c|^2 and eps over the (w0, z0) grid of one component at one
+    frequency, the reported point marked. Grid cells that are not interpretable (|captured - (1 - eps^2)| >=
+    _CAPTURED_TOL: the modes are not orthonormal on the screen) are masked.
+    """
+    scan = table[(table['i_omega'] == row['i_omega']) & (table['component'] == row['component'])]
+    w0 = np.sort(scan['w0_lambdaL'].unique())
+    z0 = np.sort(scan['z0_lambdaL'].unique())
+    grids = {}
+    for name in ('dominant_share', 'eps', 'captured'):
+        grids[name] = scan.pivot_table(index='z0_lambdaL', columns='w0_lambdaL', values=name).loc[z0, w0].to_numpy()
+    bad = np.abs(grids['captured'] - (1.0 - grids['eps'] ** 2)) >= _CAPTURED_TOL
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), layout='constrained')
+    for ax, name, label in ((axes[0], 'dominant_share', r'dominant mode: $\max|c|^2/\sum|c|^2$'),
+                            (axes[1], 'eps', r'$\epsilon$')):
+        values = np.ma.masked_where(bad, grids[name])
+        mesh = ax.pcolormesh(w0, z0, values, shading='nearest', cmap='viridis' if name == 'dominant_share'
+                             else 'magma_r')
+        fig.colorbar(mesh, ax=ax, label=label)
+        ax.plot(row['w0_best'] / context['lambda_L'], row['z0_best'] / context['lambda_L'], 'r+', ms=12, mew=2)
+        ax.set_xscale('log')
+        ax.set_xlabel(r'basis $w_0$ [$\lambda_L$]')
+        ax.set_ylabel(r'basis waist position $z_0$ [$\lambda_L$]')
+    fig.suptitle(f"LG basis scan, {row['component']}, $\\omega$ index {row['i_omega']} ($\\omega/\\omega_1$ = "
+                 f"{row['omega']:.4g}); red +: reported (gray: not interpretable)"
+                 + (" (incident beam)" if context['is_incident'] else ""))
+    for ax in axes:
+        ax.set_facecolor('0.85')
+    output = os.path.join(png_dir, f"lg_w0_z0_map_omega{row['i_omega']}_{row['component']}.png")
+    fig.savefig(output, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Successfully saved plot to {output}")
 
 
 def _plot_coefficients(table, row, context, png_dir):
     """
     One component at one frequency, the whole coefficient set: |c|^2/||E||^2 vs w0 per mode (with eps^2 and
     captured), the Argand diagram of c/||E|| at the reported w0 (_choose_w0) and arg(c/c_dominant) vs w0.
-    ||E||^2 = sum A|E|^2,
-    so |c|^2/||E||^2 is the mode's power fraction when the modes are orthonormal on the screen. Phases are
-    relative to the mode that dominates at the reported w0, which removes the arbitrary common e^{iks}.
+    ||E||^2 = sum A|E|^2, so |c|^2/||E||^2 is the mode's power fraction when the modes are orthonormal on the
+    screen. Phases are relative to the mode that dominates at the reported w0, which removes the arbitrary common
+    e^{iks}. With a z0 scan, the w0 curves are at the reported z0.
     """
-    curve = table[(table['i_omega'] == row['i_omega']) & (table['component'] == row['component'])]
+    curve = table[(table['i_omega'] == row['i_omega']) & (table['component'] == row['component'])
+                  & (table['z0_au'] == row['z0_best'])]
     curve = curve.sort_values('w0_au')
     w0 = curve['w0_lambdaL'].to_numpy()
     norm = np.sqrt(curve['norm_sq'].to_numpy())
@@ -622,7 +698,8 @@ def _plot_coefficients(table, row, context, png_dir):
 def run(field_filepath, args):
     table, summary_rows, context = decompose_run(
         field_filepath, args.component, harmonic=args.harmonic, l_override=args.l, p_min=args.p_min,
-        p_max=args.p_max, w0_spec=args.w0, w0_unit=args.w0_unit, n_w0=args.n_w0)
+        p_max=args.p_max, w0_spec=args.w0, w0_unit=args.w0_unit, n_w0=args.n_w0, scan_z0=args.scan_z0,
+        z0_spec=args.z0, z0_unit=args.z0_unit, n_z0=args.n_z0)
     if table.empty:
         print("Nothing to fit (no frequency matched --harmonic?).")
         return
@@ -732,6 +809,24 @@ def self_test():
         check(f"{tag}: w0_series/w0_true - 1", series['w0'] / w_true - 1.0, 1e-3)
         check(f"{tag}: (z0_series - z0)/z_R", (series['z0'] - z0) / z_R, 1e-3)
         check(f"{tag}: |t2 - t|", abs(series['t2'] - series['t']), 1e-3)
+
+    # The (w0, z0) scan and _choose_w0 on a displaced beam: the true pair is on the grid and must be picked, with
+    # all of sum|c|^2 in its own mode; at z0 = 0 no basis waist does that.
+    print("4. Waist-position scan: LG_1^2 with w0 = 1.3 w_b at z0 = 0.5 z_R, grid containing the true (w0, z0):")
+    l, w_true, z0_true = 2, 1.3 * w0, 0.5 * z_R
+    r, phi, A = circular_grid(8.0 * w_true * math.sqrt(1.0 + ((s - z0_true) / (0.5 * k * w_true ** 2)) ** 2),
+                              N_R=3000, N_phi=17)
+    target = lg_mode(1, l, r, phi, s - z0_true, w_true, k)
+    modes = [(p, l) for p in range(4)]
+    w0_grid, z0_grid = w_true * np.array([0.8, 0.9, 1.0, 1.1, 1.25]), z0_true * np.array([-1.0, 0.0, 0.5, 1.0, 1.5])
+    fits = [(wb, zb, fit_modes(target, build_basis(modes, r, phi, s - zb, wb, k), A)) for zb in z0_grid
+            for wb in w0_grid]
+    w_pick, z_pick, fit = _choose_w0(fits)
+    check("picked w0/w0_true - 1", w_pick / w_true - 1.0, 1e-12)
+    check("picked (z0 - z0_true)/z_R", (z_pick - z0_true) / z_R, 1e-12)
+    check("dominant share - 1 at the picked point", _dominant_share(fit['coeffs']) - 1.0, 1e-6)
+    best_at_origin = max(_dominant_share(f['coeffs']) for _, zb, f in fits if zb == 0.0)
+    print(f"  (info) best dominant share with the basis waist at the origin: {best_at_origin:.4f}")
     print("SELF-TEST " + ("PASSED" if ok else "FAILED"))
     return ok
 
@@ -749,6 +844,11 @@ def main():
                                      "second-moment estimate)")
     parser.add_argument('--w0-unit', default='lambda', help="unit of --w0: lambda (laser), w0 (laser waist), a.u.")
     parser.add_argument('--n-w0', type=int, default=_N_W0_DEFAULT, help="points in the default w0 scan")
+    parser.add_argument('--scan-z0', action='store_true', help="also scan the basis waist position z0 (default: "
+                        f"{_N_Z0_DEFAULT} values over +-{_Z0_SCAN_ZR:g} Rayleigh ranges; default off: z0 = 0)")
+    parser.add_argument('--z0', help="comma-separated basis waist positions along propagation (implies a z0 scan)")
+    parser.add_argument('--z0-unit', default='lambda', help="unit of --z0: lambda (laser), w0 (laser waist), a.u.")
+    parser.add_argument('--n-z0', type=int, default=_N_Z0_DEFAULT, help="points in the default z0 scan (odd)")
     parser.add_argument('--self-test', action='store_true', help="run the synthetic checks and exit")
     args = parser.parse_args()
 

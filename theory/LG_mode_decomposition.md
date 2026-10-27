@@ -94,8 +94,10 @@ The **series waist** (`series_waist`) reads the waist and waist position of a si
 
 - **LG second moment:** for a pure `LG_p^l`, `w_eff² = (2p+|l|+1) w(Z)²` (`M² = 2p+|l|+1`); use the expected
   `l = L_N` per harmonic as a first generalization.
-- **Waist position:** done for a single beam by the series waist. Fitting `w_0, z_0` in the basis
-  (`s = Z − z_0`) would still be needed for a superposition of modes with a displaced common waist.
+- **Waist position:** done. The series waist reads it off a single beam; `--scan-z0` fits `(w_0, z_0)` in the
+  basis (`s = Z − z_0`). At rest with `a0 = 0.1` it shows the dressing acting as a focusing lens of `f ≈ z_R`
+  on N = 1 (17.9 λ waist at 914 λ, 95% in one mode; `lg_decomposition_implementation.md`, Verification 6).
 - Separate coherent and incoherent contributions before fitting (the incoherent part is ~1% here, at every `l`).
-- Model the ponderomotive radial phase at `a0 = 0.1` and compare with the fitted field.
+- Model the ponderomotive radial phase at `a0 = 0.1` and compare with the fitted field: the lens strength
+  `1/f ∝ a0²`, and why N = 2 is focused about twice as strongly as N = 1.
 - N = 2 at small `a0`: rerun with a finer `trajectory_NT` first.
