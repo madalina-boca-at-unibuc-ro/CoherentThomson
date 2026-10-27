@@ -64,6 +64,26 @@ def find_latest_output_file(filename, output_folder=None):
         raise FileNotFoundError(f"'{filepath}' does not exist")
     return filepath
 
+def field_config_path(field_filepath):
+    """
+    The config that describes a field file's screen: for incident_field.dat, the run's incident_config.cfg when
+    it has one (Core::Radiation::write_incident_config: the incident screen at the detector distance, sized to
+    the beam, laser frame), else the run's config.cfg. Runs from before 2026-10-27 have no incident_config.cfg;
+    their incident_field.dat is the waist plane on the detector's own grid, which config.cfg describes.
+    """
+    run_dir = os.path.dirname(field_filepath)
+    if os.path.basename(field_filepath) == "incident_field.dat":
+        incident_config = os.path.join(run_dir, "incident_config.cfg")
+        if os.path.exists(incident_config):
+            return incident_config
+    return os.path.join(run_dir, "config.cfg")
+
+
+def is_incident_screen_config(config_path):
+    """True for incident_config.cfg (the incident field at the detector distance, not at the waist)."""
+    return os.path.basename(config_path) == "incident_config.cfg"
+
+
 def read_config_value(config_path, key):
     """
     Reads a single 'key value [unit]' entry out of a .cfg file (the raw value token only, unit

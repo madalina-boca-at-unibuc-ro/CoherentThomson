@@ -29,8 +29,9 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   geometries until that's settled.
 - `LaguerreGaussLaser`'s mode formula isn't physics-reviewed against the literature (Allen et al. PRA 45, 8185
   (1992); Siegman ch. 17), though its derivatives match finite differences. At the waist, its transverse profile
-  matches the standard LG mode (`lg_decomposition.py --incident`, `eps = 1e-7` for `p = l = 2`); Gouy and
-  curvature terms are untested. `PhysUtils::non_linear_Thomson_formula`
+  matches the standard LG mode (`eps = 1e-7` for `p = l = 2`); at `Z = 10 z_R` the Gaussian (`p = l = 0`) matches
+  the propagated standard mode, Gouy and curvature included (`eps = 1e-7`), after the curvature sign was fixed on
+  2026-10-27 (dev notes). Gouy/curvature for `p, l ≠ 0` not yet tested. `PhysUtils::non_linear_Thomson_formula`
   is flagged in-code as still needing review.
 
 ## Machines
@@ -195,9 +196,13 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
   three axes. `k1` and the `d_tau_traj` Doppler scaling (`(p⁰ − n·p)/mc`) follow `n`.
 - `laser_field.dat` and `laser_field_heatmap_z0.dat` are in the **laser's own frame**: the heatmap is the laser's
   transverse plane through the waist, and both files' `Ex..Bz` are components along `(epsilon_1, epsilon_2, n)`.
-  `incident_field.dat` is in the laser's own frame too (grid on its `(epsilon_1, epsilon_2)` plane at the waist,
+  `incident_field.dat` is in the laser's own frame too (grid on its `(epsilon_1, epsilon_2)` plane,
   `F^{mu nu}` rotated to `(epsilon_1, epsilon_2, n)`), so it always shows the laser unrotated, as if along +Oz
-  (older runs: lab frame; dev notes).
+  (older runs: lab frame; dev notes). Since 2026-10-27 that plane is `z = Z` (detector distance) downstream of the
+  waist, with the detector's point counts but a beam-sized grid (`Radiation::incident_screen`: half-width
+  `2 · lg_beam_radius_in_w0(p, l) · w(Z)`; the detector's own grid for a plane wave). The run writes
+  `incident_config.cfg` (override lines + a copy of `config.cfg`), which the scripts read for `--incident` via
+  `utils/run_output_utils.field_config_path`. Earlier runs: the waist plane on the detector's grid.
   `radiation_field.dat` stays lab-frame components on the detector's local grid (mirrored `(x, −y)` on a screen
   facing −Oz).
 - The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = forward).
@@ -275,7 +280,8 @@ modes follow `theory/long_distance_direct_simplified_coding_guide.md` (reviewed 
 
 - `get_faraday_tensor` is built on the pure-virtual `complex_amplitude` (`{amplitude, d/dx, d/dy}`). `Ez`/`Bz` are
   first-order paraxial: a `div E` residual of ~1e-6 (fundamental) to ~1e-2 (higher `p`/`|l|`) is expected. The
-  carrier sign `exp(-iφ)` and the `+i/k` coefficient must flip together.
+  carrier sign `exp(-iφ)`, the `+i/k` coefficient, the Gouy sign and the curvature sign (`+kρ²/2R`) must flip
+  together.
 - Polarization `zeta_1`/`zeta_2` are complex and **normalized in `create_laser`**, so `a0` alone sets the strength.
 - LG: radial profile via `hypergeometric_1F1_neg_int_a`; `Npn` is a deliberately custom normalization; azimuthal
   factor `(x + i·sign(l)·y)^|l|`; waist at the origin.

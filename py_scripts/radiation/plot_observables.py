@@ -140,7 +140,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from utils.run_output_utils import find_latest_output_file
+from utils.run_output_utils import find_latest_output_file, field_config_path, is_incident_screen_config
 from plot_field import (
     DETECTOR_AXES_UNIT,
     read_config_value,
@@ -356,7 +356,7 @@ def compute_observables(radiation_filepath):
         print(f"Error: File must contain columns {sorted(required)}")
         sys.exit(1)
 
-    config_path = os.path.join(os.path.dirname(radiation_filepath), 'config.cfg')
+    config_path = field_config_path(radiation_filepath)    # incident_config.cfg for a recent incident_field.dat
     if not os.path.exists(config_path):
         print(f"Error: '{config_path}' not found -- this run predates per-run config snapshots "
               "(Core::IoUtils::copy_config_to_run_directory); re-run the solver to regenerate it.")
@@ -868,7 +868,7 @@ def estimate_gaussian_waist(result, detector_type, config_path, radiation_filepa
     return waist
 
 
-def append_waist_to_run_log(run_dir, waist, config_path, laser_is_gaussian):
+def append_waist_to_run_log(run_dir, waist, config_path, laser_is_gaussian, label_suffix=""):
     """
     Appends (or, on a re-run, replaces) the estimate_gaussian_waist table in run_log.txt, lengths in units of
     the laser wavelength lambda_L, one row per frequency, with the validity warnings in the caption.
@@ -904,7 +904,7 @@ def append_waist_to_run_log(run_dir, waist, config_path, laser_is_gaussian):
         body.append(f"  {int(row['i_omega']):>8d} {row['omega']:>14.6f} " + ' '.join(f'{v:>13.5e}' for v in values)
                     + f"  {row['status']}")
 
-    _write_run_log_section(run_dir, _RUN_LOG_WAIST_HEADER, body)
+    _write_run_log_section(run_dir, _RUN_LOG_WAIST_HEADER + label_suffix, body)
     return body
 
 
@@ -1031,11 +1031,13 @@ def plot_observables(radiation_filepath):
     print(energy_ratios.to_string(index=False))
     append_energy_ratios_to_run_log(run_dir, energy_ratios, m, sigma, is_incident, label_suffix=label_suffix)
 
-    # The incident field is sampled at the laser's own waist, so there is nothing to infer there.
-    if not is_incident:
+    # An incident field sampled at the laser's own waist (runs before 2026-10-27) has nothing to infer; at the
+    # detector distance (incident_config.cfg) it is the check of the estimate against the known laser waist.
+    if not is_incident or is_incident_screen_config(config_path):
         waist = estimate_gaussian_waist(result, detector_type, config_path, radiation_filepath)
-        body = append_waist_to_run_log(run_dir, waist, config_path, _read_laser_is_gaussian(config_path))
-        print(_RUN_LOG_WAIST_HEADER + ":")
+        body = append_waist_to_run_log(run_dir, waist, config_path, _read_laser_is_gaussian(config_path),
+                                       label_suffix=label_suffix)
+        print(_RUN_LOG_WAIST_HEADER + label_suffix + ":")
         print('\n'.join(body))
 
 

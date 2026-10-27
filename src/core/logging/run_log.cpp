@@ -10,6 +10,7 @@
 #include "../include/math_utils/math_constants.hpp"
 #include "../include/math_utils/math_utils.hpp"
 #include "../include/phys_utils/phys_utils.hpp"
+#include "../include/radiation/radiation_plotter.hpp"
 
 namespace Core::Logging {
 
@@ -185,6 +186,18 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     write_kv(file, "R_max", read_scaled(config, "circular_detector_R_max"), lambda_au);
     if (is_laguerre_gauss) {
       file << "  R_max / w0                  " << read_scaled(config, "circular_detector_R_max") / lg_w0_au << "\n";
+    }
+  }
+  if (detector_type == "RectangularDetector" || detector_type == "CircularDetector") {
+    // incident_field.dat's own screen (Radiation::incident_screen); also in incident_config.cfg for Python.
+    Radiation::IncidentScreen incident = Radiation::incident_screen(laser, detector);
+    file << "  incident_field.dat screen:  laser frame, plane z = distance downstream of the waist, grid "
+         << (incident.half_width > 0.0 ? "sized to the beam" : "of the detector") << " (incident_config.cfg)\n";
+    write_kv(file, "  distance", incident.distance, lambda_au);
+    if (incident.half_width > 0.0) {
+      write_kv(file, detector_type == "CircularDetector" ? "  R_max" : "  half-width", incident.half_width,
+               lambda_au);
+      file << "    = 2 x LG table radius x w(Z); / w0 = " << incident.half_width / lg_w0_au << "\n";
     }
   }
 

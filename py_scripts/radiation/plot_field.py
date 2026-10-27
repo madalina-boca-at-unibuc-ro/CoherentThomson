@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from utils.run_output_utils import find_latest_output_file, DEFAULT_CONFIG_PATH
+from utils.run_output_utils import find_latest_output_file, field_config_path, DEFAULT_CONFIG_PATH
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -417,7 +417,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
     # specific run's .dat files, rather than config/coherent_thomson.cfg -- the project's live
     # config may have been edited since this run (e.g. for a different detector geometry), and
     # every key read below is used to interpret THIS file's data, not to launch a new run.
-    config_path = os.path.join(os.path.dirname(radiation_filepath), 'config.cfg')
+    config_path = field_config_path(radiation_filepath)    # incident_config.cfg for a recent incident_field.dat
     if not os.path.exists(config_path):
         print(f"Error: '{config_path}' not found -- this run predates per-run config snapshots "
               "(Core::IoUtils::copy_config_to_run_directory); re-run the solver to regenerate it.")

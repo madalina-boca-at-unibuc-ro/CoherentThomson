@@ -24,18 +24,36 @@ void plot_radiation_field(const Simulation::RadiationField& field, const std::ve
 // coherent-sum noise, no far-field Fresnel/aliasing issues) to sanity-check the scattered field's
 // own numerical behavior against.
 //
-// Always evaluated at the laser's own beam waist (z_loc=0), regardless of the detector's actual
-// configured distance -- the detector's actual distance/orientation is intentionally bypassed.
-// Reuses the detector's own local 2D grid (get_row_coordinate/get_col_coordinate, ignoring
-// to_lab_frame's rotation/distance entirely) so the incident-field screen has identical size/resolution/i_screen
-// ordering to the actual radiation_field.dat from the same run -- directly comparable side by side.
-// Unlike radiation_field.dat (lab-frame components), positions AND components are in the laser's own
-// frame (epsilon_1, epsilon_2, n): the file shows the laser unrotated, as if it propagated along +Oz.
-// Evaluated at the middle of the pulse's flat-top plateau (phi = (get_phi_min()+get_phi_max())/2,
-// i.e. envelope = 0, peak amplitude) -- see LaserField::get_complex_faraday_tensor's own doc comment
-// for why the exact instant chosen doesn't matter. Only rectangular and circular detectors have a
-// well-defined flat local (x, y) plane to reuse -- throws for any other type.
+// Evaluated on the plane z_loc = Z of the laser's own frame (epsilon_1, epsilon_2, n), Z = the detector's own
+// distance: downstream of the waist, along the laser, whatever the detector's actual orientation. Both
+// positions AND components are in that frame, so the file shows the laser unrotated, as if it propagated
+// along +Oz (unlike radiation_field.dat's lab-frame components). The grid has the detector's own point counts
+// and point order (same i_screen layout as radiation_field.dat), but its size follows the beam
+// (incident_screen): for a Laguerre-Gauss laser, half-width 2 * IoUtils::lg_beam_radius_in_w0(p, l) * w(Z), so
+// the mode is resolved at any Z; for a plane wave, the detector's own grid. Evaluated at the middle of the
+// pulse's flat-top plateau (phi = (get_phi_min()+get_phi_max())/2, i.e. envelope = 0, peak amplitude; ct is
+// shifted by Z so the plane sees the same point of the pulse as the waist would) -- see
+// LaserField::get_complex_faraday_tensor's own doc comment for why the exact instant chosen doesn't matter.
+// Before 2026-10-27 this was the waist plane on the detector's own grid. Only rectangular and circular
+// detectors have a well-defined flat local (x, y) plane -- throws for any other type.
 void export_incident_field_fourier(const Laser::LaserField& laser, const Detector::Detector_2D& detector,
                                    double fundamental_frequency, const std::string& filepath);
+
+// The plane and grid size export_incident_field_fourier uses. half_width is the circular grid's R_max (R_min =
+// 0) or the rectangular grid's x/y half-width (centred), in atomic units; 0 means "the detector's own grid"
+// (plane-wave laser). Throws for detectors other than rectangular/circular.
+struct IncidentScreen {
+  double distance;
+  double half_width;
+};
+IncidentScreen incident_screen(const Laser::LaserField& laser, const Detector::Detector_2D& detector);
+
+// Writes <run_output_dir>/incident_config.cfg: override lines for the incident screen (its distance and size
+// in a.u., and detector direction (0, 0) since incident_field.dat is in the laser's frame), followed by a
+// verbatim copy of the run's config.cfg. The Python scripts read the first occurrence of a key, so for
+// incident_field.dat they read this file instead of config.cfg and need no other special case. Not a config
+// for the solver.
+void write_incident_config(const Laser::LaserField& laser, const Detector::Detector_2D& detector,
+                           const std::string& run_output_dir);
 
 }  // namespace Core::Radiation

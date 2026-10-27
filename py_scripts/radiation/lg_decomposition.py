@@ -23,8 +23,10 @@ no special case beyond mapping its local grid to lab coordinates.
         [--l L] [--p-min P] [--p-max P] [--w0 V1,V2,... [--w0-unit U]] [--n-w0 K] [run_folder]
     python3 py_scripts/radiation/lg_decomposition.py --self-test
 
---incident fits incident_field.dat (the laser's own mode at its waist, laser frame, s = 0): a pure LG_p^l laser
-must come out as the single coefficient (p, l = laser_lg_l) in E_sigma with eps ~ 0.
+--incident fits incident_field.dat (the laser's own mode in its own frame, on the plane s = the detector distance
+downstream of the waist, incident_config.cfg; s = 0, the waist, for runs before 2026-10-27): a pure LG_p^l laser
+must come out as the single coefficient (p, l = laser_lg_l) in E_sigma with eps ~ 0, and its series waist must be
+the laser's w0 at z0 = 0.
 """
 import argparse
 import math
@@ -36,7 +38,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from utils.run_output_utils import find_latest_output_file
+from utils.run_output_utils import find_latest_output_file, field_config_path, is_incident_screen_config
 from plot_field import read_config_value, read_length, get_screen_coordinates, DETECTOR_AXES_UNIT
 from faraday_frame_utils import BOHR_RADIUS_M, C_LIGHT, convert_unit_to_number, get_detector_local_rotation
 from plot_observables import (
@@ -286,7 +288,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
     """
     run_dir = os.path.dirname(field_filepath)
     is_incident = os.path.basename(field_filepath) == "incident_field.dat"
-    config_path = os.path.join(run_dir, 'config.cfg')
+    config_path = field_config_path(field_filepath)    # incident_config.cfg for a recent incident_field.dat
     data = pd.read_csv(field_filepath, sep=' ', comment='#')
 
     detector_type, _ = read_config_value('detector_type', config_path)
@@ -302,7 +304,10 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
     sigma = _read_laser_spin(config_path)
     if is_incident:
         x, y = x_local, y_local
-        s = 0.0
+        # The incident plane: the detector distance downstream of the waist (incident_config.cfg), or the waist
+        # itself for runs before 2026-10-27.
+        s = (abs(read_length(f'{detector_type}_detector_distance', config_path, 'a.u.'))
+             if is_incident_screen_config(config_path) else 0.0)
     else:
         local_rotation = get_detector_local_rotation(config_path)
         _check_screen_along_z(local_rotation, config_path)
@@ -413,7 +418,7 @@ def _summary_lines(summary_rows, context, table_name):
     lines = [
         "  theory/lg_decomposition_implementation.md: weighted complex least squares of one field component on "
         "unit-norm LG modes",
-        "  u_{p,l}(r, phi, s; w0) (waist at the origin, s = screen distance; incident: laser frame, s = 0), one w0 "
+        "  u_{p,l}(r, phi, s; w0) (waist at the origin, s = screen distance; incident: laser frame), one w0 "
         "for all modes;",
         "  the best (smallest-eps) trial w0 per component. plus/minus = (Ex -+ i Ey)/sqrt2, spin +-1 about lab +z; "
         "fitted l = J - spin,",

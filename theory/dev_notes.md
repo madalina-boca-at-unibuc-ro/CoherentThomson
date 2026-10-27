@@ -8,6 +8,32 @@ investigations, bug fixes, cross-checks against the Python reference
 Entries are historical: where one disagrees with the code, the code (and `CLAUDE.md`) wins. Known stale detail:
 `general_factor` is `q_0 / (2*pi * 4*pi*epsilon_0*c^2)` (`simulation.cpp`), not the `1/(2*pi*c)` quoted below.
 
+- **2026-10-27: `LaguerreGaussLaser` wavefront-curvature sign fixed; `incident_field.dat` moved to the detector
+  distance.**
+  - **Bug.** `complex_amplitude` had the curvature phase `−k ρ² z/(2(z² + z_R²))` with the carrier `e^{−iφ} =
+    e^{i(kz − ωt)}` and the Gouy phase `−(2p+|l|+1) atan(z/z_R)`. The carrier and Gouy go with `+k ρ²/(2R)`;
+    with `−`, the field is not a solution of the paraxial equation away from the waist (residual of
+    `∇⊥²A + 2ik ∂_z A` relative to `∇⊥²A`: 0.73 at `z = 0.6 z_R`, against 4e-8 with `+`). The field had a
+    converging wavefront on a diverging width. Found reading the code for the incident-screen test below.
+  - **Effect on past runs: small.** Only `z ≠ 0` is affected and the phase error is `k ρ² z/z_R²` for `z ≪ z_R`.
+    Electrons at rest on the flat disk at `z = 0` see no change. The relativistic `config_expansion` runs meet the
+    pulse within ~100 λ of the waist, with `z_R` ≈ 2000 λ: ~0.05 rad at `ρ = w0`. It grows for tight foci and long
+    interaction regions.
+  - **Incident screen.** `incident_field.dat` used to be the waist plane on the detector's own grid, which tested
+    neither Gouy nor curvature, and a far-field-sized grid didn't resolve it (run `20261027_184830`: first ring at
+    2.5 `w0`). It is now the plane `z = Z` (detector distance) downstream of the waist in the laser frame, at
+    half-width `2 · lg_beam_radius_in_w0(p, l) · w(Z)` with the detector's point counts
+    (`Radiation::incident_screen`); `run_log.txt` prints it and `incident_config.cfg` describes it for Python.
+  - **Test** (4 electrons, `config_expansion_rest.cfg` with a 128 x 33 screen, `Z = 2e4 λ` = 10.2 `z_R`), N = 1
+    `E_+` fit, `lg_decomposition.py --incident`:
+
+    | curvature sign | `eps` | series waist | Stage 1 `w0_far` |
+    |---|---|---|---|
+    | `+` (fixed) | 1.0e-7 | 25.000 λ at `z0` = 0.0009 λ | 25.10 λ |
+    | `−` (old) | 0.94, best `w0` at the scan edge | `|t| > 1`, no single beam | 25.10 λ |
+
+    The intensity-only Stage 1 can't see the sign; the phase-sensitive fit fails at once with the old one.
+
 - **Moved out of `CLAUDE.md` on 2026-10-23.**
   - The current laser direction (`laser_direction_theta/phi`, only the laser moves) differs from the old
     `general-laser-direction-legacy` branch, removed in `d04bb89`, which rotated laser, beam and detector together

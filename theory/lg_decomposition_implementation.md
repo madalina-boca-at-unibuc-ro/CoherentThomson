@@ -95,7 +95,8 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
   most for `--incident`: `incident_field.dat` uses the detector's grid at the laser waist, so a screen sized for
   the far field cannot sample the incident beam. Run `20261027_184830` (`R_max = 40 w0`, 256 equal-area rings) has
   its first ring at `2.5 w0`; the whole incident Gaussian sat on the centre point, and the fit came out rank 1 with
-  equal coefficients and a 0.1 λ "waist". Check the incident beam on a run with a screen of a few `w0`.
+  equal coefficients and a 0.1 λ "waist". Fixed in the C++ on 2026-10-27: the incident screen is now at the
+  detector distance with a beam-sized grid (`incident_config.cfg`, Verification 5).
 - **Quadrature.** The trapezoid in `u = r^2` is only `O(h^2)` for `l = 0, ±1` (`|u|^2` has a nonzero `u`-slope at
   `r = 0`; relative error `~(2h/w^2)^2/12` with `h` the `r^2` step), and spectrally accurate for `|l| ≥ 2`. A
   coarse radial grid biases `captured` slightly for low `|l|`; target and basis are integrated with the same
@@ -222,6 +223,12 @@ with a single `l` and with `p = 0, 1` in the basis.
    - **N = 2 at `a0 = 0.01` isn't usable yet**: it is ~`a0²` weaker than N = 1 and `trajectory_NT` is 100 (weak
      harmonics need finer, CLAUDE.md); its `l = −1` share drops to 0.71, `edge_frac` rises to 12% and the `plus`
      fit runs off the scan. Rerun with a finer `trajectory_NT` before interpreting it.
+5. **Incident field at the detector distance** (2026-10-27). `incident_field.dat` is the plane `s = Z` downstream
+   of the waist (`incident_config.cfg`; `--incident` uses `s = Z`). On `config_expansion_rest.cfg` (Gaussian,
+   `w0 = 25 λ`, `Z = 2e4 λ = 10.2 z_R`, 128 x 33 screen of radius 952 λ): `eps = 1.0e-7`, all power in
+   `E_+` with `l = 0`, series waist 25.000 λ at `z0 = 0.0009 λ`. This tests Gouy and curvature, which the waist
+   check couldn't, and caught a curvature-sign bug in `LaguerreGaussLaser` (with the old sign `eps = 0.94`;
+   `theory/dev_notes.md`).
 
 ## Open points
 

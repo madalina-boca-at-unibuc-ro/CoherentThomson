@@ -190,6 +190,7 @@ int main(int argc, char* argv[]) {
     if (detector->get_type_name() == "RectangularDetector" || detector->get_type_name() == "CircularDetector") {
       Radiation::export_incident_field_fourier(*laser, *detector, sim_par.fundamental_frequency,
                                                run_output_dir + "/incident_field.dat");
+      Radiation::write_incident_config(*laser, *detector, run_output_dir);
     } else {
       std::cout << "Skipping incident field export: detector_type '" << detector->get_type_name()
                 << "' has no flat local (x, y) plane (only rectangular/circular are supported).\n";

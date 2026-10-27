@@ -92,6 +92,7 @@ public:
                       double dir_y, double dir_z);
 
   std::string get_type_name() const override { return "RectangularDetector"; }
+  double get_distance() const { return distance; }
   double get_row_coordinate(size_t i) const override;
   double get_col_coordinate(size_t j) const override;
   void print_info() const override;
@@ -114,6 +115,7 @@ public:
                    double dir_z);
 
   std::string get_type_name() const override { return "CircularDetector"; }
+  double get_distance() const { return distance; }
   double get_row_coordinate(size_t i) const override;
   double get_col_coordinate(size_t j) const override;
   void print_info() const override;
