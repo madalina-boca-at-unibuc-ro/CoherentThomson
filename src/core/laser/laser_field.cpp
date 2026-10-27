@@ -239,8 +239,11 @@ std::tuple<MathUtils::Complex, MathUtils::Complex, MathUtils::Complex> LaguerreG
 
   // the imaginary part of the phase
   double gouy_phase = -static_cast<double>(2 * p + n + 1) * std::atan(z_loc / z_R);
+  // Wavefront curvature +k rho^2/(2 R(z)), R(z) = z (1 + z_R^2/z^2): the sign that goes with the carrier e^{-i phi} =
+  // e^{i(kz - omega t)} and the Gouy phase above (diverging for z > 0). It was -k rho^2/(2R) until 2026-10-27, which
+  // fails the paraxial equation away from the waist (theory/dev_notes.md).
   double kappa_coef =
-      -k_wave * z_loc / (2.0 * (z_loc * z_loc + z_R * z_R));  // coefficient of s=rho^2 in kappa_phase below
+      k_wave * z_loc / (2.0 * (z_loc * z_loc + z_R * z_R));  // coefficient of s=rho^2 in kappa_phase below
   double kappa_phase = kappa_coef * s;
 
   double g_coef = -1.0 / (w_z * w_z);  // coefficient of s=rho^2 in gaussian_phase below
