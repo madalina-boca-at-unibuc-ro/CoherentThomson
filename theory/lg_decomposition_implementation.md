@@ -90,6 +90,12 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
 - **Spherical vs paraxial phase.** The exported field has the exact `k(sqrt(s^2+r^2) − s)`; the modes have
   `k r^2/2R_c`. Their difference at the radius holding 99% of the component's power, `k r^4/(8 s^3)`, is printed.
   It was ~1e-7 rad on the runs below. If it ever reaches ~0.1 rad, the paraxial basis is no longer adequate.
+- **Resolution.** The summary prints the grid step against the beam width `w(s)` at the best `w0` (circular:
+  `r²` step / `w²`; rectangular: `max(dx, dy)/w`) and flags it **UNDER-RESOLVED** above 0.25 / 0.5. This matters
+  most for `--incident`: `incident_field.dat` uses the detector's grid at the laser waist, so a screen sized for
+  the far field cannot sample the incident beam. Run `20261027_184830` (`R_max = 40 w0`, 256 equal-area rings) has
+  its first ring at `2.5 w0`; the whole incident Gaussian sat on the centre point, and the fit came out rank 1 with
+  equal coefficients and a 0.1 λ "waist". Check the incident beam on a run with a screen of a few `w0`.
 - **Quadrature.** The trapezoid in `u = r^2` is only `O(h^2)` for `l = 0, ±1` (`|u|^2` has a nonzero `u`-slope at
   `r = 0`; relative error `~(2h/w^2)^2/12` with `h` the `r^2` step), and spectrally accurate for `|l| ≥ 2`. A
   coarse radial grid biases `captured` slightly for low `|l|`; target and basis are integrated with the same

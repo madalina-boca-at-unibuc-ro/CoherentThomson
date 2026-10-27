@@ -63,6 +63,10 @@ _MIN_HELICITY_FRACTION_PLOT = 1e-4
 # Tolerance for treating the laser spin as exactly 0 or +-1 (otherwise J is not an integer).
 _SPIN_TOL = 1e-9
 _TRANSVERSE_TOL = 1e-9
+# Grid step relative to the beam width w(s) at the best w0 above which the fit is flagged as under-resolved:
+# circular grids compare the r^2 step with w^2 (the trapezoid's error is ~(2h/w^2)^2/12), rectangular ones the
+# larger of dx, dy with w.
+_MAX_STEP_OVER_WIDTH = {'circular': 0.25, 'rectangular': 0.5}
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -239,6 +243,20 @@ def screen_lab_xy(x_local, y_local, local_rotation):
     return lab[0], lab[1]
 
 
+def _grid_step_au(detector_type, config_path):
+    """The screen grid's resolution in atomic units: the r^2 step (equal-area rings) of a circular grid, the larger
+    of dx, dy of a rectangular one. Compared with w^2 and w respectively (_MAX_STEP_OVER_WIDTH)."""
+    if detector_type == 'circular':
+        R_min, R_max = (read_length(f'circular_detector_{key}', config_path, 'a.u.') for key in ('R_min', 'R_max'))
+        N_R = int(read_config_value('circular_detector_N_R', config_path)[0])
+        return (R_max ** 2 - R_min ** 2) / max(N_R - 1, 1)
+    steps = []
+    for axis in ('x', 'y'):
+        lo, hi = (read_length(f'rectangular_detector_{axis}_{end}', config_path, 'a.u.') for end in ('min', 'max'))
+        steps.append(abs(hi - lo) / max(int(read_config_value(f'rectangular_detector_N{axis}', config_path)[0]) - 1, 1))
+    return max(steps)
+
+
 def _check_screen_along_z(local_rotation, config_path):
     normal = local_rotation[:, 2]
     if abs(normal[0]) > _TRANSVERSE_TOL or abs(normal[1]) > _TRANSVERSE_TOL:
@@ -310,6 +328,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
         # (local y = -lab y), so the FFT index is l_lab * det(R_perp).
         phi_orientation = 1 if is_incident else int(np.sign(np.linalg.det(local_rotation[:2, :2])))
 
+    grid_step = _grid_step_au(detector_type, config_path)
     fundamental_frequency_au = _read_fundamental_frequency_au(run_dir)
     lambda_L = convert_unit_to_number('lambda', config_path)
     p_values = list(range(p_min, p_max + 1))
@@ -374,6 +393,8 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
             summary.update(w0_best=best_w0, w0_list=w0_list, fit=best,
                            edge_of_scan=len(w0_list) > 1 and best_w0 in (w0_list[0], w0_list[-1]),
                            series=series_waist(best['coeffs'], modes, best_w0, k))
+            w_s = best_w0 * math.sqrt(1.0 + (s / (0.5 * k * best_w0 ** 2)) ** 2)
+            summary['step_over_width'] = grid_step / (w_s ** 2 if detector_type == 'circular' else w_s)
             if s > 0.0:
                 # Exact spherical phase k(sqrt(s^2+r^2) - s) minus the paraxial k r^2/(2s) the LG modes assume.
                 r99 = _radius_containing(0.99, power, r)
@@ -415,6 +436,14 @@ def _summary_lines(summary_rows, context, table_name):
                      f"..{row['w0_list'][-1] / lambda_L:.4g}, {len(row['w0_list'])} values"
                      f"{'; AT SCAN EDGE' if row['edge_of_scan'] else ''}): eps = {fit['eps']:.4e}, captured = "
                      f"{fit['captured']:.6f}, cond = {fit['cond']:.3e}, status: {fit['status']}")
+        step_ratio, step_max = row['step_over_width'], _MAX_STEP_OVER_WIDTH[context['detector_type']]
+        step_label = 'r^2 step / w(s)^2' if context['detector_type'] == 'circular' else 'grid step / w(s)'
+        if step_ratio > step_max:
+            lines.append(f"    WARNING: UNDER-RESOLVED, {step_label} = {step_ratio:.3g} > {step_max:g} at the best w0: "
+                         "the grid doesn't sample the beam, nothing below is meaningful (a finer or smaller screen "
+                         "is needed)")
+        else:
+            lines.append(f"    resolution: {step_label} = {step_ratio:.3g} (flagged above {step_max:g})")
         series = row.get('series')
         if series is not None:
             t, t2 = series['t'], series['t2']
