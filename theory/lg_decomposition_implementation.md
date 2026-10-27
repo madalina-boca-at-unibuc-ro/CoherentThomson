@@ -98,10 +98,11 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
 ## Outputs
 
 - `<run>/lg_decomposition.dat` (`lg_decomposition_incident.dat` for `--incident`): one row per (frequency,
-  component, w0) with `eps, captured, cond, rank` and `c_p<p>_l<l>_re/_im` columns.
+  component, w0) with `eps, captured, cond, rank`, `c_p<p>_l<l>_re/_im` columns, and, for single-`l` components,
+  `w0_series_lambdaL, z0_series_lambdaL` (Series waist above).
 - `run_log.txt` section `LG decomposition (lg_decomposition.py)` (`-- incident beam` suffix for `--incident`),
-  replaced on re-run. It holds the best `w0` per (frequency, component) with all coefficients, the helicity power
-  fraction, the azimuthal pre-check and the spherical-phase diagnostic.
+  replaced on re-run. It holds the best `w0` per (frequency, component) with all coefficients, the series waist
+  (with both `t`), the helicity power fraction, the azimuthal pre-check and the spherical-phase diagnostic.
 - `png_folder/radiation/lg_decomposition/{emitted,incident}/lg_decomposition_omega<i>.png`: `eps(w0)` per
   component, and `|c|^2/sum|c|^2` at the best `w0`.
 - `.../lg_coefficients_omega<i>_<component>.png`: the whole coefficient set of one component, normalized by
@@ -128,7 +129,31 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
     series would then predict `|c_2|^2 ≈ 0.14`, but the fit gives 0.015 (`|c_2/c_1| = 0.22`). The phase steps are
     similar (`0.68π`, then `0.80π`), but the magnitudes are not. This argues against "just a displaced
     and/or resized Gaussian" as the explanation of the `p = 1` content. Tentative: the series test assumes `eps`
-    is small, and here it is 5%.
+    is small, and here it is 5%. Resolved by the `a0` test below: at `a0 = 0.1` it isn't a single Gaussian (the
+    ponderomotive radial phase); at `a0 = 0.01` it is, with the laser's waist.
+
+## Series waist
+
+For a target that is one `LG_0^l` beam with its own waist `w` and waist position `z0` (any complex beam parameter
+`q`), the coefficients in the waist-at-origin basis of waist `w_b` follow from the Laguerre generating function
+`Σ_p L_p^a(x) t^p = (1−t)^{−a−1} e^{−xt/(1−t)}`. On the plane `s = 0` the target is `r^|l| e^{−α r²} e^{ilφ}`
+(`α = −ik/2q`), so on the unit-norm modes
+
+$$\frac{c_{p+1}}{c_p} = t\,\sqrt{\frac{p+1+|l|}{p+1}},\qquad t = \frac{\alpha w_b^2 - 1}{\alpha w_b^2 + 1},$$
+
+independent of `s` (the basis carries the Gouy phases). `series_waist` takes `t` from `c_1/c_0` and inverts it:
+`q(s=0) = −i z_Rb (1−t)/(1+t)` with `z_Rb = k w_b²/2`, giving `z0 = −Re q` (the waist position along the
+propagation direction, from the origin toward the screen) and `w0 = sqrt(2(−Im q)/k)`. Real `t` means the waist
+is at the origin: `w = w_b sqrt((1−t)/(1+t))`.
+
+Two checks that the single-beam assumption holds, both reported:
+- `t` from `c_2/c_1` (the summary's second `t`) must equal `t` from `c_1/c_0`;
+- `w0_series`, `z0_series` (columns of `lg_decomposition.dat`, one per trial `w0`) must not depend on the basis
+  waist, wherever `captured ≈ 1 − eps²`.
+
+This replaces the smallest-`eps` `w0` as the waist estimate: that one is only a basis label, and with several `p`
+free and a `w0`-independent residual (other-`l` content), `eps(w0)` is flat. Computed only for components fitted
+with a single `l` and with `p = 0, 1` in the basis.
 
 ## Verification
 
@@ -140,6 +165,9 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
      on a +Oz **and a −Oz** screen. The field is synthesized from an independent lab-coordinate mapping, so the
      test fails if `screen_lab_xy` or the helicity convention is wrong. Fitting `Ex` with both `l` also gives
      `eps ~ 1e-15`.
+   - Series waist: a single `LG_0^l` beam outside the basis (`l = 0`: `w = 1.3 w_b`, `z0 = 0` and `w = 0.8 w_b`,
+     `z0 = 0.3 z_R`; `l = 2`: `w = 1.3 w_b`, `z0 = −0.4 z_R`), fitted with `p = 0..8` on a wide fine screen:
+     `w0`, `z0` recovered to ~1e-8 and the two `t` agree, which fixes the signs of `z0` and the `|l|` factor.
 2. **Incident field, run `20260929_002928`** (LG `p = 2, l = 2`, `w0 = 25 λ`, `ζ = (1, i)`, screen radius
    `50 λ`): all power is in `E_+` with `l = +2` (ring FFT: 1.0). At `w0 = 25 λ`, `c_{2,2}` is the only nonzero
    coefficient (the others are ~1e-9 of it), `eps = 1.1e-7` (the 6-digit `.dat` precision), and `eps` rises
@@ -156,13 +184,46 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
    | 2 | −2 | 1 − 7e-6 | l=−1: 0.882, l=0: 0.090 | 9.8 | 0.35 | 0.89 | 0.31, 0.45, 0.21, 0.03 |
 
    The predicted helicity and the sign of `l` are confirmed: lab `l = J + 1` in `E_-`.
+4. **`a0` test, runs `20261027_181823` (`config_expansion.cfg`, `a0 = 0.1`) and `20261027_182248`
+   (`config_expansion_a0_001.cfg`, `a0 = 0.01`)**, commit `e4c3589`, otherwise identical (seed 532, 8192
+   electrons, flat disk of radius `3 w0`, forward screen at `4e6 λ_L` = `Z/z_R ≈ 2.8` for `w0 = 25 λ`,
+   `R_max = 10 w0`). N = 1, `E_-`, `l = 0`:
+
+   | | `a0 = 0.1` | `a0 = 0.01` |
+   |---|---|---|
+   | Stage 1 `w0_far` | 17.7 λ | 23.5 λ |
+   | smallest-`eps` basis `w0` | 17.1 λ | 19.1 λ |
+   | `|c|²` share `p = 0, 1, 2, 3` | 0.70, 0.29, 0.004, 0.008 | 0.925, 0.07, 0.004, 0.001 |
+   | `t` from `c_1/c_0`; from `c_2/c_1` | `0.64 e^{0.66iπ}`; `0.12 e^{0.59iπ}` | `0.275 e^{−iπ}`; `0.238 e^{−0.99iπ}` |
+   | series `w0` over the interpretable scan | 12.4 → 22.9 λ (drifts) | 25.2–25.4 λ |
+   | series `z0` | ~9e5 λ_L | −2e3 to −9e3 λ_L (`< 0.006 z_R`) |
+   | `eps²`; power outside `l = 0` | 0.0094; 0.0093 | 0.0090; 0.0090 |
+
+   - **At `a0 = 0.01`, N = 1 is one Gaussian beam with the laser's waist (25 λ) at the origin**: `t` is real, the
+     two `t` agree, and the series waist is stable across basis waists.
+   - **At `a0 = 0.1` it isn't a single beam** (the two `t` disagree, the series waist drifts). The extra `p = 1`
+     and the narrower apparent waist come from ponderomotive dressing: the frequencies are the on-axis dressed
+     harmonics, so an electron at `r` is off resonance by `∝ a0² (1 − e^{−2r²/w0²})` and its emission carries a
+     radial phase of order 1 rad between `r = 0` and `w0` (~65 cycles crossed). That acts as a Gaussian-shaped
+     lens, not a pure curvature, hence no single-beam fit. It falls 100x at `a0 = 0.01`. An intensity profile
+     entering squared (waist `w0/√2` = 17.7 λ, matching `a0 = 0.1`'s Stage 1 by coincidence) would not depend
+     on `a0`, so it is ruled out.
+   - **The residual `eps` is the other-`l` content in both runs** (`eps²` equals the power outside `l = 0`), so it
+     doesn't depend on `a0` or `w0`. Its size (~1%) matches the speckle of random electron positions: the
+     incoherent part carries `≈ Q/((2π)² n)` of the screen power (`Q` the screen's area in transverse `q`, `n` the
+     electron surface density), ≈ 1.4% here. It also explains Stage 1's 23.5 λ at `a0 = 0.01`: a clean 25 λ
+     Gaussian (74.2 λ spot) plus ~1% uniform background gives `w_eff` ≈ 77.6–79.4 λ, measured 77.9 λ.
+   - **N = 2 at `a0 = 0.01` isn't usable yet**: it is ~`a0²` weaker than N = 1 and `trajectory_NT` is 100 (weak
+     harmonics need finer, CLAUDE.md); its `l = −1` share drops to 0.71, `edge_frac` rises to 12% and the `plus`
+     fit runs off the scan. Rerun with a finer `trajectory_NT` before interpreting it.
 
 ## Open points
 
-- **N = 1 is not a single Gaussian** (`p = 1` holds 31%). In the far field, a waist displaced by `δ` from the
-  origin adds a curvature phase `≈ δ/z_R` at `r ~ w(s)`, which the fixed waist-at-origin basis represents as
-  `p ≠ 0` content. Another cause may be the incoherent background (Stage 1's open question). Neither is tested
-  yet; the next step would be to fit the waist position, or compare two electron counts.
+- **N = 1's `p = 1` content (31% at `a0 = 0.1`) is ponderomotive dressing**, not a displaced waist or the
+  incoherent background (Verification 4). Not yet checked quantitatively: the predicted radial phase profile
+  against the fitted field, and the scaling with `a0²` and with the pulse length.
+- **Speckle:** ~1% of the screen power is incoherent, at every `l`. Halving it needs 2x the electrons (it scales as
+  `1/n`); not tested.
 - **N = 2 has 9% of `E_-` power at `l = 0`** instead of `−1`. That alone puts `eps` near 0.3, and it would lower
   `|L_z|` per photon by roughly that fraction. It may be related to the ~5% `Λ_zz/P_z` deficit at N = 2
   (CLAUDE.md open issue); not checked.

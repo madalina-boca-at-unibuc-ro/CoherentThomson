@@ -68,9 +68,13 @@ Run `20261025_002302` (Gaussian laser, `w0 = 25 λ_L`, circular, `γ ≈ 13.5`, 
 | 2 | 647   | 5.4    | 119       | 647     | 0.008      | 1.6%      |
 
 N = 1: the far root is the physical one (deep far field). The inferred `w0 ≈ 16.9 λ_L` is smaller than the
-laser's 25 `λ_L`, **not yet explained**. Candidate: the incoherent background (∝ `N_e`, broad) widens `w_eff` and
-lowers the inferred waist. Test: two runs with different `beam_particle_count` (and seeds); the coherent part
-scales as `N_e²`, the background as `N_e`. N = 2 is meaningless here (circular, `|l| = 1`).
+laser's 25 `λ_L`. N = 2 is meaningless here (circular, `|l| = 1`).
+
+**Explained by the `a0` test** (runs `20261027_181823`/`182248`, details in
+`lg_decomposition_implementation.md`, Verification 4): with `config_expansion.cfg` the waist is 17.7 λ at
+`a0 = 0.1` and 23.5 λ at `a0 = 0.01`. Most of the deficit is ponderomotive dressing, whose radial emission phase
+widens the far field. The rest (23.5 vs 25 λ at `a0 = 0.01`) is the ~1% incoherent speckle of random electron
+positions, which adds a uniform background to the second moment. Stage 2's series waist gives 25.3 λ there.
 
 ## Stage 2: least-squares fit on LG modes at fixed l
 
@@ -81,9 +85,17 @@ It fits the helicity components `E_±` with unit-norm `LG_p^l` (waist at the ori
 curvature that Stage 1 left unused. First results: N = 1 has `eps = 5%` at `w0 ≈ 15.8 λ_L`, with 31% of the
 power in `p = 1`; N = 2 has 9% of its power at `l = 0`.
 
+The **series waist** (`series_waist`) reads the waist and waist position of a single `LG_0^l` beam off
+`c_1/c_0`, independent of the basis waist; `c_2/c_1` checks the single-beam assumption. At `a0 = 0.01` it gives
+`w0 = 25.3 λ` at the origin for N = 1 (the laser's waist); at `a0 = 0.1` the field is not a single beam
+(ponderomotive dressing), which is where the `p = 1` content comes from.
+
 ## Next stages (to do)
 
 - **LG second moment:** for a pure `LG_p^l`, `w_eff² = (2p+|l|+1) w(Z)²` (`M² = 2p+|l|+1`); use the expected
   `l = L_N` per harmonic as a first generalization.
-- **Waist position:** add `z_0` to the Stage 2 basis (`s = Z − z_0`) and fit `w_0, z_0` by minimizing `eps`.
-- Separate coherent and incoherent contributions before fitting.
+- **Waist position:** done for a single beam by the series waist. Fitting `w_0, z_0` in the basis
+  (`s = Z − z_0`) would still be needed for a superposition of modes with a displaced common waist.
+- Separate coherent and incoherent contributions before fitting (the incoherent part is ~1% here, at every `l`).
+- Model the ponderomotive radial phase at `a0 = 0.1` and compare with the fitted field.
+- N = 2 at small `a0`: rerun with a finer `trajectory_NT` first.

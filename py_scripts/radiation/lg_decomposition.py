@@ -133,6 +133,33 @@ def fit_modes(target, basis, weights):
     return result
 
 
+def series_waist(coeffs, modes, w_b, k):
+    """
+    Waist and waist position implied by the first coefficient ratio, assuming the target is one LG_0^l beam with
+    its own complex beam parameter (theory/lg_decomposition_implementation.md, "Series waist"). On the basis waist
+    plane (s = 0) such a beam is r^|l| e^{-alpha r^2} e^{il phi}; the Laguerre generating function gives
+    c_{p+1}/c_p = t sqrt((p+1+|l|)/(p+1)) with t = (alpha w_b^2 - 1)/(alpha w_b^2 + 1). Inverting t from c_1/c_0,
+    q = -i z_Rb (1 - t)/(1 + t) (z_Rb = k w_b^2/2) is the beam parameter at s = 0, so the waist sits at
+    z0 = -Re q along the propagation direction and w0 = sqrt(2 (-Im q)/k).
+
+    Returns None unless `modes` has a single l and contains p = 0 and 1; otherwise a dict with t (from c_1/c_0),
+    t2 (the same quantity from c_2/c_1, NaN without p = 2: equal to t for a pure LG_0^l beam), w0 and z0.
+    """
+    if len({l for _, l in modes}) != 1:
+        return None
+    a = abs(modes[0][1])
+    c = {p: coeff for (p, _), coeff in zip(modes, coeffs)}
+    if 0 not in c or 1 not in c or not (abs(c[0]) > 0.0 and np.isfinite(c[0])):
+        return None
+    t = c[1] / c[0] / math.sqrt(1 + a)
+    t2 = c[2] / c[1] / math.sqrt((2 + a) / 2.0) if 2 in c and abs(c[1]) > 0.0 else np.nan
+    u = (1.0 - t) / (1.0 + t)
+    if not u.real > 0.0:                 # |t| >= 1: not a convergent single-beam series
+        return {'t': t, 't2': t2, 'w0': np.nan, 'z0': np.nan}
+    z_Rb = 0.5 * k * w_b ** 2
+    return {'t': t, 't2': t2, 'w0': w_b * math.sqrt(u.real), 'z0': -z_Rb * u.imag}
+
+
 # --------------------------------------------------------------------------------------------------------------
 # Field components and angular-momentum bookkeeping
 # --------------------------------------------------------------------------------------------------------------
@@ -337,11 +364,16 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
                        'norm_sq': np.sum(power)}
                 for (p, l), c in zip(modes, fit['coeffs']):
                     row[f'c_p{p}_l{l}_re'], row[f'c_p{p}_l{l}_im'] = c.real, c.imag
+                series = series_waist(fit['coeffs'], modes, w0, k)
+                if series is not None:
+                    row['w0_series_lambdaL'] = series['w0'] / lambda_L
+                    row['z0_series_lambdaL'] = series['z0'] / lambda_L
                 table_rows.append(row)
 
             best_w0, best = min(fits, key=lambda item: item[1]['eps'])
             summary.update(w0_best=best_w0, w0_list=w0_list, fit=best,
-                           edge_of_scan=len(w0_list) > 1 and best_w0 in (w0_list[0], w0_list[-1]))
+                           edge_of_scan=len(w0_list) > 1 and best_w0 in (w0_list[0], w0_list[-1]),
+                           series=series_waist(best['coeffs'], modes, best_w0, k))
             if s > 0.0:
                 # Exact spherical phase k(sqrt(s^2+r^2) - s) minus the paraxial k r^2/(2s) the LG modes assume.
                 r99 = _radius_containing(0.99, power, r)
@@ -383,6 +415,13 @@ def _summary_lines(summary_rows, context, table_name):
                      f"..{row['w0_list'][-1] / lambda_L:.4g}, {len(row['w0_list'])} values"
                      f"{'; AT SCAN EDGE' if row['edge_of_scan'] else ''}): eps = {fit['eps']:.4e}, captured = "
                      f"{fit['captured']:.6f}, cond = {fit['cond']:.3e}, status: {fit['status']}")
+        series = row.get('series')
+        if series is not None:
+            t, t2 = series['t'], series['t2']
+            lines.append(f"    series waist (single LG_0^l beam, from c_1/c_0): w0 = {series['w0'] / lambda_L:.6g} "
+                         f"lambda_L, waist at z0 = {series['z0'] / lambda_L:.6g} lambda_L along propagation; t = {abs(t):.4f} "
+                         f"e^{{i {np.angle(t) / np.pi:+.3f} pi}}, t from c_2/c_1 = {abs(t2):.4f} "
+                         f"e^{{i {np.angle(t2) / np.pi:+.3f} pi}} (equal for a single beam)")
         if np.isfinite(row['sph_phase']):
             lines.append(f"    spherical - paraxial phase at the 99% power radius: {row['sph_phase']:.3e} rad")
         if row['azimuthal'] is not None:
@@ -602,6 +641,24 @@ def self_test():
         modes = [(p, 2) for p in range(3)]
         fit = fit_modes(E_plus, build_basis(modes, r, phi, s, 1.5 * w0, k), A)
         print(f"  (info) {label} screen, plus at a wrong w0 = 1.5 w0_true, p <= 2: eps = {fit['eps']:.3e}")
+
+    # A beam not in the basis (other waist, waist displaced by z0) on a wide, fine screen, where the modes are
+    # orthonormal and the fitted c_0, c_1 are its projections.
+    print("3. Series waist: one LG_0^l beam (w0 = 1.3 or 0.8 x the basis waist, waist at z0) fitted with p = 0..8:")
+    s = 3.0 * z_R
+    for l, w_ratio, z0_ratio in ((0, 1.3, 0.0), (0, 0.8, 0.3), (2, 1.3, -0.4)):
+        w_true, z0 = w_ratio * w0, z0_ratio * z_R
+        z_R_true = 0.5 * k * w_true ** 2
+        w_s = max(w_true * math.sqrt(1.0 + ((s - z0) / z_R_true) ** 2), w0 * math.sqrt(1.0 + (s / z_R) ** 2))
+        r, phi, A = circular_grid(8.0 * w_s, N_R=3000, N_phi=17)
+        target = lg_mode(0, l, r, phi, s - z0, w_true, k)
+        modes = [(p, l) for p in range(9)]
+        fit = fit_modes(target, build_basis(modes, r, phi, s, w0, k), A)
+        series = series_waist(fit['coeffs'], modes, w0, k)
+        tag = f"l = {l}, w0 = {w_ratio:g} w_b, z0 = {z0_ratio:g} z_R"
+        check(f"{tag}: w0_series/w0_true - 1", series['w0'] / w_true - 1.0, 1e-3)
+        check(f"{tag}: (z0_series - z0)/z_R", (series['z0'] - z0) / z_R, 1e-3)
+        check(f"{tag}: |t2 - t|", abs(series['t2'] - series['t']), 1e-3)
     print("SELF-TEST " + ("PASSED" if ok else "FAILED"))
     return ok
 
