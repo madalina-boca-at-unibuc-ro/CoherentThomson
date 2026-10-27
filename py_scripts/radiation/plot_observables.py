@@ -142,6 +142,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
 from plot_field import (
+    DETECTOR_AXES_UNIT,
     read_config_value,
     read_length,
     get_screen_coordinates,
@@ -149,7 +150,7 @@ from plot_field import (
     get_angular_axes,
     get_detector_geometry_label,
 )
-from faraday_frame_utils import C_LIGHT, convert_unit_to_number, get_detector_local_rotation
+from faraday_frame_utils import BOHR_RADIUS_M, C_LIGHT, convert_unit_to_number, get_detector_local_rotation
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -776,6 +777,137 @@ def append_energy_ratios_to_run_log(run_dir, ratios, m, sigma, is_incident, labe
                                     extra_value_columns=(theory_column,))
 
 
+_RUN_LOG_WAIST_HEADER = "Gaussian waist estimate (plot_observables.py)"
+
+# Outer part of the screen whose share of the flux flags a beam clipped by the screen edge (or a broad
+# background dominating the second moment): r >= _EDGE_RADIUS_FRACTION * (screen's inscribed radius).
+_EDGE_RADIUS_FRACTION = 0.9
+# A discriminant A^2 - 4B^2 below -_DISCRIMINANT_RTOL * A^2 means the Gaussian model is incompatible with
+# the measured width; between that and 0 it is rounding and is set to 0.
+_DISCRIMINANT_RTOL = 1e-10
+# Z/z_R of the far root below this: the two roots are close and the inferred waist is ill-conditioned.
+_NEAR_DEGENERATE_Z_OVER_ZR = 2.0
+
+
+def _read_laser_is_gaussian(config_path):
+    """True when the incident laser is the fundamental Gaussian (laguerre_gauss with p = l = 0)."""
+    if read_config_value('laser_type', config_path)[0] != 'laguerre_gauss':
+        return False
+    return (int(read_config_value('laser_lg_p', config_path)[0]) == 0
+            and int(read_config_value('laser_lg_l', config_path)[0]) == 0)
+
+
+def _screen_edge_radius_au(detector_type, config_path):
+    """Radius of the largest centred circle inside the screen, atomic units."""
+    if detector_type == 'circular':
+        return read_length('circular_detector_R_max', config_path, 'a.u.')
+    return min(abs(read_length(f'rectangular_detector_{key}', config_path, 'a.u.'))
+               for key in ('x_min', 'x_max', 'y_min', 'y_max'))
+
+
+def estimate_gaussian_waist(result, detector_type, config_path, radiation_filepath):
+    """
+    theory/gaussian_waist_postprocessing.md: per frequency, the second-moment width of the normal Poynting
+    flux on the screen, w_eff^2 = 2 int r^2 P_n dA / int P_n dA (P_n = dPz along the screen normal, trapezoidal
+    area weights of get_screen_area_weights_au), and the waist w_0 at the origin of a fundamental Gaussian
+    beam with that width at |Z|: w_eff^2 = w_0^2 + (lambda_s Z / (pi w_0))^2. Both roots are returned: the
+    'far' one (Z > z_R, the spec's choice) and the 'near' one (Z < z_R). Returns a DataFrame with every
+    length in atomic units, one row per frequency.
+
+    Valid only for a Gaussian incident laser at the first harmonic: other harmonics/modes carry OAM and have
+    M^2 > 1 (to be replaced by an LG-mode analysis).
+    """
+    area_weights = get_screen_area_weights_au(detector_type, config_path)
+    x, y, _, _ = get_screen_coordinates(radiation_filepath, config_path)
+    axes_to_au = convert_unit_to_number(DETECTOR_AXES_UNIT, config_path) / convert_unit_to_number('a.u.', config_path)
+    r_sq = (x * axes_to_au) ** 2 + (y * axes_to_au) ** 2
+    edge_mask = r_sq >= (_EDGE_RADIUS_FRACTION * _screen_edge_radius_au(detector_type, config_path)) ** 2
+
+    distance_au = abs(read_length(f'{detector_type}_detector_distance', config_path, 'a.u.'))
+    # dPz is along lab +z; the screen faces +-Oz (checked in compute_observables).
+    normal_sign = float(np.sign(get_detector_local_rotation(config_path)[2, 2]))
+    fundamental_frequency_au = _read_fundamental_frequency_au(os.path.dirname(radiation_filepath))
+
+    rows = []
+    for i_omega, subset in result.groupby('i_omega'):
+        subset = subset.sort_values('i_screen')
+        omega_ratio = subset['omega'].iloc[0]
+        lambda_s = 2.0 * np.pi * C_LIGHT / (omega_ratio * fundamental_frequency_au)
+
+        flux = normal_sign * area_weights * subset['dPz'].to_numpy()
+        total = np.sum(flux)
+        second_moment = np.sum(r_sq * flux)
+        row = {'i_omega': i_omega, 'omega': omega_ratio, 'lambda_s': lambda_s, 'total_flux': total,
+               'edge_fraction': np.nan, 'w_eff': np.nan, 'status': 'ok'}
+        for root in ('far', 'near'):
+            row[f'w0_{root}'] = row[f'zR_{root}'] = np.nan
+        rows.append(row)
+
+        if not (np.isfinite(total) and total > 0.0 and np.isfinite(second_moment) and second_moment > 0.0):
+            row['status'] = 'non-positive or non-finite flux/second moment'
+            continue
+        row['edge_fraction'] = np.sum(flux[edge_mask]) / total
+
+        A = 2.0 * second_moment / total
+        B = lambda_s * distance_au / np.pi
+        row['w_eff'] = np.sqrt(A)
+        discriminant = A ** 2 - 4.0 * B ** 2
+        if discriminant < -_DISCRIMINANT_RTOL * A ** 2:
+            row['status'] = 'Gaussian model incompatible (A^2 - 4B^2 < 0)'
+            continue
+        sqrt_disc = np.sqrt(max(discriminant, 0.0))
+        row['w0_far'] = np.sqrt(2.0 * B ** 2 / (A + sqrt_disc))
+        row['w0_near'] = np.sqrt((A + sqrt_disc) / 2.0)
+        for root in ('far', 'near'):
+            row[f'zR_{root}'] = np.pi * row[f'w0_{root}'] ** 2 / lambda_s
+        if distance_au / row['zR_far'] < _NEAR_DEGENERATE_Z_OVER_ZR:
+            row['status'] = f'roots close (Z/z_R,far < {_NEAR_DEGENERATE_Z_OVER_ZR:g}): ill-conditioned'
+
+    waist = pd.DataFrame(rows)
+    waist['Z'] = distance_au
+    return waist
+
+
+def append_waist_to_run_log(run_dir, waist, config_path, laser_is_gaussian):
+    """
+    Appends (or, on a re-run, replaces) the estimate_gaussian_waist table in run_log.txt, lengths in units of
+    the laser wavelength lambda_L, one row per frequency, with the validity warnings in the caption.
+    """
+    lambda_L_au = convert_unit_to_number('lambda', config_path)
+    Z = waist['Z'].iloc[0]
+    body = [
+        "  theory/gaussian_waist_postprocessing.md: w_eff^2 = 2 <r^2> of the normal Poynting flux P_z over the "
+        "screen (trapezoidal area weights),",
+        "  inverted with w_eff^2 = w_0^2 + (lambda_s Z/(pi w_0))^2 (fundamental Gaussian, waist at the origin). "
+        "Both roots: 'far' (Z > z_R) and",
+        "  'near' (Z < z_R); z_R = pi w_0^2/lambda_s. edge_frac = share of the flux at r >= "
+        f"{_EDGE_RADIUS_FRACTION:g} x the screen's inscribed radius",
+        "  (large: beam clipped by the screen, or a broad background dominating the second moment).",
+        f"  Lengths in lambda_L = {lambda_L_au:.6e} a.u. = {lambda_L_au * BOHR_RADIUS_M * 1e9:.6g} nm; "
+        f"|Z| = {Z / lambda_L_au:.6g} lambda_L = {Z * BOHR_RADIUS_M * 1e3:.6g} mm.",
+    ]
+    if not laser_is_gaussian:
+        body.append("  WARNING: the incident laser is not a fundamental Gaussian (laguerre_gauss, p = l = 0); "
+                    "the Gaussian model does not apply.")
+    body.append("  WARNING: only the first harmonic (omega/omega_1 ~ 1) can be Gaussian; higher harmonics carry "
+                "OAM/M^2 > 1, the model does not apply to them.")
+
+    header_cells = ['i_omega', 'omega/omega_1', 'lambda_s', 'w_eff', 'w_eff/|Z|', 'w0_far', 'z_R_far',
+                    'Z/z_R_far', 'w0_near', 'z_R_near', 'Z/z_R_near', 'edge_frac']
+    body.append(f"  {header_cells[0]:>8} {header_cells[1]:>14} " + ' '.join(f'{c:>13}' for c in header_cells[2:])
+                + "  status")
+    for _, row in waist.iterrows():
+        values = [row['lambda_s'] / lambda_L_au, row['w_eff'] / lambda_L_au, row['w_eff'] / Z,
+                  row['w0_far'] / lambda_L_au, row['zR_far'] / lambda_L_au, Z / row['zR_far'],
+                  row['w0_near'] / lambda_L_au, row['zR_near'] / lambda_L_au, Z / row['zR_near'],
+                  row['edge_fraction']]
+        body.append(f"  {int(row['i_omega']):>8d} {row['omega']:>14.6f} " + ' '.join(f'{v:>13.5e}' for v in values)
+                    + f"  {row['status']}")
+
+    _write_run_log_section(run_dir, _RUN_LOG_WAIST_HEADER, body)
+    return body
+
+
 def plot_observables(radiation_filepath):
     """
     Plots every quantity in QUANTITIES (S_z/L_z/J_z angular-momentum density,
@@ -898,6 +1030,13 @@ def plot_observables(radiation_filepath):
           "theoretical column):")
     print(energy_ratios.to_string(index=False))
     append_energy_ratios_to_run_log(run_dir, energy_ratios, m, sigma, is_incident, label_suffix=label_suffix)
+
+    # The incident field is sampled at the laser's own waist, so there is nothing to infer there.
+    if not is_incident:
+        waist = estimate_gaussian_waist(result, detector_type, config_path, radiation_filepath)
+        body = append_waist_to_run_log(run_dir, waist, config_path, _read_laser_is_gaussian(config_path))
+        print(_RUN_LOG_WAIST_HEADER + ":")
+        print('\n'.join(body))
 
 
 if __name__ == "__main__":

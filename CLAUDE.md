@@ -28,7 +28,9 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   `q = k_s − k_L`, which may be inconsistent away from head-on collisions (dev notes). Don't rely on `b` in tilted
   geometries until that's settled.
 - `LaguerreGaussLaser`'s mode formula isn't physics-reviewed against the literature (Allen et al. PRA 45, 8185
-  (1992); Siegman ch. 17), though its derivatives match finite differences. `PhysUtils::non_linear_Thomson_formula`
+  (1992); Siegman ch. 17), though its derivatives match finite differences. At the waist, its transverse profile
+  matches the standard LG mode (`lg_decomposition.py --incident`, `eps = 1e-7` for `p = l = 2`); Gouy and
+  curvature terms are untested. `PhysUtils::non_linear_Thomson_formula`
   is flagged in-code as still needing review.
 
 ## Machines
@@ -39,8 +41,12 @@ type-checking won't find the interpreter on the servers). Compilers differ betwe
 
 **Slurm cluster** (one of the servers): head node `hpc-ctrl01`, compute nodes `hpc-node[01-20]` (256 CPUs each,
 GCC 13.3), with the home directory shared between them. Runs go on a compute node, e.g. interactively with
-`srun --partition=debug --time=01:00:00 --cpus-per-task=64 --pty bash` (`debug` caps a session at 1 h; other
-`srun` variants, e.g. `--exclusive`, are in `theory/srun.txt`).
+`srun --partition=debug --time=01:00:00 --cpus-per-task=64 --exclude=hpc-ctrl01,hpc-db01 --pty bash` (`debug`
+caps a session at 1 h; other `srun` variants, e.g. `--exclusive`, are in `theory/srun.txt`).
+- **Every CPU partition also contains `hpc-ctrl01` and `hpc-db01`** with equal weight, so without `--exclude` a job
+  can land on the head node itself: same hostname and prompt as the login shell, only 128 usable CPUs, a loaded
+  node, timings not comparable. Check `squeue -u $USER` (not just `hostname`) to tell. Reported to the admin:
+  `theory/slurm_head_node_report.md`.
 - Compute nodes have no system CMake, only Anaconda's **3.21**, which is why `cmake_minimum_required` (and the
   presets' `cmakeMinimumRequired`) is 3.21. Don't raise it.
 - Because of `-march=native`, build on the compute node that runs the job: `compile_and_run.py` inside the job does
@@ -97,6 +103,8 @@ default config) and drop `beam_particle_count` to e.g. `50`; run time scales wit
 - `config/config_initial_momentum.cfg`.
 - `config/config_spectrum.cfg`: `dense_frequency_spectrum true` on a single screen point (for the
   `plot_point_spectrum*.py` scripts).
+- `config/config_expansion.cfg`: Gaussian laser (LG `p = l = 0`) and a larger, finer circular screen, for the
+  LG-mode-decomposition post-processing (`theory/LG_mode_decomposition.md`).
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols, 2-space indent). **There is no test suite**
 and no enforced lint command.
@@ -120,6 +128,10 @@ With no arguments, every script plots the latest run. The optional trailing argu
 don't hardcode it. Rendering conventions and `plot_observables.py` internals: `py_scripts/PLOTTING_NOTES.md`.
 `plot_observables.py` and `plot_point_spectrum_observables.py` also **write** their summary tables into the run's
 `run_log.txt`, each replacing only its own section on a re-run, so a `run_log.txt` isn't purely C++ output.
+`lg_decomposition.py` does the same with its own section. `plot_observables.py` (without `--incident`) also
+writes a "Gaussian waist estimate" section: the first stage of
+fitting the emitted field to LG modes, Python-only, tracked in `theory/LG_mode_decomposition.md` (spec
+`theory/gaussian_waist_postprocessing.md`).
 
 ```
 python3 py_scripts/laser/plot_field.py
@@ -139,6 +151,9 @@ python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary|total> 
 python3 py_scripts/radiation/plot_point_spectrum_all.py [run_folder]          # 4 ranges x 6 components + |F| overviews
 python3 py_scripts/radiation/plot_point_spectrum_observables.py [run_folder]  # S_z, Sigma_zz, u, P_z + spin/photon
                                                    # ratios; local only (no L_z/Lambda_zz: they need a screen grid)
+python3 py_scripts/radiation/lg_decomposition.py [--incident] [--p-max P] [--w0 20,25 --w0-unit lambda] [run_folder]
+                                                   # LG fit of E_+/E_- (theory/lg_decomposition_implementation.md);
+                                                   # --self-test needs no run. Writes lg_decomposition.dat + run_log
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only
                                                                              # (--incident: any laser direction)

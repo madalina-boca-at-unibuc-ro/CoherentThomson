@@ -1,0 +1,171 @@
+# LG decomposition of the screen field: implementation notes
+
+Stage 2 of `theory/LG_mode_decomposition.md`. Task spec: `theory/lg_screen_decomposition_simple.md`. Code:
+`py_scripts/radiation/lg_decomposition.py` (Python post-processing only; the C++ export is unchanged).
+
+```
+python3 py_scripts/radiation/lg_decomposition.py [--incident] [--harmonic N] [--component plus minus Ex Ey]
+    [--l L] [--p-min P] [--p-max P] [--w0 20,25,30 [--w0-unit lambda|w0|a.u.]] [--n-w0 K] [run_folder]
+python3 py_scripts/radiation/lg_decomposition.py --self-test
+```
+
+Defaults: components `plus minus`, `p = 0..3`, every frequency, and a 41-point log scan of `w0` over
+`[1/2, 2] x` a second-moment estimate (below). Takes ~3 s on a 256 x 64 circular screen with two harmonics.
+
+## What it computes
+
+For each frequency, component and trial `w0`, weighted complex least squares on the screen grid,
+
+$$\min_c \sum_i A_i\Big|E_i - \sum_{p,l} c_{p,l}\,u_{p,l}(r_i,\phi_i,s;w_0)\Big|^2 ,$$
+
+with `A_i` the trapezoidal area weights of `plot_observables.get_screen_area_weights_au`. The rows are scaled
+by `sqrt(A_i)` and solved with `numpy.linalg.lstsq` (SVD); the Gram matrix is never formed or inverted, and
+orthogonality on the finite screen is not assumed. Reported:
+
+- `c_{p,l}` (complex),
+- `eps = sqrt(sum A|E - E_rec|^2 / sum A|E|^2)`, the spec's error,
+- `captured = sum|c|^2 / sum A|E|^2`. With modes orthonormal on the screen this equals `1 - eps^2`. A large
+  departure means they aren't: the screen clips the modes (see the incident test below: `captured = 2` on a
+  screen of radius `2 w0` holding half of an `LG_2^2`) or the grid under-resolves them,
+- `cond`, the weighted design matrix's condition number; rank deficiency or `cond > 1e8` is flagged in `status`.
+
+The "best" `w0` is the one with the smallest `eps`, flagged `AT SCAN EDGE` if it is the first or last value.
+
+## Basis and normalization
+
+Unit-norm LG modes, `exp(-i omega t)` convention, waist at `s = 0`:
+
+$$u_{p,l} = \sqrt{\frac{2\,p!}{\pi (p+|l|)!}}\frac{1}{w(s)}\Big(\frac{\sqrt2 r}{w}\Big)^{|l|}L_p^{|l|}\Big(\frac{2r^2}{w^2}\Big)e^{-r^2/w^2}\,e^{il\phi}\,e^{ikr^2/2R_c}\,e^{-i(2p+|l|+1)\psi},$$
+
+`z_R = k w0^2/2`, `w = w0 sqrt(1+(s/z_R)^2)`, `1/R_c = s/(s^2+z_R^2)` (0 at the waist), `psi = atan2(s, z_R)`.
+`L_p^a` by the three-term recurrence; the prefactor via `lgamma`. The laser's own C++ LG (custom `Npn`
+normalization) is not reused.
+
+- **The carrier `e^{iks}` is left out.** `s` is the same at every screen point, so it only adds `k s` to the phase
+  of every coefficient. Relative phases between coefficients are meaningful; absolute ones are not.
+- **Normalization does not affect `eps` or the reconstruction.** Least squares absorbs any per-column scale into
+  the coefficient. It does matter for comparing `|c|^2` between different `p` and between `w0` trials, and for
+  `captured`.
+- `s` = the screen distance (`<type>_detector_distance`), positive: the emitted beam travels from the origin
+  toward the screen in either direction. `s = 0` for `--incident`.
+- `k = (omega/omega_1) * fundamental_frequency / c`, with `fundamental_frequency` read from `run_log.txt`.
+
+## Components and azimuthal index (the two convention traps)
+
+**Frame.** Everything is in the lab frame: lab `(x, y)` of each point (`screen_lab_xy`, the local grid rotated by
+`get_detector_local_rotation`; on a −Oz screen local `y` = −lab `y`), `phi = atan2(y_lab, x_lab)`, and lab field
+components (`E_i = c F^{i0}`, LR+SR+BR). So `l` and the spin are about **lab +z** whichever way the screen faces,
+and `e^{il phi}` is an `L_z = l` eigenfunction regardless of the beam's propagation direction. `--incident` is
+the exception: `incident_field.dat`'s grid and components are in the laser's own frame, so "lab" means the
+laser frame there, and `s = 0`.
+
+**Components.** A Cartesian component mixes both helicities, which have different `l`, so the default targets are
+the helicity components
+
+$$E_\pm = (E_x \mp iE_y)/\sqrt2 ,\qquad \mathbf E = E_+\hat e_+ + E_-\hat e_-,\ \hat e_\pm = (\hat x\pm i\hat y)/\sqrt2,$$
+
+spin `±1` about lab +z (`S_z ∝ Im(E_x^* E_y) = |E_+|^2 − |E_-|^2`). Each is fitted separately with
+`l = J − s`. `Ex`/`Ey` are available, and are fitted with both `l = J − 1` and `l = J + 1`.
+
+**J.** `J = N(m + σ)`, with `m = laser_lg_l` and `σ = 2 Im(ζ₁* ζ₂)` (normalized) **times `sign(n_laser,z)`**, as in
+`plot_observables.py`. The laser's `l` and spin are defined about its own direction, which is −Oz in the baseline
+setup. Without the flip, the fitted `l` has the wrong sign and `eps ≈ 1`. For `--incident`, `J = m + σ` with no
+flip. An elliptical `σ` (not 0 or ±1) makes `J` non-integer: the script stops and asks for `--l`. A laser not
+along ±Oz only prints a warning.
+
+**Azimuthal pre-check** (circular screens). Each ring is FFT'd in `φ` over its `N_phi − 1` unique columns
+(`φ = 2π` duplicates `φ = 0`), with rings weighted by their area. This gives the power fraction per `l` for
+`E_±` independently of the radial fit: it confirms `l` and shows how much power the fixed-`l` fit cannot reach.
+On a −Oz screen the FFT index is multiplied by `det(R_⊥) = −1` to give lab `l`.
+
+## Default w0 scan
+
+Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`, `w(s)^2 = 2<r^2>/(|l|+1)`
+(`<r^2>` of `LG_p^l` is `(2p+|l|+1) w^2/2`). That is inverted on the far branch exactly as in Stage 1
+(`w0^2 = 2B^2/(A + sqrt(A^2 − 4B^2))`, `B = 2s/k`); if the screen width is below the minimum possible
+(`A < 2B`), it uses `w0 = sqrt(B)`. At `s = 0`, `w0 = w(s)`. Explicit values: `--w0 20,25,30 --w0-unit lambda`.
+
+## Other diagnostics
+
+- **Spherical vs paraxial phase.** The exported field has the exact `k(sqrt(s^2+r^2) − s)`; the modes have
+  `k r^2/2R_c`. Their difference at the radius holding 99% of the component's power, `k r^4/(8 s^3)`, is printed.
+  It was ~1e-7 rad on the runs below. If it ever reaches ~0.1 rad, the paraxial basis is no longer adequate.
+- **Quadrature.** The trapezoid in `u = r^2` is only `O(h^2)` for `l = 0, ±1` (`|u|^2` has a nonzero `u`-slope at
+  `r = 0`; relative error `~(2h/w^2)^2/12` with `h` the `r^2` step), and spectrally accurate for `|l| ≥ 2`. A
+  coarse radial grid biases `captured` slightly for low `|l|`; target and basis are integrated with the same
+  weights, so `eps` and `c` are much less affected.
+
+## Outputs
+
+- `<run>/lg_decomposition.dat` (`lg_decomposition_incident.dat` for `--incident`): one row per (frequency,
+  component, w0) with `eps, captured, cond, rank` and `c_p<p>_l<l>_re/_im` columns.
+- `run_log.txt` section `LG decomposition (lg_decomposition.py)` (`-- incident beam` suffix for `--incident`),
+  replaced on re-run. It holds the best `w0` per (frequency, component) with all coefficients, the helicity power
+  fraction, the azimuthal pre-check and the spherical-phase diagnostic.
+- `png_folder/radiation/lg_decomposition/{emitted,incident}/lg_decomposition_omega<i>.png`: `eps(w0)` per
+  component, and `|c|^2/sum|c|^2` at the best `w0`.
+- `.../lg_coefficients_omega<i>_<component>.png`: the whole coefficient set of one component, normalized by
+  `||E||^2 = sum A|E|^2`. Components whose helicity power fraction is below `1e-4` are skipped (their fit is
+  noise); `Ex`/`Ey` are always plotted. Three panels:
+  1. `|c_{p,l}|^2/||E||^2` vs `w0` for every mode, with `eps^2` and `captured` overlaid (gray line: best `w0`).
+  2. Argand diagram of `c/||E||` at the best `w0`, rotated so the dominant mode is real (gray unit circle: all of
+     the field in one mode).
+  3. `arg(c/c_dominant)/π` vs `w0`, masked where `|c|^2/||E||^2 < 1e-6`.
+
+### Reading the coefficient plot
+
+- **The coefficients don't depend on `s`.** Each mode carries its own Gouy phase `e^{-i(2p+|l|+1)ψ}`, so `c_{p,l}`
+  are the beam's expansion coefficients at the waist plane, wherever the screen is. Their relative phases are
+  physical; only the common `e^{iks}` was removed.
+- **Small `w0` = clipping.** `w(s) ∝ 1/w0` in the far field, so below some `w0` the modes are wider than the
+  screen and stop being orthonormal on it. `captured ≫ 1`, and `|c|^2` blow up with large cancelling values (left
+  part of the scan). Only the region where `captured ≈ 1 − eps^2` is interpretable.
+- **A displaced or resized Gaussian gives a geometric series.** A Gaussian with a different complex beam
+  parameter, expanded in this basis, gives `c_p ∝ ξ^p` for some complex `ξ`. `ξ` is real for a pure waist-size
+  mismatch and close to imaginary (`≈ −iδ/2z_R`) for a pure waist shift `δ`. So `|c_2/c_1| = |c_1/c_0|` and
+  `arg c_2 − arg c_1 = arg c_1 − arg c_0`.
+  - N = 1, run `20261025_002302`, at the best `w0`: `|c_1/c_0| ≈ 0.68` with `arg(c_1/c_0) ≈ 0.7π`. A geometric
+    series would then predict `|c_2|^2 ≈ 0.14`, but the fit gives 0.015 (`|c_2/c_1| = 0.22`). The phase steps are
+    similar (`0.68π`, then `0.80π`), but the magnitudes are not. This argues against "just a displaced
+    and/or resized Gaussian" as the explanation of the `p = 1` content. Tentative: the series test assumes `eps`
+    is small, and here it is 5%.
+
+## Verification
+
+1. `--self-test` (synthetic, no run needed), all passing:
+   - `∫|u|^2 dA = 1` to 1e-4 for `(p,l) = (0,0), (1,0), (2,3), (0,−2), (4,1)` at `s = 0` and `s = 3 z_R`.
+     Off-diagonal overlaps `<0,2|1,2>`, `<0,2|0,−2>`, `<1,1|3,1>` are below 1e-4. This needs a fine radial grid
+     (6000 rings) because of the `l = 0, 1` quadrature note above; with 600 rings, `(1,0)` is off by 1e-2.
+   - Known coefficients (`E_+`: `l = 2`, `p = 0, 1, 2`; `E_-`: `l = 4`) are recovered to 1e-15, with `eps ~ 1e-15`,
+     on a +Oz **and a −Oz** screen. The field is synthesized from an independent lab-coordinate mapping, so the
+     test fails if `screen_lab_xy` or the helicity convention is wrong. Fitting `Ex` with both `l` also gives
+     `eps ~ 1e-15`.
+2. **Incident field, run `20260929_002928`** (LG `p = 2, l = 2`, `w0 = 25 λ`, `ζ = (1, i)`, screen radius
+   `50 λ`): all power is in `E_+` with `l = +2` (ring FFT: 1.0). At `w0 = 25 λ`, `c_{2,2}` is the only nonzero
+   coefficient (the others are ~1e-9 of it), `eps = 1.1e-7` (the 6-digit `.dat` precision), and `eps` rises
+   to 6e-5 at `w0 = 24, 26 λ`. So **the C++ `LaguerreGaussLaser` transverse mode at its waist equals the
+   standard LG mode** up to normalization (part of CLAUDE.md's open "not physics-reviewed" issue; the Gouy and
+   curvature terms are not tested here, since `s = 0`). `captured = 2.0`: the `50 λ = 2 w0` screen holds only
+   half of this mode's norm.
+3. **Emitted field, run `20261025_002302`** (Gaussian laser along −Oz, circular `ζ = (1, i)`, so `σ_lab = −1`,
+   `γ ≈ 13.5`, 8192 electrons, forward screen at `1.6e7 λ_L`, `p = 0..3`):
+
+   | N | J | E₋ power | ring FFT (E₋) | best w0 [λ_L] | eps | captured | |c|² share p=0,1,2,3 |
+   |---|---|----------|---------------|---------------|-----|----------|----------------------|
+   | 1 | −1 | 1 − 6e-13 | l=0: 0.997 | 15.8 | 0.052 | 0.992 | 0.67, 0.31, 0.015, 0.008 |
+   | 2 | −2 | 1 − 7e-6 | l=−1: 0.882, l=0: 0.090 | 9.8 | 0.35 | 0.89 | 0.31, 0.45, 0.21, 0.03 |
+
+   The predicted helicity and the sign of `l` are confirmed: lab `l = J + 1` in `E_-`.
+
+## Open points
+
+- **N = 1 is not a single Gaussian** (`p = 1` holds 31%). In the far field, a waist displaced by `δ` from the
+  origin adds a curvature phase `≈ δ/z_R` at `r ~ w(s)`, which the fixed waist-at-origin basis represents as
+  `p ≠ 0` content. Another cause may be the incoherent background (Stage 1's open question). Neither is tested
+  yet; the next step would be to fit the waist position, or compare two electron counts.
+- **N = 2 has 9% of `E_-` power at `l = 0`** instead of `−1`. That alone puts `eps` near 0.3, and it would lower
+  `|L_z|` per photon by roughly that fraction. It may be related to the ~5% `Λ_zz/P_z` deficit at N = 2
+  (CLAUDE.md open issue); not checked.
+- `|c|^2` are not additive modal powers on a finite screen unless `captured ≈ 1 − eps^2`.
+- `w0` is a basis label, scanned not optimized; with several `p` values free, `eps(w0)` is shallow and the best
+  `w0` trades off against the `p` distribution.
