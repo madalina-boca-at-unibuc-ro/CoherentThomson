@@ -65,10 +65,14 @@ _MIN_HELICITY_FRACTION_PLOT = 1e-4
 # Tolerance for treating the laser spin as exactly 0 or +-1 (otherwise J is not an integer).
 _SPIN_TOL = 1e-9
 _TRANSVERSE_TOL = 1e-9
-# Grid step relative to the beam width w(s) at the best w0 above which the fit is flagged as under-resolved:
+# Grid step relative to the beam width w(s) at the reported w0 above which the fit is flagged as under-resolved:
 # circular grids compare the r^2 step with w^2 (the trapezoid's error is ~(2h/w^2)^2/12), rectangular ones the
 # larger of dx, dy with w.
 _MAX_STEP_OVER_WIDTH = {'circular': 0.25, 'rectangular': 0.5}
+# A fit is interpretable (modes orthonormal on the screen) when |captured - (1 - eps^2)| is below this.
+_CAPTURED_TOL = 0.05
+# Below this |t| (= |c_1/c_0|/sqrt(1+|l|)) the summary doesn't compare t with c_2/c_1: both are residual-sized.
+_MIN_T_FOR_CHECK = 0.05
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -228,6 +232,25 @@ def _estimate_w0(target, weights, r, l, s, k):
     return math.sqrt(2.0 * B ** 2 / (w_s_sq + math.sqrt(disc)))
 
 
+def _dominant_share(coeffs):
+    """Largest single |c|^2 over sum |c|^2 (1 = the whole fitted field in one mode)."""
+    c_sq = np.abs(coeffs) ** 2
+    total = np.sum(c_sq)
+    return float(c_sq.max() / total) if np.isfinite(total) and total > 0.0 else -np.inf
+
+
+def _choose_w0(fits):
+    """
+    The reported (w0, fit) of a scan: the trial w0 at which one mode holds the largest share of sum|c|^2, among the
+    interpretable fits (|captured - (1 - eps^2)| < _CAPTURED_TOL, i.e. the modes are orthonormal on the screen;
+    all fits if none is). For a single LG_p^l beam that is its own waist, whatever p and l. The smallest-eps w0 is
+    not used: with several p free and a w0-independent residual, eps(w0) is flat and its minimum is set by noise.
+    """
+    interpretable = [item for item in fits
+                     if abs(item[1]['captured'] - (1.0 - item[1]['eps'] ** 2)) < _CAPTURED_TOL]
+    return max(interpretable or fits, key=lambda item: _dominant_share(item[1]['coeffs']))
+
+
 def _radius_containing(fraction, power, r):
     """Smallest screen radius containing `fraction` of the (area-weighted) power."""
     order = np.argsort(r)
@@ -284,7 +307,8 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
     """
     Fits every selected component at every (selected) frequency for every trial w0. Returns (table, summary,
     context): `table` one row per (i_omega, component, w0); `summary` one row per (i_omega, component) with the
-    best (smallest-eps) w0 and the helicity/azimuthal diagnostics; `context` the run-level parameters.
+    reported w0 (_choose_w0), the smallest-eps one, and the helicity/azimuthal diagnostics; `context` the run-level
+    parameters.
     """
     run_dir = os.path.dirname(field_filepath)
     is_incident = os.path.basename(field_filepath) == "incident_field.dat"
@@ -394,8 +418,9 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
                     row['z0_series_lambdaL'] = series['z0'] / lambda_L
                 table_rows.append(row)
 
-            best_w0, best = min(fits, key=lambda item: item[1]['eps'])
-            summary.update(w0_best=best_w0, w0_list=w0_list, fit=best,
+            w0_min_eps, fit_min_eps = min(fits, key=lambda item: item[1]['eps'])
+            best_w0, best = _choose_w0(fits)
+            summary.update(w0_best=best_w0, w0_list=w0_list, fit=best, w0_min_eps=w0_min_eps, fit_min_eps=fit_min_eps,
                            edge_of_scan=len(w0_list) > 1 and best_w0 in (w0_list[0], w0_list[-1]),
                            series=series_waist(best['coeffs'], modes, best_w0, k))
             w_s = best_w0 * math.sqrt(1.0 + (s / (0.5 * k * best_w0 ** 2)) ** 2)
@@ -420,8 +445,10 @@ def _summary_lines(summary_rows, context, table_name):
         "unit-norm LG modes",
         "  u_{p,l}(r, phi, s; w0) (waist at the origin, s = screen distance; incident: laser frame), one w0 "
         "for all modes;",
-        "  the best (smallest-eps) trial w0 per component. plus/minus = (Ex -+ i Ey)/sqrt2, spin +-1 about lab +z; "
-        "fitted l = J - spin,",
+        "  reported at the trial w0 where one mode holds the largest share of sum|c|^2 (the beam's own waist for a "
+        "single LG_p^l; the",
+        "  smallest-eps w0 is a basis label only). plus/minus = (Ex -+ i Ey)/sqrt2, spin +-1 about lab +z; fitted "
+        "l = J - spin,",
         f"  J = N(m + sigma), m = {context['m']}, sigma = {context['sigma']:+.6g} (about lab +z). eps = relative "
         "area-weighted residual;",
         "  captured = sum|c|^2/sum A|E|^2 (= 1 - eps^2 if the modes are orthonormal on the screen). Coefficients "
@@ -437,14 +464,20 @@ def _summary_lines(summary_rows, context, table_name):
         if fit is None:
             lines.append("    zero power in this component: not fitted")
             continue
-        lines.append(f"    best w0 = {row['w0_best'] / lambda_L:.6g} lambda_L (scan {row['w0_list'][0] / lambda_L:.4g}"
+        dominant = int(np.argmax(np.abs(fit['coeffs'])))
+        p_dom, l_dom = row['modes'][dominant]
+        lines.append(f"    w0 = {row['w0_best'] / lambda_L:.6g} lambda_L, where (p,l) = ({p_dom},{l_dom}) holds "
+                     f"{_dominant_share(fit['coeffs']):.4g} of sum|c|^2 (scan {row['w0_list'][0] / lambda_L:.4g}"
                      f"..{row['w0_list'][-1] / lambda_L:.4g}, {len(row['w0_list'])} values"
                      f"{'; AT SCAN EDGE' if row['edge_of_scan'] else ''}): eps = {fit['eps']:.4e}, captured = "
                      f"{fit['captured']:.6f}, cond = {fit['cond']:.3e}, status: {fit['status']}")
+        lines.append(f"    smallest eps = {row['fit_min_eps']['eps']:.4e} at w0 = {row['w0_min_eps'] / lambda_L:.6g} "
+                     "lambda_L (a basis label, not the beam's waist)")
         step_ratio, step_max = row['step_over_width'], _MAX_STEP_OVER_WIDTH[context['detector_type']]
         step_label = 'r^2 step / w(s)^2' if context['detector_type'] == 'circular' else 'grid step / w(s)'
         if step_ratio > step_max:
-            lines.append(f"    WARNING: UNDER-RESOLVED, {step_label} = {step_ratio:.3g} > {step_max:g} at the best w0: "
+            lines.append(f"    WARNING: UNDER-RESOLVED, {step_label} = {step_ratio:.3g} > {step_max:g} at the reported "
+                         "w0: "
                          "the grid doesn't sample the beam, nothing below is meaningful (a finer or smaller screen "
                          "is needed)")
         else:
@@ -452,10 +485,15 @@ def _summary_lines(summary_rows, context, table_name):
         series = row.get('series')
         if series is not None:
             t, t2 = series['t'], series['t2']
+            # Near the beam's own waist c_1, c_2 -> 0 and c_2/c_1 is a ratio of residuals; the w0_series columns
+            # across the scan are then the single-beam check.
+            check = (f"t from c_2/c_1 = {abs(t2):.4f} e^{{i {np.angle(t2) / np.pi:+.3f} pi}} (equal for a single beam)"
+                     if abs(t) >= _MIN_T_FOR_CHECK else
+                     f"|t| < {_MIN_T_FOR_CHECK:g}: basis ~ beam, c_2/c_1 not meaningful (single-beam check: "
+                     "w0_series_lambdaL across the scan)")
             lines.append(f"    series waist (single LG_0^l beam, from c_1/c_0): w0 = {series['w0'] / lambda_L:.6g} "
-                         f"lambda_L, waist at z0 = {series['z0'] / lambda_L:.6g} lambda_L along propagation; t = {abs(t):.4f} "
-                         f"e^{{i {np.angle(t) / np.pi:+.3f} pi}}, t from c_2/c_1 = {abs(t2):.4f} "
-                         f"e^{{i {np.angle(t2) / np.pi:+.3f} pi}} (equal for a single beam)")
+                         f"lambda_L, waist at z0 = {series['z0'] / lambda_L:.6g} lambda_L along propagation; "
+                         f"t = {abs(t):.4f} e^{{i {np.angle(t) / np.pi:+.3f} pi}}, {check}")
         if np.isfinite(row['sph_phase']):
             lines.append(f"    spherical - paraxial phase at the 99% power radius: {row['sph_phase']:.3e} rad")
         if row['azimuthal'] is not None:
@@ -491,7 +529,7 @@ def _plot(table, summary_rows, context):
         ax_eps.grid(True, which='both', alpha=0.3)
         ax_eps.legend()
         ax_c.set_xlabel('(p, l)')
-        ax_c.set_ylabel(r'$|c_{p,l}|^2/\sum|c|^2$ at best $w_0$')
+        ax_c.set_ylabel(r'$|c_{p,l}|^2/\sum|c|^2$ at reported $w_0$')
         ax_c.set_yscale('log')
         ax_c.grid(True, alpha=0.3)
         fig.suptitle(f"LG decomposition, $\\omega$ index {i_omega} ($\\omega/\\omega_1$ = {subset['omega'].iloc[0]:.4g})"
@@ -514,9 +552,10 @@ def _plot(table, summary_rows, context):
 def _plot_coefficients(table, row, context, png_dir):
     """
     One component at one frequency, the whole coefficient set: |c|^2/||E||^2 vs w0 per mode (with eps^2 and
-    captured), the Argand diagram of c/||E|| at the best w0 and arg(c/c_dominant) vs w0. ||E||^2 = sum A|E|^2,
+    captured), the Argand diagram of c/||E|| at the reported w0 (_choose_w0) and arg(c/c_dominant) vs w0.
+    ||E||^2 = sum A|E|^2,
     so |c|^2/||E||^2 is the mode's power fraction when the modes are orthonormal on the screen. Phases are
-    relative to the mode that dominates at the best w0, which removes the arbitrary common e^{iks}.
+    relative to the mode that dominates at the reported w0, which removes the arbitrary common e^{iks}.
     """
     curve = table[(table['i_omega'] == row['i_omega']) & (table['component'] == row['component'])]
     curve = curve.sort_values('w0_au')
@@ -566,7 +605,7 @@ def _plot_coefficients(table, row, context, png_dir):
     ax_arg.set_xlabel(r'Re $c/\|E\|$')
     ax_arg.set_ylabel(r'Im $c/\|E\|$')
     ax_arg.grid(True, alpha=0.3)
-    ax_arg.set_title(f"at best $w_0$ = {w0[best_index]:.4g} $\\lambda_L$, rotated: {labels[dominant]} real")
+    ax_arg.set_title(f"at reported $w_0$ = {w0[best_index]:.4g} $\\lambda_L$, rotated: {labels[dominant]} real")
 
     ax_phase.set_ylabel(rf'arg$(c/c_{{\rm {labels[dominant].replace(" ", "")}}})/\pi$')
     ax_phase.set_ylim(-1.05, 1.05)

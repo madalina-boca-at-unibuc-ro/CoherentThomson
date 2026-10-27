@@ -29,7 +29,14 @@ orthogonality on the finite screen is not assumed. Reported:
   screen of radius `2 w0` holding half of an `LG_2^2`) or the grid under-resolves them,
 - `cond`, the weighted design matrix's condition number; rank deficiency or `cond > 1e8` is flagged in `status`.
 
-The "best" `w0` is the one with the smallest `eps`, flagged `AT SCAN EDGE` if it is the first or last value.
+**Reported `w0`** (`_choose_w0`, since 2026-10-27): among the interpretable trials (`|captured − (1 − eps²)| <
+0.05`), the one where a single mode holds the largest share of `Σ|c|²`. For a single `LG_p^l` beam that is its own
+waist, whatever `p` and `l`: at any other basis waist its power spreads over several `p`. Flagged `AT SCAN EDGE`
+if it is the first or last value. The smallest-`eps` `w0` is printed on the next line as a basis label only.
+It was the reported value before, but `eps(w0)` is flat (its residual is the other-`l` speckle, which no `w0`
+reaches) and its minimum is set by noise: on run `20261027_194300` (at rest) it gave 17.6 λ for N = 1, where the
+dominant-mode criterion gives 24.9 λ with 99.98% of `Σ|c|²` in `p = 0`, and 12.75 λ for N = 2, against 18.0 λ
+(99.87% in `p = 0`; expected `w0/√2` = 17.7 λ).
 
 ## Basis and normalization
 
@@ -90,7 +97,7 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
 - **Spherical vs paraxial phase.** The exported field has the exact `k(sqrt(s^2+r^2) − s)`; the modes have
   `k r^2/2R_c`. Their difference at the radius holding 99% of the component's power, `k r^4/(8 s^3)`, is printed.
   It was ~1e-7 rad on the runs below. If it ever reaches ~0.1 rad, the paraxial basis is no longer adequate.
-- **Resolution.** The summary prints the grid step against the beam width `w(s)` at the best `w0` (circular:
+- **Resolution.** The summary prints the grid step against the beam width `w(s)` at the reported `w0` (circular:
   `r²` step / `w²`; rectangular: `max(dx, dy)/w`) and flags it **UNDER-RESOLVED** above 0.25 / 0.5. This matters
   most for `--incident`: `incident_field.dat` uses the detector's grid at the laser waist, so a screen sized for
   the far field cannot sample the incident beam. Run `20261027_184830` (`R_max = 40 w0`, 256 equal-area rings) has
@@ -108,15 +115,15 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
   component, w0) with `eps, captured, cond, rank`, `c_p<p>_l<l>_re/_im` columns, and, for single-`l` components,
   `w0_series_lambdaL, z0_series_lambdaL` (Series waist above).
 - `run_log.txt` section `LG decomposition (lg_decomposition.py)` (`-- incident beam` suffix for `--incident`),
-  replaced on re-run. It holds the best `w0` per (frequency, component) with all coefficients, the series waist
+  replaced on re-run. It holds the reported `w0` per (frequency, component) with all coefficients, the series waist
   (with both `t`), the helicity power fraction, the azimuthal pre-check and the spherical-phase diagnostic.
 - `png_folder/radiation/lg_decomposition/{emitted,incident}/lg_decomposition_omega<i>.png`: `eps(w0)` per
-  component, and `|c|^2/sum|c|^2` at the best `w0`.
+  component, and `|c|^2/sum|c|^2` at the reported `w0`.
 - `.../lg_coefficients_omega<i>_<component>.png`: the whole coefficient set of one component, normalized by
   `||E||^2 = sum A|E|^2`. Components whose helicity power fraction is below `1e-4` are skipped (their fit is
   noise); `Ex`/`Ey` are always plotted. Three panels:
-  1. `|c_{p,l}|^2/||E||^2` vs `w0` for every mode, with `eps^2` and `captured` overlaid (gray line: best `w0`).
-  2. Argand diagram of `c/||E||` at the best `w0`, rotated so the dominant mode is real (gray unit circle: all of
+  1. `|c_{p,l}|^2/||E||^2` vs `w0` for every mode, with `eps^2` and `captured` overlaid (gray line: reported `w0`).
+  2. Argand diagram of `c/||E||` at the reported `w0`, rotated so the dominant mode is real (gray unit circle: all of
      the field in one mode).
   3. `arg(c/c_dominant)/π` vs `w0`, masked where `|c|^2/||E||^2 < 1e-6`.
 
@@ -154,7 +161,9 @@ propagation direction, from the origin toward the screen) and `w0 = sqrt(2(−Im
 is at the origin: `w = w_b sqrt((1−t)/(1+t))`.
 
 Two checks that the single-beam assumption holds, both reported:
-- `t` from `c_2/c_1` (the summary's second `t`) must equal `t` from `c_1/c_0`;
+- `t` from `c_2/c_1` (the summary's second `t`) must equal `t` from `c_1/c_0`. At the reported `w0` the basis
+  is usually the beam's own waist, `c_1, c_2 → 0` and the ratio is noise, so for `|t| < 0.05` the summary skips
+  it and the next check is the one to use;
 - `w0_series`, `z0_series` (columns of `lg_decomposition.dat`, one per trial `w0`) must not depend on the basis
   waist, wherever `captured ≈ 1 − eps²`.
 
@@ -241,5 +250,6 @@ with a single `l` and with `p = 0, 1` in the basis.
   `|L_z|` per photon by roughly that fraction. It may be related to the ~5% `Λ_zz/P_z` deficit at N = 2
   (CLAUDE.md open issue); not checked.
 - `|c|^2` are not additive modal powers on a finite screen unless `captured ≈ 1 − eps^2`.
-- `w0` is a basis label, scanned not optimized; with several `p` values free, `eps(w0)` is shallow and the best
-  `w0` trades off against the `p` distribution.
+- `w0` is a basis label, scanned not optimized; with several `p` values free, `eps(w0)` is shallow, so the
+  smallest-`eps` `w0` trades off against the `p` distribution. The reported `w0` (dominant mode) and the series
+  waist are the waist estimates.
