@@ -29,10 +29,10 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   geometries until that's settled.
 - `LaguerreGaussLaser`'s mode formula isn't physics-reviewed against the literature (Allen et al. PRA 45, 8185
   (1992); Siegman ch. 17), though its derivatives match finite differences. At the waist, its transverse profile
-  matches the standard LG mode (`eps = 1e-7` for `p = l = 2`); at `Z = 10 z_R` the Gaussian (`p = l = 0`) matches
-  the propagated standard mode, Gouy and curvature included (`eps = 1e-7`), after the curvature sign was fixed on
-  2026-10-27 (dev notes). Gouy/curvature for `p, l ≠ 0` not yet tested. `PhysUtils::non_linear_Thomson_formula`
-  is flagged in-code as still needing review.
+  matches the standard LG mode (`eps = 1e-7` for `p = l = 2`); at `Z = 10 z_R` both the Gaussian and `p = l = 2`
+  match the propagated standard mode, Gouy and curvature included (`eps = 1e-7`), after the curvature sign was
+  fixed on 2026-10-27 (dev notes). `PhysUtils::non_linear_Thomson_formula` is flagged in-code as still needing
+  review.
 
 ## Machines
 
@@ -131,10 +131,11 @@ With no arguments, every script plots the latest run. The optional trailing argu
 don't hardcode it. Rendering conventions and `plot_observables.py` internals: `py_scripts/PLOTTING_NOTES.md`.
 `plot_observables.py` and `plot_point_spectrum_observables.py` also **write** their summary tables into the run's
 `run_log.txt`, each replacing only its own section on a re-run, so a `run_log.txt` isn't purely C++ output.
-`lg_decomposition.py` does the same with its own section. `plot_observables.py` (without `--incident`) also
-writes a "Gaussian waist estimate" section: the first stage of
-fitting the emitted field to LG modes, Python-only, tracked in `theory/LG_mode_decomposition.md` (spec
-`theory/gaussian_waist_postprocessing.md`).
+`lg_decomposition.py` does the same with its own section. `plot_observables.py` also writes a "Gaussian waist
+estimate" section: the first stage of fitting the emitted field to LG modes, Python-only, tracked in
+`theory/LG_mode_decomposition.md` (spec `theory/gaussian_waist_postprocessing.md`). With `--incident` it does so
+only when the run has `incident_config.cfg` (the incident field at `Z`, a check against the known laser waist);
+older incident files are at the waist and are skipped.
 
 ```
 python3 py_scripts/laser/plot_field.py
@@ -157,7 +158,9 @@ python3 py_scripts/radiation/plot_point_spectrum_observables.py [run_folder]  # 
 python3 py_scripts/radiation/lg_decomposition.py [run_folder] [--incident] [--p-max P] [--w0 20,25 --w0-unit lambda]
                                                    # [--scan-z0]: also fit the waist position. LG fit of E_+/E_-
                                                    # (theory/lg_decomposition_implementation.md); --self-test needs
-                                                   # no run. Writes lg_decomposition.dat + run_log
+                                                   # no run. Writes lg_decomposition.dat + run_log. Electrons
+                                                   # at rest: also a parameter-free coherent-source prediction
+                                                   # (fidelity), the test for N >= 2, which isn't one LG mode
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only
                                                                              # (--incident: any laser direction)

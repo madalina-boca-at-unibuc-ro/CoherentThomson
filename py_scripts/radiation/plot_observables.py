@@ -375,7 +375,8 @@ def compute_observables(radiation_filepath):
     transverse_tol = 1e-9
     if is_incident:
         # incident_field.dat (Radiation::export_incident_field_fourier) is entirely in the laser's own frame:
-        # the grid is its (epsilon_1, epsilon_2) plane at the waist and the field components are along
+        # the grid is its (epsilon_1, epsilon_2) plane at z = Z (at the waist before 2026-10-27; screen read
+        # from incident_config.cfg via field_config_path) and the field components are along
         # (epsilon_1, epsilon_2, n). Every observable is then about the laser's own axis, for any
         # laser_direction_theta/phi and detector direction, and needs no frame correction.
         lz_sign = 1.0

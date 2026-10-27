@@ -19,6 +19,11 @@ laser's l and spin about lab +z (both times sign(n_laser,z)), and the helicity-s
 carries l = J - s. Everything (grid azimuth, field components, l) is in the lab frame, so a screen facing -Oz needs
 no special case beyond mapping its local grid to lab coordinates.
 
+For electrons at rest and an LG laser, each helicity component is also compared with a parameter-free
+coherent-source prediction (coherent_source_prediction: the laser mode to the N-th power, Fresnel-propagated, times
+the single-electron angular factor theta^|dl|), reported as a fidelity. Harmonics N >= 2 of a structured laser are
+not single LG modes, so this, not the dominant-mode w0, is their test.
+
     python3 py_scripts/radiation/lg_decomposition.py [--incident] [--harmonic N] [--component plus minus Ex Ey]
         [--l L] [--p-min P] [--p-max P] [--w0 V1,V2,... [--w0-unit U]] [--n-w0 K] [run_folder]
     python3 py_scripts/radiation/lg_decomposition.py --self-test
@@ -35,6 +40,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+import scipy.special
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -77,6 +83,14 @@ _MAX_STEP_OVER_WIDTH = {'circular': 0.25, 'rectangular': 0.5}
 _CAPTURED_TOL = 0.05
 # Below this |t| (= |c_1/c_0|/sqrt(1+|l|)) the summary doesn't compare t with c_2/c_1: both are residual-sized.
 _MIN_T_FOR_CHECK = 0.05
+# Coherent-source prediction: source radius cap (laser waists) without a beam radius, radial grid (at least
+# _SOURCE_MIN_POINTS, else _SOURCE_POINTS_PER_CYCLE per cycle of the Bessel/Fresnel phase), screen radii per
+# Bessel chunk, and the prediction's power fraction whose radius bounds the "outside" share.
+_SOURCE_RMAX_W0 = 8.0
+_SOURCE_MIN_POINTS = 4000
+_SOURCE_POINTS_PER_CYCLE = 40
+_FRESNEL_CHUNK = 256
+_PREDICTION_CONTAINED = 0.999
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -172,6 +186,55 @@ def series_waist(coeffs, modes, w_b, k):
         return {'t': t, 't2': t2, 'w0': np.nan, 'z0': np.nan}
     z_Rb = 0.5 * k * w_b ** 2
     return {'t': t, 't2': t2, 'w0': w_b * math.sqrt(u.real), 'z0': -z_Rb * u.imag}
+
+
+# --------------------------------------------------------------------------------------------------------------
+# Coherent-source prediction (electrons at rest at the waist)
+# --------------------------------------------------------------------------------------------------------------
+
+def fresnel_propagate_radial(source, rr, L, rho, s, k):
+    """
+    Fresnel field at distance s of the source S(r) e^{iL phi} on the plane s = 0, sampled on the radial grid `rr`
+    (trapezoid), on the radii `rho`:
+
+        E(rho) = (k/(i s)) (-i)^L e^{ik rho^2/(2s)} int S(r) e^{ik r^2/(2s)} J_L(k rho r/s) r dr,
+
+    times e^{iL phi}, with the carrier e^{iks} left out as in lg_mode (the self-test checks the two agree).
+    """
+    w_r = np.full(len(rr), rr[1] - rr[0]); w_r[[0, -1]] *= 0.5
+    integrand = source * np.exp(0.5j * k * rr ** 2 / s) * rr * w_r
+    E = np.empty(len(rho), dtype=complex)
+    for start in range(0, len(rho), _FRESNEL_CHUNK):        # bounded memory: chunk x len(rr) Bessel values
+        chunk = rho[start:start + _FRESNEL_CHUNK]
+        E[start:start + _FRESNEL_CHUNK] = scipy.special.jv(L, np.outer(chunk, k * rr / s)) @ integrand
+    return (k / (1j * s)) * (-1j) ** L * np.exp(0.5j * k * rho ** 2 / s) * E
+
+
+def coherent_source_prediction(r, phi, s, k, N, l_target, m, laser_p, laser_w0, R_beam):
+    """
+    Screen field of harmonic N from electrons at rest at the waist of an LG_p^m laser (m about lab +z), in the
+    weak-field limit (theory/lg_decomposition_implementation.md, "Coherent-source prediction"): the coherent
+    source is the laser mode to the N-th power over the beam cylinder, u_{p,m}(r, 0)^N e^{iNm phi} for r < R_beam,
+    Fresnel-propagated to s, times each electron's own near-axis angular factor (r/s)^|dl| e^{i dl phi} that
+    takes the source's N m to the fitted component's l_target (dl = l_target - N m). No free parameter; only the
+    overall complex scale is undetermined. Returns (field on the screen points, dl).
+    """
+    dl = l_target - N * m
+    r_max = min(R_beam, _SOURCE_RMAX_W0 * laser_w0) if R_beam else _SOURCE_RMAX_W0 * laser_w0
+    # Enough points for the Bessel argument k rho r/s and the Fresnel phase k r^2/(2s) across the source.
+    cycles = (k * r_max * r.max() / s + 0.5 * k * r_max ** 2 / s) / (2.0 * np.pi)
+    rr = np.linspace(0.0, r_max, max(_SOURCE_MIN_POINTS, int(_SOURCE_POINTS_PER_CYCLE * cycles)))
+    source = lg_mode(laser_p, m, rr, 0.0, 0.0, laser_w0, k).real ** N       # phi = 0, s = 0: real
+    rho, index = np.unique(r, return_inverse=True)
+    radial = fresnel_propagate_radial(source, rr, N * m, rho, s, k)[index]
+    return radial * np.exp(1j * N * m * phi) * (r / s) ** abs(dl) * np.exp(1j * dl * phi), dl
+
+
+def prediction_fidelity(pred, target, weights):
+    """|<pred|E>|^2/(||pred||^2 ||E||^2): the share of the field's power that the prediction explains after the best
+    complex scale (1 - fidelity is the residual eps^2 of that one-parameter fit)."""
+    overlap = np.sum(weights * np.conj(pred) * target)
+    return abs(overlap) ** 2 / (np.sum(weights * np.abs(pred) ** 2) * np.sum(weights * np.abs(target) ** 2))
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -296,6 +359,27 @@ def _check_screen_along_z(local_rotation, config_path):
                          "decomposition needs a screen transverse to lab z (same restriction as plot_observables).")
 
 
+def _source_model(run_dir, config_path):
+    """
+    Laser and beam parameters for coherent_source_prediction, or a string saying why it doesn't apply: it needs an
+    LG laser and electrons at rest (average_px/py/pz = 0). The beam radius is the one run_log.txt records (it may
+    come from the LG table, beam_cylinder_radius < 0); None if absent, and the source is then capped at
+    _SOURCE_RMAX_W0 laser waists.
+    """
+    if read_config_value('laser_type', config_path)[0] != 'laguerre_gauss':
+        return "needs laser_type laguerre_gauss"
+    if any(float(read_config_value(f'average_p{axis}', config_path)[0]) != 0.0 for axis in 'xyz'):
+        return "electrons not at rest (average_p != 0): not implemented"
+    R_beam = None
+    with open(os.path.join(run_dir, 'run_log.txt')) as run_log:
+        for line in run_log:
+            if line.strip().startswith('cylinder radius'):
+                R_beam = float(line.split()[2])
+                break
+    return {'p': int(read_config_value('laser_lg_p', config_path)[0]),
+            'w0': read_length('laser_lg_w0', config_path, 'a.u.'), 'R_beam': R_beam}
+
+
 def _parse_w0_values(w0_spec, unit, config_path):
     """'10,20,30' in `unit` (any convert_unit_to_number unit: lambda, w0, a.u.) -> atomic units."""
     values = [float(t) * convert_unit_to_number(unit, config_path) for t in w0_spec.split(',') if t.strip()]
@@ -374,6 +458,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
         phi_orientation = 1 if is_incident else int(np.sign(np.linalg.det(local_rotation[:2, :2])))
 
     grid_step = _grid_step_au(detector_type, config_path)
+    source_model = None if is_incident else _source_model(run_dir, config_path)
     fundamental_frequency_au = _read_fundamental_frequency_au(run_dir)
     lambda_L = convert_unit_to_number('lambda', config_path)
     p_values = list(range(p_min, p_max + 1))
@@ -407,7 +492,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
             power = weights * np.abs(target) ** 2
             summary = {'i_omega': i_omega, 'omega': omega_ratio, 'N': N, 'component': name, 'J': J,
                        'modes': modes, 'helicity_fraction': helicity_fraction.get(name, np.nan), 'fit': None,
-                       'sph_phase': np.nan, 'azimuthal': None}
+                       'sph_phase': np.nan, 'azimuthal': None, 'prediction': None}
             summary_rows.append(summary)
             if not np.sum(power) > 0.0:
                 continue                   # e.g. the opposite helicity of the incident beam: nothing to fit
@@ -464,6 +549,16 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
             if radial_weights is not None and name in ('plus', 'minus'):
                 l_fft, fractions = azimuthal_spectrum(target.reshape(grid_shape), radial_weights)
                 summary['azimuthal'] = (phi_orientation * l_fft, fractions)
+            if isinstance(source_model, str):
+                summary['prediction'] = source_model                 # why it doesn't apply
+            elif source_model is not None and name in ('plus', 'minus') and len(l_values) == 1 and s > 0.0:
+                pred, dl = coherent_source_prediction(r, phi, s, k, N, l_values[0], m, source_model['p'],
+                                                      source_model['w0'], source_model['R_beam'])
+                pred_power = weights * np.abs(pred) ** 2
+                r_contained = _radius_containing(_PREDICTION_CONTAINED, pred_power, r)
+                summary['prediction'] = {'fidelity': prediction_fidelity(pred, target, weights), 'dl': dl,
+                                         'r_contained': r_contained,
+                                         'outside': power[r > r_contained].sum() / power.sum()}
 
     context = {'run_dir': run_dir, 'config_path': config_path, 'is_incident': is_incident, 'm': m,
                'sigma': sigma, 's': s, 'lambda_L': lambda_L, 'detector_type': detector_type}
@@ -540,6 +635,14 @@ def _summary_lines(summary_rows, context, table_name):
             at_expected = fractions[l_fft == expected].sum() if expected is not None else np.nan
             lines.append(f"    azimuthal power: l = {expected}: {at_expected:.4g}; largest: "
                          + ', '.join(f"l={l_fft[i]}: {fractions[i]:.4g}" for i in top))
+        prediction = row.get('prediction')
+        if isinstance(prediction, str):
+            lines.append(f"    coherent-source prediction: {prediction}")
+        elif prediction is not None:
+            lines.append(f"    coherent-source prediction (rest, weak field; laser mode^N, angular factor "
+                         f"theta^{abs(prediction['dl'])}): fidelity = {prediction['fidelity']:.4f}, measured power "
+                         f"outside its {100 * _PREDICTION_CONTAINED:g}% radius "
+                         f"({prediction['r_contained'] / lambda_L:.4g} lambda_L) = {prediction['outside']:.4g}")
         norm_sq = np.sum(np.abs(fit['coeffs']) ** 2)
         for (p, l), c in zip(row['modes'], fit['coeffs']):
             lines.append(f"    p={p:2d} l={l:+3d}  c = {c.real:+.6e} {c.imag:+.6e}i  |c| = {abs(c):.6e}  "
@@ -827,6 +930,24 @@ def self_test():
     check("dominant share - 1 at the picked point", _dominant_share(fit['coeffs']) - 1.0, 1e-6)
     best_at_origin = max(_dominant_share(f['coeffs']) for _, zb, f in fits if zb == 0.0)
     print(f"  (info) best dominant share with the basis waist at the origin: {best_at_origin:.4f}")
+
+    # The Fresnel propagation behind coherent_source_prediction against the analytic modes (amplitude and phase,
+    # Gouy and curvature included), and the N = 1, dl = 0 prediction, which is the laser mode itself.
+    print("5. Coherent-source prediction: Fresnel-propagated LG modes vs lg_mode at s = 3 z_R:")
+    s = 3.0 * z_R
+    w_s = w0 * math.sqrt(1.0 + (s / z_R) ** 2)
+    r, phi, A = circular_grid(5.0 * w_s, N_R=400, N_phi=33)
+    rr = np.linspace(0.0, 8.0 * w0, 6000)
+    for p, l in ((0, 0), (1, -2), (2, 3)):
+        exact = lg_mode(p, l, r, phi, s, w0, k)
+        rho, index = np.unique(r, return_inverse=True)
+        fresnel = (fresnel_propagate_radial(lg_mode(p, l, rr, 0.0, 0.0, w0, k).real, rr, l, rho, s, k)[index]
+                   * np.exp(1j * l * phi))
+        check(f"(p,l) = ({p},{l}): max |E_Fresnel - u| / max |u|", np.abs(fresnel - exact).max() / np.abs(exact).max(),
+              1e-6)
+    pred, dl = coherent_source_prediction(r, phi, s, k, 1, -2, -2, 1, w0, None)
+    check("N = 1 prediction of LG_1^-2: 1 - fidelity", 1.0 - prediction_fidelity(pred, lg_mode(1, -2, r, phi, s, w0, k),
+                                                                                A), 1e-9)
     print("SELF-TEST " + ("PASSED" if ok else "FAILED"))
     return ok
 

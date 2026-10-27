@@ -186,6 +186,29 @@ This replaces the smallest-`eps` `w0` as the waist estimate: that one is only a 
 free and a `w0`-independent residual (other-`l` content), `eps(w0)` is flat. Computed only for components fitted
 with a single `l` and with `p = 0, 1` in the basis.
 
+## Coherent-source prediction
+
+A parameter-free model of the emitted field, reported per helicity component (single `l`) of the emitted field
+(`coherent_source_prediction`, summary line "coherent-source prediction"). It applies to an LG laser and
+electrons **at rest** (`average_p = 0`; otherwise the line says why it is skipped) in the weak-field limit:
+
+- the coherent source of harmonic `N` is the laser mode to the `N`-th power over the beam cylinder,
+  `u_{p,m}(r, 0)^N e^{iNmφ}` for `r < R_beam` (the radius `run_log.txt` records, LG table included; `m` the laser's
+  `l` about lab +z), Fresnel-propagated to the screen (`fresnel_propagate_radial`: an order-`Nm` Hankel integral
+  with both Fresnel phases, checked against `lg_mode` in self-test 5);
+- times each electron's own near-axis angular factor `(r/s)^{|Δl|} e^{iΔl φ}`, `Δl = l − Nm`, which turns the
+  source's `Nm` into the component's `l = J ∓ 1`. It is a single power of `θ` for the dominant helicity of
+  `N = 2` and `θ^0` for `N = 1`, where the prediction is the propagated laser mode itself.
+
+Reported: the **fidelity** `|⟨E_pred|E⟩|²/(‖E_pred‖²‖E‖²)`, the share of the field's power the model explains
+with only an overall complex scale free (`1 − fidelity` is that one-parameter fit's `eps²`), and the measured power
+outside the radius holding 99.9% of the prediction's. Not modelled: ponderomotive dressing (the radial phase of
+Verification 4/6, so the fidelity drops with `a0`), the incoherent speckle (~1%), a moving beam.
+
+This replaces the LG fit as the test for `N ≥ 2` from a structured laser: the square of `LG_2^2` is already a
+superposition (`p = 0, 2, 4` of `LG^4` at `w0/√2`, 27/20/53%), and the `θ` factor mixes the radial modes again, so
+no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (Verification 7).
+
 ## Verification
 
 1. `--self-test` (synthetic, no run needed), all passing:
@@ -202,12 +225,14 @@ with a single `l` and with `p = 0, 1` in the basis.
    - Waist-position scan: `LG_1^2` with `w = 1.3 w_b` at `z0 = 0.5 z_R` on a 5 x 5 `(w0, z0)` grid containing it;
      the true pair is picked with all of `Σ|c|²` in `(1, 2)`. With the basis waist at the origin the best share is
      0.78.
+   - Coherent-source prediction: Fresnel-propagated `(p,l) = (0,0), (1,−2), (2,3)` at `s = 3 z_R` equal `lg_mode`
+     to 3e-7 (`l = 0`, trapezoid at `r = 0`) and 1e-14; the `N = 1` prediction of `LG_1^{−2}` has fidelity 1.
 2. **Incident field, run `20260929_002928`** (LG `p = 2, l = 2`, `w0 = 25 λ`, `ζ = (1, i)`, screen radius
    `50 λ`): all power is in `E_+` with `l = +2` (ring FFT: 1.0). At `w0 = 25 λ`, `c_{2,2}` is the only nonzero
    coefficient (the others are ~1e-9 of it), `eps = 1.1e-7` (the 6-digit `.dat` precision), and `eps` rises
    to 6e-5 at `w0 = 24, 26 λ`. So **the C++ `LaguerreGaussLaser` transverse mode at its waist equals the
    standard LG mode** up to normalization (part of CLAUDE.md's open "not physics-reviewed" issue; the Gouy and
-   curvature terms are not tested here, since `s = 0`). `captured = 2.0`: the `50 λ = 2 w0` screen holds only
+   curvature terms are not tested here, since `s = 0`; they are in Verifications 5 and 7). `captured = 2.0`: the `50 λ = 2 w0` screen holds only
    half of this mode's norm.
 3. **Emitted field, run `20261025_002302`** (Gaussian laser along −Oz, circular `ζ = (1, i)`, so `σ_lab = −1`,
    `γ ≈ 13.5`, 8192 electrons, forward screen at `1.6e7 λ_L`, `p = 0..3`):
@@ -279,12 +304,42 @@ with a single `l` and with `p = 0, 1` in the basis.
      (`N` times the phase, `N` times `k`), so the same `f` would give 12.6 λ at 980 λ; the fit gives 7.6 λ at
      542 λ, i.e. `f ≈ 930 λ`. Not understood.
 
+7. **LG `p = l = 2` laser, electrons at rest** (run `20261027_213655`: `config_expansion_rest.cfg` with
+   `laser_lg_p = laser_lg_l = 2`, `a0 = 0.1`, beam radius from the LG table, 3.22 `w0`; screen `2e4 λ`, `R_max = 40 w0`).
+   `m = −2`, `σ = −1` about lab +z, so `J = −3N`.
+   - **Incident field:** at `w0 = 25 λ` exactly, `LG_2^2` alone with `eps = 1.8e-7` (the default scan's nearest
+     point, 24.70 λ, gives 1.4e-3). **Gouy and curvature are right for `p, l ≠ 0` too.**
+   - **N = 1:** `E_-` is `LG_2^{−2}` at 25.3 λ with 99% of `Σ|c|²`; prediction fidelity 0.991. The 5e-7 of power in
+     `E_+` (`l = −4`) follows the `θ²` factor: fidelity 0.94.
+   - **N = 2:** `E_-` has `l = −5` (99.2%), but the fit puts it over every `p` and the dominant mode moves with
+     `p_max` (p_max 3: 88% `p = 0` at 9.8 λ, `eps = 0.46`; 9: 51% `p = 4` at 18.9 λ, `eps = 0.18`): it isn't one
+     mode. Prediction fidelity **0.942**. By radius: 79% (predicted 77%) in the main ring 500–800 λ, 18% (23%)
+     inside it, and 2.5% (≈ 0) beyond 800 λ, rising toward the screen edge, 85% of it still at `l = −5`, so coherent.
+     A `θ^0` or `θ²` factor gives 0.69 and 0.0003.
+   - Dressing is weaker here than in the Gaussian run at the same `a0`: the LG(2,2) laser's peak field is half the
+     Gaussian's (2.2e-4 vs 4.6e-4 a.u., `laser_field_heatmap_z0.dat`), so the dressing phase is ~4x smaller.
+
+   The same prediction on the Gaussian runs of Verification 6:
+
+   | | N = 1 fidelity | N = 2 fidelity | N = 2 power outside the 99.9% radius |
+   |---|---|---|---|
+   | Gaussian, `a0 = 0.01` (`20261027_194300`) | 0.9991 | 0.971 | 2.7% |
+   | Gaussian, `a0 = 0.1` (`20261027_204817`) | 0.778 | 0.214 | 44% |
+   | LG(2,2), `a0 = 0.1` (`20261027_213655`) | 0.991 | 0.942 | 2.7% |
+
+   In the weak-field limit the model explains N = 1 to 0.1% and N = 2 to 3–6%. At `a0 = 0.1` with a Gaussian the
+   dressing dominates, much more for N = 2 than for N = 1, consistent with its stronger focusing (Verification 6).
+
 ## Open points
 
 - **N = 1's `p = 1` content (31% at `a0 = 0.1`) is ponderomotive dressing**, not a displaced waist or the
   incoherent background (Verification 4). At rest it acts as a focusing lens of `f ≈ z_R` (Verification 6). Not
   yet checked: the predicted radial phase profile against the fitted field, the scaling of `1/f` with `a0²` and
   the pulse length, and why N = 2 is focused about twice as strongly.
+- **N = 2's coherent tail:** 2.7% of the N = 2 power lies outside the coherent-source prediction, at large
+  radius, with the right `l`, for both the Gaussian (`a0 = 0.01`) and LG(2,2) lasers. Candidates: the `θ` factor
+  is only the near-axis form of the single-electron pattern, or a source term other than `u^N`; and the screen
+  (`R_max = 40 w0`) may clip it. A larger `R_max` would tell.
 - **Speckle:** ~1% of the screen power is incoherent, at every `l`. Halving it needs 2x the electrons (it scales as
   `1/n`); not tested.
 - **N = 2 has 9% of `E_-` power at `l = 0`** instead of `−1`. That alone puts `eps` near 0.3, and it would lower

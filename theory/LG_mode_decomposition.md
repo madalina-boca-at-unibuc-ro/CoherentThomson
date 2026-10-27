@@ -4,14 +4,17 @@ Long-term goal: write the emitted field on the detector as a superposition of La
 their parameters (waist, waist position, `p`, `l`, weights). This file tracks the stages as they are implemented.
 Earlier stage: radial-phase removal, `theory/post_processing.md` (`plot_processed.py radial_phase`).
 
-All of it is Python post-processing of one run (one detector distance `Z`); the C++ export is unchanged.
+All of it is Python post-processing of one run (one detector distance `Z`). The only C++ change it needed is
+the incident-field screen (since 2026-10-27, `incident_field.dat` is at `Z` on a beam-sized grid, described by
+`incident_config.cfg`; `dev_notes.md`), which serves as the known-answer test.
 
 ## Stage 1: Gaussian waist from the Poynting-flux second moment
 
 Spec: `theory/gaussian_waist_postprocessing.md`. Implemented in `py_scripts/radiation/plot_observables.py`
 (`estimate_gaussian_waist`, `append_waist_to_run_log`). It runs on every non-`--incident` call and writes the
-section "Gaussian waist estimate (plot_observables.py)" to `run_log.txt` (also printed to stdout). Not run on
-`--incident`: that field is sampled at the laser's own waist.
+section "Gaussian waist estimate (plot_observables.py)" to `run_log.txt` (also printed to stdout). On
+`--incident` it runs only when the run has `incident_config.cfg` (the field at `Z`; section label suffixed
+" -- incident beam"), as a check against the known laser waist; older incident files are sampled at the waist and skipped.
 
 ### Width
 
@@ -97,6 +100,11 @@ The **series waist** (`series_waist`) reads the waist and waist position of a si
 - **Waist position:** done. The series waist reads it off a single beam; `--scan-z0` fits `(w_0, z_0)` in the
   basis (`s = Z − z_0`). At rest with `a0 = 0.1` it shows the dressing acting as a focusing lens of `f ≈ z_R`
   on N = 1 (17.9 λ waist at 914 λ, 95% in one mode; `lg_decomposition_implementation.md`, Verification 6).
+- **Coherent-source prediction:** done for electrons at rest (`lg_decomposition_implementation.md`, "Coherent-source
+  prediction" and Verification 7). The laser mode to the `N`-th power, propagated, times `θ^{|Δl|}`, with no free
+  parameter, explains N = 1 to 0.1% and N = 2 to 3–6% in the weak-field limit. It is the right test for `N ≥ 2`
+  from an `LG_p^l` laser, whose harmonics are not single modes. To do: a moving beam (Doppler-mapped source and
+  angular factor), the dressing phase as a factor on the source, and the 2.7% coherent tail at N = 2.
 - Separate coherent and incoherent contributions before fitting (the incoherent part is ~1% here, at every `l`).
 - Model the ponderomotive radial phase at `a0 = 0.1` and compare with the fitted field: the lens strength
   `1/f ∝ a0²`, and why N = 2 is focused about twice as strongly as N = 1.
