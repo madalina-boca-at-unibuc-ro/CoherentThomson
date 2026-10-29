@@ -14,6 +14,13 @@ srun --partition=interactive --time=04:00:00 --exclusive --pty bash
 or 
 
 srun --partition=interactive --time=04:00:00 --exclusive --exclude=hpc-db01,hpc-ctrl01 --pty bash
+
+
+srun --partition=cpu-wide --time=24:00:00 --exclusive --exclude=hpc-db01,hpc-ctrl01 --pty bash
+
+
+
+
 # or pick one:  --nodelist=hpc-node05
 
 NOTE: every CPU partition (debug, interactive, cpu-*) also contains hpc-ctrl01 (head node, slurmctld) and
@@ -22,3 +29,36 @@ the prompt looks unchanged ("still on ctrl01"), but you are inside a job with on
 (CoreSpecCount reserves half) on a loaded node. Check `hostname` / `squeue -u $USER` after srun.
 Ending the job: Ctrl+D once. In the VS Code Remote-SSH terminal a second Ctrl+D only closes the terminal tab.
 Reported to the admin: theory/slurm_head_node_report.md
+
+Partition time limits (sinfo, 2026-10-28): debug 1 h, interactive 4 h, cpu-wide 1 day, cpu-medium 1.5 days,
+cpu-standard 3 days, cpu-narrow 5 days, cpu-long 12 days.
+
+
+LONG RUNS THAT SURVIVE A DISCONNECT (tmux on the head node)
+============================================================
+A job lives only as long as the terminal holding its srun. A NetBird/SSH drop can kill that terminal (VS Code
+sometimes keeps it alive, not guaranteed), and with it the job and the run. tmux runs on hpc-ctrl01 itself,
+independent of the connection, so a drop only takes the view away.
+
+1. On the head node (hpc-ctrl01), start a named session:
+     tmux new -s r40
+2. Inside tmux, get the node and start the run:
+     srun --partition=cpu-wide --time=24:00:00 --exclusive --exclude=hpc-db01,hpc-ctrl01 --pty bash
+     cd ~/work/c++/CoherentThomson
+     python3 py_scripts/compile_and_run.py <config_file>
+3. Detach (the run keeps going): Ctrl-b, release, then d. You are back in the head-node shell.
+   Do NOT type exit inside tmux: it closes the srun shell and ends the job.
+4. Reattach later (after a drop, or to look):
+     tmux attach -t r40
+   Scroll inside tmux: Ctrl-b [ , arrows/PgUp, q to leave scroll mode.
+
+Checking from the head node without attaching:
+  tmux ls                     # "r40: 1 windows ..." (no "(attached)"): alive and detached
+  squeue -u $USER             # the job is listed while it is alive (TIME_LEFT column: -o "%.8i %.10M %.10L %R")
+  srun --jobid=<jobid> --overlap -n1 ps -u $USER -o etime,%cpu,args | grep [c]oherent
+                              # solver on the compute node: elapsed time, ~25000 %CPU while computing
+  ls ~/output/<run>           # radiation_field.dat and run_log.txt appear only when the run ends
+
+Still ends the run: the job's time limit, or a reboot of hpc-ctrl01.
+After reconnecting, check squeue -u $USER for forgotten jobs (an orphaned interactive job keeps its whole node
+idle until its time limit) and free them with scancel <jobid>.
