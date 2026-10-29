@@ -1,7 +1,8 @@
 # LG decomposition of the screen field: implementation notes
 
 Stage 2 of `theory/LG_mode_decomposition.md`. Task spec: `theory/lg_screen_decomposition_simple.md`. Code:
-`py_scripts/radiation/lg_decomposition.py` (Python post-processing only; the C++ export is unchanged).
+`py_scripts/radiation/lg_decomposition.py` (Python post-processing only; the C++ export is unchanged). User
+reference (what is computed, every parameter and default, outputs): `theory/lg_decomposition_reference.md`.
 
 ```
 python3 py_scripts/radiation/lg_decomposition.py [--incident] [--harmonic N] [--component plus minus Ex Ey]
@@ -28,12 +29,30 @@ orthogonality on the finite screen is not assumed. Reported:
 - `captured = sum|c|^2 / sum A|E|^2`. With modes orthonormal on the screen this equals `1 - eps^2`. A large
   departure means they aren't: the screen clips the modes (see the incident test below: `captured = 2` on a
   screen of radius `2 w0` holding half of an `LG_2^2`) or the grid under-resolves them,
-- `cond`, the weighted design matrix's condition number; rank deficiency or `cond > 1e8` is flagged in `status`.
+- `cond`, the weighted design matrix's condition number; rank deficiency or `cond > 1e8` is flagged in `status`,
+- the **projections** `a_{p,l} = Σ A_i u_{p,l}^* E_i` (since 2026-10-28), with `|a|²/‖E‖²` per mode, the mode
+  overlap `max|a|²/‖E‖²` and `Σ|a|²/‖E‖² ≤ 1`.
 
-**Reported `w0`** (`_choose_w0`, since 2026-10-27): among the interpretable trials (`|captured − (1 − eps²)| <
-0.05`), the one where a single mode holds the largest share of `Σ|c|²`. For a single `LG_p^l` beam that is its own
-waist, whatever `p` and `l`: at any other basis waist its power spreads over several `p`. Flagged `AT SCAN EDGE`
-if it is the first or last value. The smallest-`eps` `w0` is printed on the next line as a basis label only.
+**Projections vs least squares.** The modes are orthonormal on the infinite plane. If `E` vanishes outside the
+screen, `a_{p,l}` is therefore its exact expansion coefficient, however much of `u_{p,l}` the screen clips, and
+`|a|²/‖E‖²` is that mode's share of the field's power. Least squares gives `c = G⁻¹a`, with `G` the modes' Gram
+matrix *on the screen*: equal to `a` when `G = 1`, but not when the screen clips the modes (small trial `w0`:
+`w(s) ∝ 1/w0` in the far field), where `c` describes the best on-screen reconstruction rather than the field's
+modal content. Self-test 4b: a contained `LG_0^1` on a screen at `2.1 w_b(s)` (`cond = 32`) gives projections
+equal to a wide screen's to 2e-11, while `c` is off by 5. The projections need the field to be contained, so the
+summary prints the power beyond `0.9 x` the screen's inscribed radius (**NOT CONTAINED** above 1%; the ~1% speckle
+alone puts ~0.2% there). They also carry the trapezoid's `O(h²)` error for `l = 0, ±1` (Quadrature below), which
+least squares cancels: ~1e-3 relative at the runs' `r²` step of `0.06 w²`.
+
+**Reported `w0`** (`_choose_w0`, since 2026-10-28): the trial with the largest mode overlap `max|a|²/‖E‖²`, the
+share of the *whole* field's power in one mode (the mode-matching efficiency). It reaches 1 only at a single
+`LG_p^l` beam's own waist (and waist position), whatever `p` and `l`; for a field that isn't one mode it is the best
+single-mode approximation, and its value says how far from one mode the field is. It doesn't depend on `p_max` or
+on clipping, so no cells are excluded. Before, it was the largest share of `Σ|c|²` among trials with
+`|captured − (1 − eps²)| < 0.05`; that test is coefficient-dependent (`c†(G−1)c` can cancel), passed clipped
+bases by accident and masked unclipped ones (run `20261027_213655`, N = 1: `w0 = 13 λ` passed at `cond = 4`, 15 λ
+failed at `cond = 1.8`), and the share ignored how much of the field the fit reached. Flagged `AT SCAN EDGE` if it
+is the first or last value. The smallest-`eps` `w0` is printed on the next line as a basis label only.
 It was the reported value before, but `eps(w0)` is flat (its residual is the other-`l` speckle, which no `w0`
 reaches) and its minimum is set by noise: on run `20261027_194300` (at rest) it gave 17.6 λ for N = 1, where the
 dominant-mode criterion gives 24.9 λ with 99.98% of `Σ|c|²` in `p = 0`, and 12.75 λ for N = 2, against 18.0 λ
@@ -113,20 +132,21 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
 ## Outputs
 
 - `<run>/lg_decomposition.dat` (`lg_decomposition_incident.dat` for `--incident`): one row per (frequency,
-  component, w0) with `eps, captured, cond, rank`, `c_p<p>_l<l>_re/_im` columns, and, for single-`l` components,
-  `w0_series_lambdaL, z0_series_lambdaL` (Series waist above).
+  component, w0) with `eps, captured, cond, rank, proj_captured, overlap`, `c_p<p>_l<l>_re/_im` (least squares) and
+  `a_p<p>_l<l>_re/_im` (projections) columns, and, for single-`l` components, `w0_series_lambdaL,
+  z0_series_lambdaL` (Series waist above).
 - `run_log.txt` section `LG decomposition (lg_decomposition.py)` (`-- incident beam` suffix for `--incident`),
-  replaced on re-run. It holds the reported `w0` per (frequency, component) with all coefficients, the series waist
-  (with both `t`), the helicity power fraction, the azimuthal pre-check and the spherical-phase diagnostic.
-- `png_folder/radiation/lg_decomposition/{emitted,incident}/lg_decomposition_omega<i>.png`: `eps(w0)` per
-  component, and `|c|^2/sum|c|^2` at the reported `w0`.
-- `.../lg_coefficients_omega<i>_<component>.png`: the whole coefficient set of one component, normalized by
+  replaced on re-run. It holds the reported `w0` per (frequency, component) with all projections (and the
+  least-squares `|c|²` shares), the containment check, the series waist (with both `t`), the helicity power
+  fraction, the azimuthal pre-check and the spherical-phase diagnostic.
+- `png_folder/radiation/lg_decomposition/{emitted,incident}/lg_coefficients_omega<i>_<component>.png`: the projections of one component, normalized by
   `||E||^2 = sum A|E|^2`. Components whose helicity power fraction is below `1e-4` are skipped (their fit is
   noise); `Ex`/`Ey` are always plotted. Three panels:
-  1. `|c_{p,l}|^2/||E||^2` vs `w0` for every mode, with `eps^2` and `captured` overlaid (gray line: reported `w0`).
-  2. Argand diagram of `c/||E||` at the reported `w0`, rotated so the dominant mode is real (gray unit circle: all of
+  1. `|a_{p,l}|^2/||E||^2` vs `w0` for every mode, with `Σ|a|²/‖E‖²` and the least-squares `eps^2` and `captured`
+     overlaid (gray line: reported `w0`).
+  2. Argand diagram of `a/||E||` at the reported `w0`, rotated so the dominant mode is real (gray unit circle: all of
      the field in one mode).
-  3. `arg(c/c_dominant)/π` vs `w0`, masked where `|c|^2/||E||^2 < 1e-6`.
+  3. `arg(a/a_dominant)/π` vs `w0`, masked where `|a|^2/||E||^2 < 1e-6`.
 
 ### Reading the coefficient plot
 
@@ -134,8 +154,8 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
   are the beam's expansion coefficients at the waist plane, wherever the screen is. Their relative phases are
   physical; only the common `e^{iks}` was removed.
 - **Small `w0` = clipping.** `w(s) ∝ 1/w0` in the far field, so below some `w0` the modes are wider than the
-  screen and stop being orthonormal on it. `captured ≫ 1`, and `|c|^2` blow up with large cancelling values (left
-  part of the scan). Only the region where `captured ≈ 1 − eps^2` is interpretable.
+  screen and stop being orthonormal on it. The least-squares `captured ≫ 1`, and `|c|^2` blow up with large
+  cancelling values (left part of the scan). The projections plotted now are unaffected while the field is contained.
 - **A displaced or resized Gaussian gives a geometric series.** A Gaussian with a different complex beam
   parameter, expanded in this basis, gives `c_p ∝ ξ^p` for some complex `ξ`. `ξ` is real for a pure waist-size
   mismatch and close to imaginary (`≈ −iδ/2z_R`) for a pure waist shift `δ`. So `|c_2/c_1| = |c_1/c_0|` and
@@ -151,11 +171,11 @@ Built around the waist of a `p = 0` mode with the same second moment of `|E|^2`,
 
 Off by default (the basis waist is at the origin). With `--scan-z0` the basis waist also moves along the
 propagation, `s → s − z0`, over 41 values in `±3 z_R` of the `w0` scan's central waist (`--n-z0`, or an explicit
-`--z0` list). Every `(w0, z0)` pair is fitted, and the reported pair is chosen as before: the one where a single
-mode holds the largest share of `Σ|c|²` among interpretable fits. The coefficients then refer to the waist plane
-at `z0`. `lg_decomposition.dat` gains `z0_au`, `z0_lambdaL` and `dominant_share` columns, the series-waist
-`z0_series_lambdaL` is measured from the origin, and `lg_w0_z0_map_omega<i>_<component>.png` maps the dominant
-share and `eps` over the grid. The `w0` curves of the other plots are at the reported `z0`. About 25 s for one
+`--z0` list). Every `(w0, z0)` pair is fitted, and the reported pair is chosen as before: the largest mode overlap
+`max|a|²/‖E‖²`. The coefficients then refer to the waist plane at `z0`. `lg_decomposition.dat` gains `z0_au` and
+`z0_lambdaL` columns, the series-waist `z0_series_lambdaL` is measured from the origin, and
+`lg_w0_z0_map_omega<i>_<component>.png` maps the mode overlap and the least-squares `eps` over the whole grid
+(nothing masked). The `w0` curves of the other plots are at the reported `z0`. About 25 s for one
 component at two frequencies on a 256 x 64 screen.
 
 This catches a beam whose waist is not at the origin, e.g. one focused by a phase across the source, which a
@@ -170,7 +190,9 @@ For a target that is one `LG_0^l` beam with its own waist `w` and waist position
 
 $$\frac{c_{p+1}}{c_p} = t\,\sqrt{\frac{p+1+|l|}{p+1}},\qquad t = \frac{\alpha w_b^2 - 1}{\alpha w_b^2 + 1},$$
 
-independent of `s` (the basis carries the Gouy phases). `series_waist` takes `t` from `c_1/c_0` and inverts it:
+independent of `s` (the basis carries the Gouy phases). The ratio needs the true expansion coefficients, so it uses
+the projections `a` (since 2026-10-28; the summary still writes `c_1/c_0`). `series_waist` takes `t` from `c_1/c_0`
+and inverts it:
 `q(s=0) = −i z_Rb (1−t)/(1+t)` with `z_Rb = k w_b²/2`, giving `z0 = −Re q` (the waist position along the
 propagation direction, from the origin toward the screen) and `w0 = sqrt(2(−Im q)/k)`. Real `t` means the waist
 is at the origin: `w = w_b sqrt((1−t)/(1+t))`.
@@ -180,7 +202,7 @@ Two checks that the single-beam assumption holds, both reported:
   is usually the beam's own waist, `c_1, c_2 → 0` and the ratio is noise, so for `|t| < 0.05` the summary skips
   it and the next check is the one to use;
 - `w0_series`, `z0_series` (columns of `lg_decomposition.dat`, one per trial `w0`) must not depend on the basis
-  waist, wherever `captured ≈ 1 − eps²`.
+  waist, wherever the field is contained.
 
 This replaces the smallest-`eps` `w0` as the waist estimate: that one is only a basis label, and with several `p`
 free and a `w0`-independent residual (other-`l` content), `eps(w0)` is flat. Computed only for components fitted
@@ -221,10 +243,12 @@ no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (
      `eps ~ 1e-15`.
    - Series waist: a single `LG_0^l` beam outside the basis (`l = 0`: `w = 1.3 w_b`, `z0 = 0` and `w = 0.8 w_b`,
      `z0 = 0.3 z_R`; `l = 2`: `w = 1.3 w_b`, `z0 = −0.4 z_R`), fitted with `p = 0..8` on a wide fine screen:
-     `w0`, `z0` recovered to ~1e-8 and the two `t` agree, which fixes the signs of `z0` and the `|l|` factor.
+     `w0`, `z0` recovered and the two `t` agree, which fixes the signs of `z0` and the `|l|` factor. From the
+     projections: ~1e-10 for `l = 2`, ~1e-4 for `l = 0` (the trapezoid at `r = 0`, with 12000 rings).
    - Waist-position scan: `LG_1^2` with `w = 1.3 w_b` at `z0 = 0.5 z_R` on a 5 x 5 `(w0, z0)` grid containing it;
-     the true pair is picked with all of `Σ|c|²` in `(1, 2)`. With the basis waist at the origin the best share is
-     0.78.
+     the true pair is picked with mode overlap 1 in `(1, 2)`. With the basis waist at the origin the best is 0.78.
+   - Clipping (4b): a contained `LG_0^1` on a screen of radius `2.1 w_b(s)`: projections equal a 6x wider
+     screen's (same `r²` step) to 2e-11, least squares differs by 5 (`cond = 32`).
    - Coherent-source prediction: Fresnel-propagated `(p,l) = (0,0), (1,−2), (2,3)` at `s = 3 z_R` equal `lg_mode`
      to 3e-7 (`l = 0`, trapezoid at `r = 0`) and 1e-14; the `N = 1` prediction of `LG_1^{−2}` has fidelity 1.
 2. **Incident field, run `20260929_002928`** (LG `p = 2, l = 2`, `w0 = 25 λ`, `ζ = (1, i)`, screen radius
@@ -316,6 +340,11 @@ no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (
      mode. Prediction fidelity **0.942**. By radius: 79% (predicted 77%) in the main ring 500–800 λ, 18% (23%)
      inside it, and 2.5% (≈ 0) beyond 800 λ, rising toward the screen edge, 85% of it still at `l = −5`, so coherent.
      A `θ^0` or `θ²` factor gives 0.69 and 0.0003.
+   - **With the projections** (2026-10-28, `--scan-z0`): the reported points are unchanged, N = 1 `LG_2^{−2}` at
+     25.3 λ, `z0 = 0` with overlap 0.986 (`Σ|a|²` 0.996), and N = 2 `p = 0` at 9.77 λ, `z0 = 0` with overlap
+     **0.70**, the best single mode; `Σ|a|²/‖E‖²` stays ≤ 0.88 over the whole scan. The least-squares share there
+     was 0.87, inflated by `cond = 1.22`. N = 2 is flagged NOT CONTAINED (1.9% of `E_-` beyond 900 λ; the coherent
+     tail below), so its projections are a slight underestimate.
    - Dressing is weaker here than in the Gaussian run at the same `a0`: the LG(2,2) laser's peak field is half the
      Gaussian's (2.2e-4 vs 4.6e-4 a.u., `laser_field_heatmap_z0.dat`), so the dressing phase is ~4x smaller.
 
@@ -345,7 +374,10 @@ no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (
 - **N = 2 has 9% of `E_-` power at `l = 0`** instead of `−1`. That alone puts `eps` near 0.3, and it would lower
   `|L_z|` per photon by roughly that fraction. It may be related to the ~5% `Λ_zz/P_z` deficit at N = 2
   (CLAUDE.md open issue); not checked.
-- `|c|^2` are not additive modal powers on a finite screen unless `captured ≈ 1 − eps^2`.
+- Least-squares `|c|^2` are not additive modal powers on a finite screen unless `captured ≈ 1 − eps^2`; the
+  projections `|a|²` are, as long as the field is contained.
+- Earlier verifications (3, 4, 6) quote least-squares `|c|²` shares and the old selection rule; not re-run with
+  the projections.
 - `w0` is a basis label, scanned not optimized; with several `p` values free, `eps(w0)` is shallow, so the
   smallest-`eps` `w0` trades off against the `p` distribution. The reported `w0` (dominant mode) and the series
   waist are the waist estimates.

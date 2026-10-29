@@ -104,10 +104,12 @@ default config) and drop `beam_particle_count` to e.g. `50`; run time scales wit
 - `config/config_initial_momentum.cfg`.
 - `config/config_spectrum.cfg`: `dense_frequency_spectrum true` on a single screen point (for the
   `plot_point_spectrum*.py` scripts).
-- `config/config_expansion.cfg`: Gaussian laser (LG `p = l = 0`) and a larger, finer circular screen, for the
-  LG-mode-decomposition post-processing (`theory/LG_mode_decomposition.md`). Variants: `_a0_001` (`a0 = 0.01`),
-  `_rest` (electrons at rest, `a0 = 0.01`, screen at `2e4 λ`, 65536 electrons; ~27 min on 256 CPUs) and
-  `_rest_a0_01` (the same at `a0 = 0.1`).
+- `config/config_expansion*.cfg`: LG laser and a larger, finer circular screen, for the LG-mode-decomposition
+  post-processing (`theory/LG_mode_decomposition.md`). Variants: `_a0_001` (`a0 = 0.01`), `_rest` (electrons at
+  rest, `a0 = 0.01`, screen at `2e4 λ`, 65536 electrons; ~27 min on 256 CPUs) and `_rest_a0_01` (the same at
+  `a0 = 0.1`). Their LG `p`/`l`, beam radius (fixed or table, `< 0`) and screen size are switched between
+  experiments, and their header comments lag behind those switches: read the keys themselves (or the run's
+  `run_log.txt`), not the header.
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols, 2-space indent). **There is no test suite**
 and no enforced lint command.
@@ -156,8 +158,9 @@ python3 py_scripts/radiation/plot_point_spectrum_all.py [run_folder]          # 
 python3 py_scripts/radiation/plot_point_spectrum_observables.py [run_folder]  # S_z, Sigma_zz, u, P_z + spin/photon
                                                    # ratios; local only (no L_z/Lambda_zz: they need a screen grid)
 python3 py_scripts/radiation/lg_decomposition.py [run_folder] [--incident] [--p-max P] [--w0 20,25 --w0-unit lambda]
-                                                   # [--scan-z0]: also fit the waist position. LG fit of E_+/E_-
-                                                   # (theory/lg_decomposition_implementation.md); --self-test needs
+                                                   # [--scan-z0]: also fit the waist position. LG projections of
+                                                   # E_+/E_- (all options/defaults: theory/lg_decomposition_
+                                                   # reference.md; history: ..._implementation.md); --self-test needs
                                                    # no run. Writes lg_decomposition.dat + run_log. Electrons
                                                    # at rest: also a parameter-free coherent-source prediction
                                                    # (fidelity), the test for N >= 2, which isn't one LG mode

@@ -1,7 +1,8 @@
 """
 Laguerre-Gauss decomposition of one run's emitted field on its own detector screen (Stage 2 of
 theory/LG_mode_decomposition.md; spec theory/lg_screen_decomposition_simple.md; implementation notes and
-conventions theory/lg_decomposition_implementation.md).
+conventions theory/lg_decomposition_implementation.md; parameters, defaults and outputs
+theory/lg_decomposition_reference.md).
 
 For every frequency, each selected field component E (default: both lab-frame helicity components
 E_+ = (Ex - i Ey)/sqrt(2), E_- = (Ex + i Ey)/sqrt(2)) is fitted, for each trial waist w0, by weighted complex
@@ -13,6 +14,12 @@ with the unit-norm LG modes u_{p,l} (waist at the origin, s = the screen distanc
 screen's trapezoidal area weights A_i. Reported per (frequency, component, w0): the complex coefficients,
 eps = sqrt(sum A|E - E_rec|^2 / sum A|E|^2), captured = sum|c|^2 / sum A|E|^2 (= 1 - eps^2 when the modes are
 orthonormal on the screen) and the condition number of the weighted design matrix.
+
+Also reported: the projections a_{p,l} = sum_i A_i u_{p,l}^* E_i. The modes are orthonormal on the infinite plane, so
+when E vanishes outside the screen these are its exact expansion coefficients however much of each mode the screen
+clips, and |a|^2/sum A|E|^2 is that mode's share of the field's power (least-squares c = G^-1 a differs from a when
+the screen's Gram matrix G != 1). The reported (w0, z0) is where one mode's |a|^2/sum A|E|^2 (the mode overlap) is
+largest; the power near the screen edge is printed as the containment check this relies on.
 
 The azimuthal index is fixed from angular-momentum conservation about lab +z: J = N(m + sigma) with m, sigma the
 laser's l and spin about lab +z (both times sign(n_laser,z)), and the helicity-s component (s = +-1 about lab +z)
@@ -79,8 +86,11 @@ _TRANSVERSE_TOL = 1e-9
 # circular grids compare the r^2 step with w^2 (the trapezoid's error is ~(2h/w^2)^2/12), rectangular ones the
 # larger of dx, dy with w.
 _MAX_STEP_OVER_WIDTH = {'circular': 0.25, 'rectangular': 0.5}
-# A fit is interpretable (modes orthonormal on the screen) when |captured - (1 - eps^2)| is below this.
-_CAPTURED_TOL = 0.05
+# Containment check for the projections: share of sum A|E|^2 beyond _EDGE_BAND x the screen's inscribed radius,
+# flagged above _MAX_EDGE_FRACTION (the projections then miss the field outside the screen). The ~1% incoherent
+# speckle covers the whole screen and alone puts ~2e-3 of the power in the outer band (19% of a disk's area).
+_EDGE_BAND = 0.9
+_MAX_EDGE_FRACTION = 1e-2
 # Below this |t| (= |c_1/c_0|/sqrt(1+|l|)) the summary doesn't compare t with c_2/c_1: both are residual-sized.
 _MIN_T_FOR_CHECK = 0.05
 # Coherent-source prediction: source radius cap (laser waists) without a beam radius, radial grid (at least
@@ -138,11 +148,13 @@ def build_basis(modes, r, phi, s, w0, k):
 def fit_modes(target, basis, weights):
     """
     Weighted complex least squares (sqrt(A_i)-scaled rows, numpy's SVD-based lstsq; the Gram matrix is never
-    formed). Returns a dict with the coefficients, eps, captured, cond, rank and a status string.
+    formed). Returns a dict with the coefficients, eps, captured, cond, rank and a status string, and the
+    projections `proj` (a = sum A u^* E), `proj_captured` = sum|a|^2/sum A|E|^2 and `overlap` = max|a|^2/sum A|E|^2.
     """
     norm_sq = np.sum(weights * np.abs(target) ** 2)
     result = {'coeffs': np.full(basis.shape[1], np.nan + 0j), 'eps': np.nan, 'captured': np.nan,
-              'cond': np.nan, 'rank': 0, 'status': 'ok'}
+              'cond': np.nan, 'rank': 0, 'status': 'ok', 'proj': np.full(basis.shape[1], np.nan + 0j),
+              'proj_captured': np.nan, 'overlap': np.nan}
     if not (np.isfinite(norm_sq) and norm_sq > 0.0):
         result['status'] = 'zero-norm component: eps undefined'
         return result
@@ -150,7 +162,10 @@ def fit_modes(target, basis, weights):
     sqrt_w = np.sqrt(weights)
     coeffs, _, rank, singular_values = np.linalg.lstsq(sqrt_w[:, None] * basis, sqrt_w * target, rcond=None)
     residual = target - basis @ coeffs
-    result.update(coeffs=coeffs, rank=int(rank),
+    proj = basis.conj().T @ (weights * target)
+    proj_sq = np.abs(proj) ** 2 / norm_sq
+    result.update(coeffs=coeffs, rank=int(rank), proj=proj, proj_captured=float(proj_sq.sum()),
+                  overlap=float(proj_sq.max()),
                   eps=math.sqrt(np.sum(weights * np.abs(residual) ** 2) / norm_sq),
                   captured=float(np.sum(np.abs(coeffs) ** 2) / norm_sq),
                   cond=float(singular_values[0] / singular_values[-1]) if singular_values[-1] > 0 else np.inf)
@@ -299,25 +314,23 @@ def _estimate_w0(target, weights, r, l, s, k):
     return math.sqrt(2.0 * B ** 2 / (w_s_sq + math.sqrt(disc)))
 
 
-def _dominant_share(coeffs):
-    """Largest single |c|^2 over sum |c|^2 (1 = the whole fitted field in one mode)."""
-    c_sq = np.abs(coeffs) ** 2
-    total = np.sum(c_sq)
-    return float(c_sq.max() / total) if np.isfinite(total) and total > 0.0 else -np.inf
-
-
 def _choose_w0(fits):
     """
     The reported (w0, z0, fit) of a scan (items of `fits`; z0 = 0 unless the waist position is scanned): the
-    trial at which one mode holds the largest share of sum|c|^2, among the interpretable fits
-    (|captured - (1 - eps^2)| < _CAPTURED_TOL, i.e. the modes are orthonormal on the screen; all fits if none
-    is). For a single LG_p^l beam that is its own waist (and waist position), whatever p and l. The smallest-eps
-    w0 is not used: with several p free and a w0-independent residual, eps(w0) is flat and its minimum is set by
-    noise.
+    trial with the largest mode overlap max|a|^2/sum A|E|^2, the share of the whole field's power in one mode
+    (projections, valid at every trial while the field is contained on the screen; no other p in the basis enters).
+    It reaches 1 only at a single LG_p^l beam's own waist and waist position; for a field that isn't one mode it is
+    the best single-mode approximation. The smallest-eps w0 is not used: with several p free and a w0-independent
+    residual, eps(w0) is flat and its minimum is set by noise.
     """
-    interpretable = [item for item in fits
-                     if abs(item[-1]['captured'] - (1.0 - item[-1]['eps'] ** 2)) < _CAPTURED_TOL]
-    return max(interpretable or fits, key=lambda item: _dominant_share(item[-1]['coeffs']))
+    return max(fits, key=lambda item: item[-1]['overlap'] if np.isfinite(item[-1]['overlap']) else -np.inf)
+
+
+def _edge_fraction(power, x, y, detector_type):
+    """Share of the power beyond _EDGE_BAND x the screen's inscribed radius (circle, or the rectangle's shorter half)."""
+    r = np.hypot(x, y)
+    inscribed = r.max() if detector_type == 'circular' else min(np.abs(x).max(), np.abs(y).max())
+    return float(power[r > _EDGE_BAND * inscribed].sum() / power.sum())
 
 
 def _radius_containing(fraction, power, r):
@@ -520,10 +533,11 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
                            'l': '/'.join(str(l) for l in l_values), 'w0_au': w0, 'w0_lambdaL': w0 / lambda_L,
                            'z0_au': z0, 'z0_lambdaL': z0 / lambda_L, 'eps': fit['eps'], 'captured': fit['captured'],
                            'cond': fit['cond'], 'rank': fit['rank'], 'norm_sq': np.sum(power),
-                           'dominant_share': _dominant_share(fit['coeffs'])}
-                    for (p, l), c in zip(modes, fit['coeffs']):
+                           'proj_captured': fit['proj_captured'], 'overlap': fit['overlap']}
+                    for (p, l), c, a in zip(modes, fit['coeffs'], fit['proj']):
                         row[f'c_p{p}_l{l}_re'], row[f'c_p{p}_l{l}_im'] = c.real, c.imag
-                    series = series_waist(fit['coeffs'], modes, w0, k)
+                        row[f'a_p{p}_l{l}_re'], row[f'a_p{p}_l{l}_im'] = a.real, a.imag
+                    series = series_waist(fit['proj'], modes, w0, k)
                     if series is not None:
                         row['w0_series_lambdaL'] = series['w0'] / lambda_L
                         row['z0_series_lambdaL'] = (z0 + series['z0']) / lambda_L
@@ -531,10 +545,11 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
 
             w0_min_eps, z0_min_eps, fit_min_eps = min(fits, key=lambda item: item[-1]['eps'])
             best_w0, best_z0, best = _choose_w0(fits)
-            series = series_waist(best['coeffs'], modes, best_w0, k)
+            series = series_waist(best['proj'], modes, best_w0, k)
             if series is not None:
                 series['z0'] += best_z0          # relative to the basis waist plane -> from the origin
             summary.update(w0_best=best_w0, z0_best=best_z0, w0_list=w0_list, z0_list=z0_list, fit=best,
+                           norm_sq=np.sum(power), edge_fraction=_edge_fraction(power, x, y, detector_type),
                            w0_min_eps=w0_min_eps, z0_min_eps=z0_min_eps, fit_min_eps=fit_min_eps,
                            edge_of_scan=len(w0_list) > 1 and best_w0 in (w0_list[0], w0_list[-1]),
                            z0_edge_of_scan=len(z0_list) > 1 and best_z0 in (z0_list[0], z0_list[-1]),
@@ -571,15 +586,19 @@ def _summary_lines(summary_rows, context, table_name):
         "  theory/lg_decomposition_implementation.md: weighted complex least squares of one field component on "
         "unit-norm LG modes",
         "  u_{p,l}(r, phi, s; w0) (waist at the origin, s = screen distance; incident: laser frame), one w0 "
-        "for all modes;",
-        "  reported at the trial w0 where one mode holds the largest share of sum|c|^2 (the beam's own waist for a "
-        "single LG_p^l; the",
-        "  smallest-eps w0 is a basis label only). plus/minus = (Ex -+ i Ey)/sqrt2, spin +-1 about lab +z; fitted "
-        "l = J - spin,",
-        f"  J = N(m + sigma), m = {context['m']}, sigma = {context['sigma']:+.6g} (about lab +z). eps = relative "
-        "area-weighted residual;",
-        "  captured = sum|c|^2/sum A|E|^2 (= 1 - eps^2 if the modes are orthonormal on the screen). Coefficients "
-        "carry the common phase e^{iks}.",
+        "for all modes, and projections",
+        "  a = sum A u^* E (the exact expansion coefficients if E vanishes outside the screen, however the screen "
+        "clips the modes).",
+        "  Reported at the trial (w0, z0) with the largest mode overlap max|a|^2/sum A|E|^2, the share of the field's "
+        "power in one mode",
+        "  (1 at a single LG_p^l's own waist; the smallest-eps w0 is a basis label only). plus/minus = (Ex -+ i Ey)"
+        "/sqrt2, spin +-1",
+        f"  about lab +z; fitted l = J - spin, J = N(m + sigma), m = {context['m']}, sigma = {context['sigma']:+.6g} "
+        "(about lab +z).",
+        "  eps = relative area-weighted least-squares residual; captured = sum|c|^2/sum A|E|^2 (= 1 - eps^2 if the "
+        "modes are",
+        "  orthonormal on the screen); sum|a|^2/sum A|E|^2 = the field's power in the fitted modes (<= 1). "
+        "Coefficients carry e^{iks}.",
         f"  Lengths in lambda_L = {lambda_L * BOHR_RADIUS_M * 1e9:.6g} nm; s = {context['s'] / lambda_L:.6g} lambda_L. "
         f"Full w0 scan: {table_name}.",
     ]
@@ -591,17 +610,24 @@ def _summary_lines(summary_rows, context, table_name):
         if fit is None:
             lines.append("    zero power in this component: not fitted")
             continue
-        dominant = int(np.argmax(np.abs(fit['coeffs'])))
+        dominant = int(np.argmax(np.abs(fit['proj'])))
         p_dom, l_dom = row['modes'][dominant]
         if len(row['z0_list']) > 1:
             lines.append(f"    basis waist position z0 = {row['z0_best'] / lambda_L:.6g} lambda_L along propagation "
                          f"(scan {row['z0_list'][0] / lambda_L:.4g}..{row['z0_list'][-1] / lambda_L:.4g}, "
                          f"{len(row['z0_list'])} values{'; AT SCAN EDGE' if row['z0_edge_of_scan'] else ''}), with")
         lines.append(f"    w0 = {row['w0_best'] / lambda_L:.6g} lambda_L, where (p,l) = ({p_dom},{l_dom}) holds "
-                     f"{_dominant_share(fit['coeffs']):.4g} of sum|c|^2 (scan {row['w0_list'][0] / lambda_L:.4g}"
+                     f"{fit['overlap']:.4g} of the field's power (scan {row['w0_list'][0] / lambda_L:.4g}"
                      f"..{row['w0_list'][-1] / lambda_L:.4g}, {len(row['w0_list'])} values"
-                     f"{'; AT SCAN EDGE' if row['edge_of_scan'] else ''}): eps = {fit['eps']:.4e}, captured = "
+                     f"{'; AT SCAN EDGE' if row['edge_of_scan'] else ''}): sum|a|^2/sum A|E|^2 = "
+                     f"{fit['proj_captured']:.6f}; least squares: eps = {fit['eps']:.4e}, captured = "
                      f"{fit['captured']:.6f}, cond = {fit['cond']:.3e}, status: {fit['status']}")
+        edge_label = f"power beyond {_EDGE_BAND:g} x the screen's inscribed radius = {row['edge_fraction']:.3g}"
+        if row['edge_fraction'] > _MAX_EDGE_FRACTION:
+            lines.append(f"    WARNING: NOT CONTAINED, {edge_label} > {_MAX_EDGE_FRACTION:g}: the field likely extends "
+                         "past the screen, so the projections (and the reported w0) miss that part")
+        else:
+            lines.append(f"    containment: {edge_label} (flagged above {_MAX_EDGE_FRACTION:g})")
         lines.append(f"    smallest eps = {row['fit_min_eps']['eps']:.4e} at w0 = {row['w0_min_eps'] / lambda_L:.6g} "
                      f"lambda_L" + (f", z0 = {row['z0_min_eps'] / lambda_L:.6g} lambda_L" if len(row['z0_list']) > 1
                                     else "") + " (a basis label, not the beam's waist)")
@@ -644,9 +670,10 @@ def _summary_lines(summary_rows, context, table_name):
                          f"outside its {100 * _PREDICTION_CONTAINED:g}% radius "
                          f"({prediction['r_contained'] / lambda_L:.4g} lambda_L) = {prediction['outside']:.4g}")
         norm_sq = np.sum(np.abs(fit['coeffs']) ** 2)
-        for (p, l), c in zip(row['modes'], fit['coeffs']):
-            lines.append(f"    p={p:2d} l={l:+3d}  c = {c.real:+.6e} {c.imag:+.6e}i  |c| = {abs(c):.6e}  "
-                         f"|c|^2/sum|c|^2 = {abs(c) ** 2 / norm_sq if norm_sq > 0 else np.nan:.4g}")
+        for (p, l), c, a in zip(row['modes'], fit['coeffs'], fit['proj']):
+            lines.append(f"    p={p:2d} l={l:+3d}  a = {a.real:+.6e} {a.imag:+.6e}i  |a|^2/sum A|E|^2 = "
+                         f"{abs(a) ** 2 / row['norm_sq']:.4g};  least squares |c|^2/sum|c|^2 = "
+                         f"{abs(c) ** 2 / norm_sq if norm_sq > 0 else np.nan:.4g}")
     return lines
 
 
@@ -654,31 +681,6 @@ def _plot(table, summary_rows, context):
     png_dir = os.path.join(context['run_dir'], "png_folder", MODULE_NAME, "lg_decomposition",
                            "incident" if context['is_incident'] else "emitted")
     os.makedirs(png_dir, exist_ok=True)
-    for i_omega, subset in table.groupby('i_omega'):
-        fig, (ax_eps, ax_c) = plt.subplots(1, 2, figsize=(11, 4.2), layout='constrained')
-        for row in (r for r in summary_rows if r['i_omega'] == i_omega and r['fit'] is not None):
-            curve = subset[(subset['component'] == row['component']) & (subset['z0_au'] == row['z0_best'])]
-            label = f"{row['component']} (l = {curve['l'].iloc[0]})"
-            ax_eps.semilogx(curve['w0_lambdaL'], curve['eps'], 'o-', ms=3, label=label)
-            c_sq = np.abs(row['fit']['coeffs']) ** 2
-            ticks = np.arange(len(row['modes']))
-            ax_c.plot(ticks, c_sq / c_sq.sum() if c_sq.sum() > 0 else c_sq, 'o-', label=label)
-            ax_c.set_xticks(ticks, [f"{p},{l}" for p, l in row['modes']], rotation=45)   # same p order for all
-        ax_eps.set_xlabel(r'trial $w_0$ [$\lambda_L$]')
-        ax_eps.set_ylabel(r'$\epsilon(w_0)$')
-        ax_eps.grid(True, which='both', alpha=0.3)
-        ax_eps.legend()
-        ax_c.set_xlabel('(p, l)')
-        ax_c.set_ylabel(r'$|c_{p,l}|^2/\sum|c|^2$ at reported $w_0$')
-        ax_c.set_yscale('log')
-        ax_c.grid(True, alpha=0.3)
-        fig.suptitle(f"LG decomposition, $\\omega$ index {i_omega} ($\\omega/\\omega_1$ = {subset['omega'].iloc[0]:.4g})"
-                     + (" (incident beam)" if context['is_incident'] else ""))
-        output = os.path.join(png_dir, f"lg_decomposition_omega{i_omega}.png")
-        fig.savefig(output, dpi=200, bbox_inches='tight')
-        plt.close(fig)
-        print(f"Successfully saved plot to {output}")
-
     for row in summary_rows:
         if row['fit'] is None:
             continue
@@ -693,34 +695,28 @@ def _plot(table, summary_rows, context):
 
 def _plot_w0_z0_map(table, row, context, png_dir):
     """
-    z0 scan only: the dominant mode's share of sum|c|^2 and eps over the (w0, z0) grid of one component at one
-    frequency, the reported point marked. Grid cells that are not interpretable (|captured - (1 - eps^2)| >=
-    _CAPTURED_TOL: the modes are not orthonormal on the screen) are masked.
+    z0 scan only: the mode overlap max|a|^2/sum A|E|^2 (projections) and the least-squares eps over the (w0, z0)
+    grid of one component at one frequency, the reported point marked. Both are meaningful at every cell while the
+    field is contained on the screen, so nothing is masked.
     """
     scan = table[(table['i_omega'] == row['i_omega']) & (table['component'] == row['component'])]
     w0 = np.sort(scan['w0_lambdaL'].unique())
     z0 = np.sort(scan['z0_lambdaL'].unique())
-    grids = {}
-    for name in ('dominant_share', 'eps', 'captured'):
-        grids[name] = scan.pivot_table(index='z0_lambdaL', columns='w0_lambdaL', values=name).loc[z0, w0].to_numpy()
-    bad = np.abs(grids['captured'] - (1.0 - grids['eps'] ** 2)) >= _CAPTURED_TOL
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), layout='constrained')
-    for ax, name, label in ((axes[0], 'dominant_share', r'dominant mode: $\max|c|^2/\sum|c|^2$'),
-                            (axes[1], 'eps', r'$\epsilon$')):
-        values = np.ma.masked_where(bad, grids[name])
-        mesh = ax.pcolormesh(w0, z0, values, shading='nearest', cmap='viridis' if name == 'dominant_share'
-                             else 'magma_r')
+    for ax, name, label in ((axes[0], 'overlap', r'mode overlap: $\max|a|^2/\|E\|^2$'),
+                            (axes[1], 'eps', r'least-squares $\epsilon$')):
+        values = scan.pivot_table(index='z0_lambdaL', columns='w0_lambdaL', values=name).loc[z0, w0].to_numpy()
+        mesh = ax.pcolormesh(w0, z0, values, shading='nearest', cmap='viridis' if name == 'overlap' else 'magma_r')
         fig.colorbar(mesh, ax=ax, label=label)
         ax.plot(row['w0_best'] / context['lambda_L'], row['z0_best'] / context['lambda_L'], 'r+', ms=12, mew=2)
         ax.set_xscale('log')
         ax.set_xlabel(r'basis $w_0$ [$\lambda_L$]')
         ax.set_ylabel(r'basis waist position $z_0$ [$\lambda_L$]')
     fig.suptitle(f"LG basis scan, {row['component']}, $\\omega$ index {row['i_omega']} ($\\omega/\\omega_1$ = "
-                 f"{row['omega']:.4g}); red +: reported (gray: not interpretable)"
+                 f"{row['omega']:.4g}); red +: reported, $w_0$ = {row['w0_best'] / context['lambda_L']:.4g} "
+                 f"$\\lambda_L$, $z_0$ = {row['z0_best'] / context['lambda_L']:.4g} $\\lambda_L$"
                  + (" (incident beam)" if context['is_incident'] else ""))
-    for ax in axes:
-        ax.set_facecolor('0.85')
     output = os.path.join(png_dir, f"lg_w0_z0_map_omega{row['i_omega']}_{row['component']}.png")
     fig.savefig(output, dpi=200, bbox_inches='tight')
     plt.close(fig)
@@ -729,19 +725,19 @@ def _plot_w0_z0_map(table, row, context, png_dir):
 
 def _plot_coefficients(table, row, context, png_dir):
     """
-    One component at one frequency, the whole coefficient set: |c|^2/||E||^2 vs w0 per mode (with eps^2 and
-    captured), the Argand diagram of c/||E|| at the reported w0 (_choose_w0) and arg(c/c_dominant) vs w0.
-    ||E||^2 = sum A|E|^2, so |c|^2/||E||^2 is the mode's power fraction when the modes are orthonormal on the
-    screen. Phases are relative to the mode that dominates at the reported w0, which removes the arbitrary common
-    e^{iks}. With a z0 scan, the w0 curves are at the reported z0.
+    One component at one frequency, the whole set of projections: |a|^2/||E||^2 vs w0 per mode (with
+    sum|a|^2/||E||^2 and the least-squares eps^2 and captured), the Argand diagram of a/||E|| at the reported w0
+    (_choose_w0) and arg(a/a_dominant) vs w0. ||E||^2 = sum A|E|^2, so |a|^2/||E||^2 is the mode's share of the
+    field's power while the field is contained on the screen. Phases are relative to the mode that dominates at
+    the reported w0, which removes the arbitrary common e^{iks}. With a z0 scan, the w0 curves are at the reported z0.
     """
     curve = table[(table['i_omega'] == row['i_omega']) & (table['component'] == row['component'])
                   & (table['z0_au'] == row['z0_best'])]
     curve = curve.sort_values('w0_au')
     w0 = curve['w0_lambdaL'].to_numpy()
     norm = np.sqrt(curve['norm_sq'].to_numpy())
-    coeffs = np.stack([(curve[f'c_p{p}_l{l}_re'] + 1j * curve[f'c_p{p}_l{l}_im']).to_numpy() / norm
-                       for p, l in row['modes']], axis=1)                  # (n_w0, n_modes), c/||E||
+    coeffs = np.stack([(curve[f'a_p{p}_l{l}_re'] + 1j * curve[f'a_p{p}_l{l}_im']).to_numpy() / norm
+                       for p, l in row['modes']], axis=1)                  # (n_w0, n_modes), a/||E||
     best_index = int(np.argmin(np.abs(w0 - row['w0_best'] / context['lambda_L'])))
     dominant = int(np.argmax(np.abs(coeffs[best_index])))
     rotated_best = coeffs[best_index] * np.exp(-1j * np.angle(coeffs[best_index, dominant]))
@@ -761,13 +757,14 @@ def _plot_coefficients(table, row, context, png_dir):
         ax_arg.plot([0, z.real], [0, z.imag], '-', color=color, lw=1.5)
         ax_arg.plot(z.real, z.imag, 'o', color=color, label=label)
         ax_arg.annotate(label, (z.real, z.imag), textcoords='offset points', xytext=(5, 5), fontsize=8)
-    ax_pow.semilogx(w0, curve['eps'] ** 2, 'k--', lw=1.2, label=r'$\epsilon^2$')
-    ax_pow.semilogx(w0, curve['captured'], 'k:', lw=1.2, label=r'captured $=\sum|c|^2/\|E\|^2$')
+    ax_pow.semilogx(w0, curve['proj_captured'], 'k-', lw=1.2, label=r'$\sum|a|^2/\|E\|^2$')
+    ax_pow.semilogx(w0, curve['eps'] ** 2, 'k--', lw=1.2, label=r'least squares $\epsilon^2$')
+    ax_pow.semilogx(w0, curve['captured'], 'k:', lw=1.2, label=r'least squares $\sum|c|^2/\|E\|^2$')
     for ax in (ax_pow, ax_phase):
         ax.axvline(w0[best_index], color='gray', lw=0.8, alpha=0.7)
         ax.set_xlabel(r'trial $w_0$ [$\lambda_L$]')
         ax.grid(True, which='both', alpha=0.3)
-    ax_pow.set_ylabel(r'$|c_{p,l}|^2/\|E\|^2$')
+    ax_pow.set_ylabel(r'$|a_{p,l}|^2/\|E\|^2$')
     ax_pow.set_yscale('log')
     ax_pow.set_ylim(bottom=max(1e-8, ax_pow.get_ylim()[0]))
     ax_pow.legend(fontsize=8)
@@ -775,22 +772,23 @@ def _plot_coefficients(table, row, context, png_dir):
 
     limit = 1.1 * max(np.abs(rotated_best).max(), 1e-30)
     circle = np.exp(1j * np.linspace(0, 2 * np.pi, 200))
-    ax_arg.plot(circle.real, circle.imag, color='gray', lw=0.6, alpha=0.5)         # |c| = ||E||: the whole field
+    ax_arg.plot(circle.real, circle.imag, color='gray', lw=0.6, alpha=0.5)         # |a| = ||E||: the whole field
     ax_arg.axhline(0, color='gray', lw=0.6)
     ax_arg.axvline(0, color='gray', lw=0.6)
     ax_arg.set_xlim(-limit, limit)
     ax_arg.set_ylim(-limit, limit)
     ax_arg.set_aspect('equal')
-    ax_arg.set_xlabel(r'Re $c/\|E\|$')
-    ax_arg.set_ylabel(r'Im $c/\|E\|$')
+    ax_arg.set_xlabel(r'Re $a/\|E\|$')
+    ax_arg.set_ylabel(r'Im $a/\|E\|$')
     ax_arg.grid(True, alpha=0.3)
-    ax_arg.set_title(f"at reported $w_0$ = {w0[best_index]:.4g} $\\lambda_L$, rotated: {labels[dominant]} real")
+    ax_arg.set_title(f"at reported $w_0$ = {w0[best_index]:.4g} $\\lambda_L$, $z_0$ = "
+                     f"{row['z0_best'] / context['lambda_L']:.4g} $\\lambda_L$, rotated: {labels[dominant]} real")
 
-    ax_phase.set_ylabel(rf'arg$(c/c_{{\rm {labels[dominant].replace(" ", "")}}})/\pi$')
+    ax_phase.set_ylabel(rf'arg$(a/a_{{\rm {labels[dominant].replace(" ", "")}}})/\pi$')
     ax_phase.set_ylim(-1.05, 1.05)
     ax_phase.set_title('relative phase')
 
-    fig.suptitle(f"LG coefficients, {row['component']} (l = {curve['l'].iloc[0]}), $\\omega$ index {row['i_omega']} "
+    fig.suptitle(f"LG projections, {row['component']} (l = {curve['l'].iloc[0]}), $\\omega$ index {row['i_omega']} "
                  f"($\\omega/\\omega_1$ = {row['omega']:.4g})" + (" (incident beam)" if context['is_incident'] else ""))
     output = os.path.join(png_dir, f"lg_coefficients_omega{row['i_omega']}_{row['component']}.png")
     fig.savefig(output, dpi=200, bbox_inches='tight')
@@ -903,18 +901,19 @@ def self_test():
         w_true, z0 = w_ratio * w0, z0_ratio * z_R
         z_R_true = 0.5 * k * w_true ** 2
         w_s = max(w_true * math.sqrt(1.0 + ((s - z0) / z_R_true) ** 2), w0 * math.sqrt(1.0 + (s / z_R) ** 2))
-        r, phi, A = circular_grid(8.0 * w_s, N_R=3000, N_phi=17)
+        # Projections carry the l = 0, 1 quadrature error that least squares cancels: 12000 rings for 1e-4.
+        r, phi, A = circular_grid(8.0 * w_s, N_R=12000, N_phi=17)
         target = lg_mode(0, l, r, phi, s - z0, w_true, k)
         modes = [(p, l) for p in range(9)]
         fit = fit_modes(target, build_basis(modes, r, phi, s, w0, k), A)
-        series = series_waist(fit['coeffs'], modes, w0, k)
+        series = series_waist(fit['proj'], modes, w0, k)
         tag = f"l = {l}, w0 = {w_ratio:g} w_b, z0 = {z0_ratio:g} z_R"
         check(f"{tag}: w0_series/w0_true - 1", series['w0'] / w_true - 1.0, 1e-3)
         check(f"{tag}: (z0_series - z0)/z_R", (series['z0'] - z0) / z_R, 1e-3)
         check(f"{tag}: |t2 - t|", abs(series['t2'] - series['t']), 1e-3)
 
     # The (w0, z0) scan and _choose_w0 on a displaced beam: the true pair is on the grid and must be picked, with
-    # all of sum|c|^2 in its own mode; at z0 = 0 no basis waist does that.
+    # all of the field's power in its own mode; at z0 = 0 no basis waist does that.
     print("4. Waist-position scan: LG_1^2 with w0 = 1.3 w_b at z0 = 0.5 z_R, grid containing the true (w0, z0):")
     l, w_true, z0_true = 2, 1.3 * w0, 0.5 * z_R
     r, phi, A = circular_grid(8.0 * w_true * math.sqrt(1.0 + ((s - z0_true) / (0.5 * k * w_true ** 2)) ** 2),
@@ -927,9 +926,26 @@ def self_test():
     w_pick, z_pick, fit = _choose_w0(fits)
     check("picked w0/w0_true - 1", w_pick / w_true - 1.0, 1e-12)
     check("picked (z0 - z0_true)/z_R", (z_pick - z0_true) / z_R, 1e-12)
-    check("dominant share - 1 at the picked point", _dominant_share(fit['coeffs']) - 1.0, 1e-6)
-    best_at_origin = max(_dominant_share(f['coeffs']) for _, zb, f in fits if zb == 0.0)
-    print(f"  (info) best dominant share with the basis waist at the origin: {best_at_origin:.4f}")
+    check("mode overlap - 1 at the picked point", fit['overlap'] - 1.0, 1e-6)
+    best_at_origin = max(f['overlap'] for _, zb, f in fits if zb == 0.0)
+    print(f"  (info) best mode overlap with the basis waist at the origin: {best_at_origin:.4f}")
+
+    # A field contained on a screen that clips the basis: the projections equal those on a screen holding the
+    # whole basis (same r^2 step, so the quadrature error is common), while least squares (G != 1) does not.
+    w_b = 0.5 * w0
+    w_b_s = w_b * math.sqrt(1.0 + (s / (0.5 * k * w_b ** 2)) ** 2)
+    l, w_true = 1, 1.5 * w0
+    R_clip = 5.0 * w_true * math.sqrt(1.0 + (s / (0.5 * k * w_true ** 2)) ** 2)
+    print(f"4b. Projections on a clipping screen: LG_0^1 (w0 = {w_true / w_b:g} w_b) on radius 5 w(s) "
+          f"(= {R_clip / w_b_s:.2f} w_b(s)), basis w_b with p = 0..5:")
+    modes = [(p, l) for p in range(6)]
+    fits = {}
+    for label, R, N_R in (("clipping", R_clip, 2001), ("wide", 6.0 * R_clip, 36 * 2000 + 1)):
+        r, phi, A = circular_grid(R, N_R=N_R, N_phi=5)
+        fits[label] = fit_modes(lg_mode(0, l, r, phi, s, w_true, k), build_basis(modes, r, phi, s, w_b, k), A)
+    check("max |a_clipping - a_wide|", np.abs(fits['clipping']['proj'] - fits['wide']['proj']).max(), 1e-9)
+    print(f"  (info) clipping screen: cond = {fits['clipping']['cond']:.3g}, max |c - a| = "
+          f"{np.abs(fits['clipping']['coeffs'] - fits['clipping']['proj']).max():.3g}")
 
     # The Fresnel propagation behind coherent_source_prediction against the analytic modes (amplitude and phase,
     # Gouy and curvature included), and the N = 1, dl = 0 prediction, which is the laser mode itself.
