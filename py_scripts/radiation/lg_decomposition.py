@@ -759,7 +759,14 @@ def _plot_coefficients(table, row, context, png_dir):
         ax_arg.annotate(label, (z.real, z.imag), textcoords='offset points', xytext=(5, 5), fontsize=8)
     ax_pow.semilogx(w0, curve['proj_captured'], 'k-', lw=1.2, label=r'$\sum|a|^2/\|E\|^2$')
     ax_pow.semilogx(w0, curve['eps'] ** 2, 'k--', lw=1.2, label=r'least squares $\epsilon^2$')
-    ax_pow.semilogx(w0, curve['captured'], 'k:', lw=1.2, label=r'least squares $\sum|c|^2/\|E\|^2$')
+    # Least-squares sum|c|^2 grows far above 1 at small trial w0 (modes clipped by the screen, Gram matrix != 1), so
+    # it gets its own right-hand axis instead of setting the left axis's range and flattening the curves above.
+    ls_color = 'tab:brown'
+    ax_ls = ax_pow.twinx()
+    ax_ls.semilogx(w0, curve['captured'], ':', color=ls_color, lw=1.5, label=r'least squares $\sum|c|^2/\|E\|^2$ (right)')
+    ax_ls.set_yscale('log')
+    ax_ls.set_ylabel(r'least squares $\sum|c|^2/\|E\|^2$', color=ls_color)
+    ax_ls.tick_params(axis='y', which='both', colors=ls_color)
     for ax in (ax_pow, ax_phase):
         ax.axvline(w0[best_index], color='gray', lw=0.8, alpha=0.7)
         ax.set_xlabel(r'trial $w_0$ [$\lambda_L$]')
@@ -767,7 +774,9 @@ def _plot_coefficients(table, row, context, png_dir):
     ax_pow.set_ylabel(r'$|a_{p,l}|^2/\|E\|^2$')
     ax_pow.set_yscale('log')
     ax_pow.set_ylim(bottom=max(1e-8, ax_pow.get_ylim()[0]))
-    ax_pow.legend(fontsize=8)
+    handles, legend_labels = ax_pow.get_legend_handles_labels()
+    ls_handles, ls_labels = ax_ls.get_legend_handles_labels()
+    ax_pow.legend(handles + ls_handles, legend_labels + ls_labels, fontsize=8)
     ax_pow.set_title('power fraction per mode')
 
     limit = 1.1 * max(np.abs(rotated_best).max(), 1e-30)

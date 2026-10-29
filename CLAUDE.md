@@ -21,7 +21,9 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   a local-grid vs. lab-component mix, fixed with `lz_sign`). Theory column: `L_N/omega_N` with
   `L_N = N(m+σ)−σ` for the emitted harmonics (`σ = 2 Im(ζ₁*ζ₂)`, 0 for linear; `m`, `σ` times `sign(n_laser,z)`);
   `m/omega` with `m = laser_lg_l` for `--incident`. Still ~5% low at N = 2 and not settled; measurements, and why
-  flipping only the screen at `γ ≠ 0` isn't a clean test, are in dev notes.
+  flipping only the screen at `γ ≠ 0` isn't a clean test, are in dev notes. Most of that 5% (`l = 5`) may be the
+  old centered-difference `∂φ` (4.1% low at `l = 5`, `N_phi = 64`), replaced by an exact FFT derivative on
+  2026-10-29: re-run `plot_observables.py` on such runs before reading OAM numbers.
 - The initial form factor `b(q)` (`Simulation::compute_form_factor`; spec `theory/thomson_form_factor_diagnostic.md`)
   is one scalar at harmonic 1 along the detector normal, using the generated beam's mean momentum (not the
   configured `average_p`), printed to stdout and `run_log.txt`. It uses the dressed `omega_s` with
@@ -33,6 +35,11 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   match the propagated standard mode, Gouy and curvature included (`eps = 1e-7`), after the curvature sign was
   fixed on 2026-10-27 (dev notes). `PhysUtils::non_linear_Thomson_formula` is flagged in-code as still needing
   review.
+- **The flat-top envelope (flat + Gaussian wings) leaks N = 1 radiation into N = 2** (~5e-9 of the N = 1 peak at
+  2ω₁): the cause of N = 2's off-axis crescent and its ~9% `l = 0` admixture, not electron sampling or the radiation
+  code. A pure Gaussian (`laser_flat_duration 0`) removes it. The LG laser's on-axis field is √2 × the plane wave's at
+  the same `a0`. Both: `theory/future_dev/pulse_envelope_and_lg_normalization.md`. Findings and plans not yet acted on
+  (cost and minimal parameters, `trajectory_NT`, coherent/incoherent decomposition): `theory/future_dev/README.md`.
 
 ## Machines
 
@@ -54,6 +61,10 @@ caps a session at 1 h; other `srun` variants, e.g. `--exclusive`, are in `theory
   that. Claude's shell may be on the head node even while the user's terminal is in a job (check `hostname`), so
   don't build there for a compute-node run.
 - `num_threads 0` follows the job's allocation (the affinity mask), not the node's 256 CPUs.
+- Partition time limits: `debug` 1 h, `interactive` 4 h, `cpu-wide` 1 day (others in `theory/srun.txt`). Long
+  interactive runs go inside a `tmux` session on the head node (`srun ... --pty bash` started *within* tmux), so a
+  dropped connection doesn't kill the job; the step-by-step recipe and how to check a detached run are in
+  `theory/srun.txt`. `radiation_field.dat` and `run_log.txt` appear only when the run ends.
 
 ## Commands
 
@@ -110,6 +121,8 @@ default config) and drop `beam_particle_count` to e.g. `50`; run time scales wit
   `a0 = 0.1`). Their LG `p`/`l`, beam radius (fixed or table, `< 0`) and screen size are switched between
   experiments, and their header comments lag behind those switches: read the keys themselves (or the run's
   `run_log.txt`), not the header.
+- `config/expansion_a0_scan/`, `config/expansion_a0_scan_wide/`: generated `config_expansion` variants for the
+  `a0` scan of the LG mode purity, named `config_expansion_p<p>l<l>_a0_<a0>_R<R_max>.cfg`.
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols, 2-space indent). **There is no test suite**
 and no enforced lint command.

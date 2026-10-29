@@ -552,10 +552,13 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   or `d/dphi`) to act on, so `detector_type=spherical` is rejected outright (a `ValueError`), unlike the old,
   now-superseded script, which did support spherical for `S_z` alone (no spatial derivative needed there).
   **OAM spatial derivatives**: rectangular uses `numpy.gradient` in `x`/`y` (central differences, per the theory
-  doc's own numerical-implementation instructions); circular uses an exact periodic centered difference in `phi`
-  (`_periodic_phi_derivative` — `numpy.gradient` has no periodic-boundary mode, so this is hand-implemented,
-  dropping the duplicate `phi=2*pi` column before differencing, same trick `CircularDetector`'s own equal-area
-  radial-spacing bullet documents elsewhere in this file). The `L_z` density itself is **invariant under an
+  doc's own numerical-implementation instructions); circular uses a periodic derivative in `phi`
+  (`_periodic_phi_derivative`, dropping the duplicate `phi=2*pi` column first, same trick `CircularDetector`'s own
+  equal-area radial-spacing bullet documents elsewhere in this file). **Since 2026-10-29 it is spectral (FFT)**,
+  exact for every `|l| < (N_phi−1)/2`. It was a centered difference, which gives `sin(lΔφ)/Δφ` instead of `l`:
+  `L_z`/`Lambda_zz` low by 0.17% at `l = 1`, 0.7% at `l = 2`, 4.1% at `l = 5` with `N_phi = 64`, so OAM results
+  of earlier LG runs (e.g. the ~5% low `Lambda_zz/P_z` at N = 2) carry that bias. On run `20261029_084449`
+  (Gaussian, N = 2 `l = −1`), `Lambda_zz/P_z` moved from −0.137821 to −0.138149. The `L_z` density itself is **invariant under an
   isotropic rescaling of `x`/`y`** (`x*d/dy-y*d/dx` is the rotation generator, scale-free under `x->c*x, y->c*y`),
   so it doesn't matter that `get_screen_coordinates` returns `x`/`y` in the config's own length unit (`lambda`)
   rather than atomic units for the per-point density — only the screen-integrated total needs an explicit unit

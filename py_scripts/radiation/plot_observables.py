@@ -61,9 +61,9 @@ rectangular/circular check as the angular-momentum quantities rather than specia
 
 **OAM spatial derivatives**: rectangular uses numpy.gradient in x/y (central differences, taking the
 grid spacing into account, per the theory doc's own numerical-implementation instructions); circular
-uses an exact periodic centered difference in phi (numpy.gradient has no periodic-boundary mode, so
-this is implemented by hand -- see _periodic_phi_derivative), which is what x*d/dy - y*d/dx reduces
-to exactly at fixed r on a polar grid. Both are finite-difference approximations, not exact for a
+uses a spectral (FFT) derivative in phi over the periodic grid (see _periodic_phi_derivative), which is
+what x*d/dy - y*d/dx reduces to exactly at fixed r on a polar grid, and is exact for every azimuthal
+harmonic the grid resolves. The rectangular finite differences are not exact for a
 rapidly-varying near-field phase (the same caveat this project documents elsewhere for
 np.gradient-based derivatives, e.g. CLAUDE.md's Fresnel-number bullet) -- a coarse grid close to the
 beam (small Fresnel number) may under-resolve the true spatial variation. Note the L_z density/flux
@@ -284,20 +284,28 @@ def _get_B_total(data):
 
 def _periodic_phi_derivative(grid):
     """
-    Exact periodic centered difference along axis=1 (phi), for `grid` shape (N_R, N_phi) sampled on
+    Spectral (FFT) derivative along axis=1 (phi), for `grid` shape (N_R, N_phi) sampled on
     phi = linspace(0, 2*pi, N_phi) -- CircularDetector's own convention, where phi=0 and phi=2*pi are
     duplicated as the first/last columns (the same physical direction). Computed over the N_phi-1
-    *unique* columns (dropping the duplicate phi=2*pi column) so the derivative is exact for a
-    periodic function and free of the one-sided-derivative artifact a naive numpy.gradient call would
-    have right at that seam; the duplicate last column gets the same value as the first, consistent
-    with phi=0 and phi=2*pi being the same point. N_phi<=1 (nothing to differentiate) is zero.
+    *unique* columns (dropping the duplicate phi=2*pi column): each azimuthal harmonic e^{il phi} is
+    multiplied by i*l, which is exact for every |l| < (N_phi-1)/2. The centered difference used before
+    returned sin(l dphi)/dphi instead of l, i.e. 4% low at l = 5 with N_phi = 64, a bias in L_z and
+    Lambda_zz that grows with the beam's OAM. For an even number of unique columns the Nyquist
+    harmonic (l = +-n/2, ambiguous sign) gets zero derivative. The duplicate last column gets the same
+    value as the first, consistent with phi=0 and phi=2*pi being the same point. N_phi<=1 (nothing to
+    differentiate) is zero.
     """
     N_phi = grid.shape[1]
     if N_phi <= 1:
         return np.zeros_like(grid)
     unique = grid[:, :-1]
-    d_phi = (2.0 * np.pi) / unique.shape[1]
-    d_unique = (np.roll(unique, -1, axis=1) - np.roll(unique, 1, axis=1)) / (2.0 * d_phi)
+    n = unique.shape[1]
+    l = np.fft.fftfreq(n, d=1.0 / n)
+    if n % 2 == 0:
+        l[n // 2] = 0.0
+    d_unique = np.fft.ifft(1j * l * np.fft.fft(unique, axis=1), axis=1)
+    if not np.iscomplexobj(grid):
+        d_unique = d_unique.real
     return np.concatenate([d_unique, d_unique[:, :1]], axis=1)
 
 

@@ -236,7 +236,9 @@ All in the run folder (`_incident` suffix / `incident` subfolder for `--incident
   `|a|²/‖E‖²` (and the least-squares `|c|²/Σ|c|²` for comparison).
 - **Figures** in `png_folder/radiation/lg_decomposition/{emitted,incident}/`:
   - `lg_coefficients_omega<i>_<component>.png`: `|a|²/‖E‖²` vs `w0` per mode with `Σ|a|²/‖E‖²` and the
-    least-squares `eps²` and `captured`; the Argand diagram of `a/‖E‖` at the reported point, rotated so the
+    least-squares `eps²`, and the least-squares `captured` on its own right-hand log axis (it grows far above 1 at
+    small trial `w0`, where the clipped modes aren't orthonormal on the screen, and would otherwise flatten the
+    other curves); the Argand diagram of `a/‖E‖` at the reported point, rotated so the
     dominant mode is real (unit circle = the whole field in one mode); `arg(a/a_dominant)/π` vs `w0`, masked where
     `|a|²/‖E‖² < 1e-6`;
   - `lg_w0_z0_map_omega<i>_<component>.png` (`z0` scan only): mode overlap and least-squares `eps` over the

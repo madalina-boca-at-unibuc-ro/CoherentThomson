@@ -37,7 +37,8 @@ Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are 
 
 - Computes the SAM/OAM/TAM densities `S_z`/`L_z`/`J_z`, the fluxes `Sigma_zz`/`Lambda_zz`/`Flux_tot`, and the
   energy `u`/`P_z`, per `theory/numerical_calculation_of_angular_momentum.md`.
-- The `L_z` operator is `x∂y−y∂x` (rectangular, `np.gradient`) or a periodic `∂φ` (circular), taken on the
+- The `L_z` operator is `x∂y−y∂x` (rectangular, `np.gradient`) or a spectral (FFT) periodic `∂φ` (circular; exact for `|l| < (N_phi−1)/2`,
+  unlike the centered difference used before 2026-10-29, which was 4% low at `l = 5`), taken on the
   screen's **local** grid and multiplied by `lz_sign = det(R_⊥)` (−1 for a screen facing −Oz, whose local frame is
   lab `(x, −y, −z)`), so every observable is about lab +z. `E`/`B` are lab components; don't drop `lz_sign`.
   `--incident` needs no correction (`lz_sign = 1`): `incident_field.dat` is entirely in the laser's own frame, for
