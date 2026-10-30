@@ -102,10 +102,15 @@ The **series waist** (`series_waist`) reads the waist and waist position of a si
   on N = 1 (17.9 λ waist at 914 λ, 95% in one mode; `lg_decomposition_implementation.md`, Verification 6).
 - **Coherent-source prediction:** done for electrons at rest (`lg_decomposition_implementation.md`, "Coherent-source
   prediction" and Verification 7). The laser mode to the `N`-th power, propagated, times `θ^{|Δl|}`, with no free
-  parameter, explains N = 1 to 0.1% and N = 2 to 3–6% in the weak-field limit. It is the right test for `N ≥ 2`
+  parameter, explains N = 1 to 0.1% and N = 2 to 3–6% in the weak-field limit (0.2% on the lattice beam). It is the right test for `N ≥ 2`
   from an `LG_p^l` laser, whose harmonics are not single modes. To do: a moving beam (Doppler-mapped source and
   angular factor), the dressing phase as a factor on the source, and the 2.7% coherent tail at N = 2.
 - Separate coherent and incoherent contributions before fitting (the incoherent part is ~1% here, at every `l`).
 - Model the ponderomotive radial phase at `a0 = 0.1` and compare with the fitted field: the lens strength
-  `1/f ∝ a0²`, and why N = 2 is focused about twice as strongly as N = 1.
+  `1/f ∝ a0²`, and why N = 2 is focused about twice as strongly as N = 1. Picture (2026-10-30): the drift along
+  the laser dents the electron disk by `∝ a(r)²`, and the delayed emission carries
+  `φ_N(r) ≈ 2N k_L δz_mid(r) ∝ N a0² n_cyc e^{−2r²/w0²}`; it survives at `Z → ∞`. As a pure phase it gives the same
+  `f` for every N; N = 2 differs because the phase is Gaussian, not parabolic, plus a 5% detuning amplitude.
+  **Done 2026-10-30:** the per-electron dressing factor in the coherent-source prediction explains the `a0 = 0.1`
+  field to 99.99% (N = 1) and 99.8% (N = 2) with no free parameter (`future_dev/ponderomotive_lens.md`).
 - N = 2 at small `a0`: rerun with a finer `trajectory_NT` first.

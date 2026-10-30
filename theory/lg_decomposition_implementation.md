@@ -224,8 +224,11 @@ electrons **at rest** (`average_p = 0`; otherwise the line says why it is skippe
 
 Reported: the **fidelity** `|⟨E_pred|E⟩|²/(‖E_pred‖²‖E‖²)`, the share of the field's power the model explains
 with only an overall complex scale free (`1 − fidelity` is that one-parameter fit's `eps²`), and the measured power
-outside the radius holding 99.9% of the prediction's. Not modelled: ponderomotive dressing (the radial phase of
-Verification 4/6, so the fidelity drops with `a0`), the incoherent speckle (~1%), a moving beam.
+outside the radius holding 99.9% of the prediction's. A second line ("with the ponderomotive dressing factor") multiplies
+the source by each electron's `d_N(r)` (`dressing_factor`; `A(r)` from the C++'s own LG normalization, the envelope
+and the evaluated frequency from the run; `theory/future_dev/ponderomotive_lens.md`). On the lattice beam at
+`a0 = 0.1` this raises the fidelity from 0.78/0.22 (N = 1/2) to 0.9999/0.998. Not modelled: the incoherent speckle
+(~1%) and a moving beam.
 
 This replaces the LG fit as the test for `N ≥ 2` from a structured laser: the square of `LG_2^2` is already a
 superposition (`p = 0, 2, 4` of `LG^4` at `w0/√2`, 27/20/53%), and the `θ` factor mixes the radial modes again, so
@@ -362,10 +365,13 @@ no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (
 ## Open points
 
 - **N = 1's `p = 1` content (31% at `a0 = 0.1`) is ponderomotive dressing**, not a displaced waist or the
-  incoherent background (Verification 4). At rest it acts as a focusing lens of `f ≈ z_R` (Verification 6). Not
-  yet checked: the predicted radial phase profile against the fitted field, the scaling of `1/f` with `a0²` and
-  the pulse length, and why N = 2 is focused about twice as strongly.
-- **N = 2's coherent tail:** 2.7% of the N = 2 power lies outside the coherent-source prediction, at large
+  incoherent background (Verification 4). At rest it acts as a focusing lens of `f ≈ z_R` (Verification 6).
+  **Explained 2026-10-30:** the per-electron dressing factor reproduces the field to 99.99% (N = 1) and 99.8% (N = 2),
+  N = 2's stronger focusing included (`future_dev/ponderomotive_lens.md`, Results). Still open from the original list: the predicted radial phase profile against the fitted field, the scaling of `1/f` with `a0²` and
+  the pulse length, and why N = 2 is focused about twice as strongly. Picture, a per-electron dressing factor for the
+  coherent-source prediction, and the test plan: `future_dev/ponderomotive_lens.md`.
+- **N = 2's coherent tail** (most likely sampling: on the lattice beam at `a0 = 0.01` it is 0.29%, with fidelity
+  0.998; `future_dev/ponderomotive_lens.md`, Results): 2.7% of the N = 2 power lies outside the coherent-source prediction, at large
   radius, with the right `l`, for both the Gaussian (`a0 = 0.01`) and LG(2,2) lasers. Candidates: the `θ` factor
   is only the near-axis form of the single-electron pattern, or a source term other than `u^N`; and the screen
   (`R_max = 40 w0`) may clip it. A larger `R_max` would tell.

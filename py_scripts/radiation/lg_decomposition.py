@@ -101,6 +101,9 @@ _SOURCE_MIN_POINTS = 4000
 _SOURCE_POINTS_PER_CYCLE = 40
 _FRESNEL_CHUNK = 256
 _PREDICTION_CONTAINED = 0.999
+# Ponderomotive dressing factor (dressing_factor): laser-phase points across the pulse, source radii per chunk.
+_DRESSING_XI_POINTS = 4000
+_DRESSING_CHUNK = 512
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -225,14 +228,53 @@ def fresnel_propagate_radial(source, rr, L, rho, s, k):
     return (k / (1j * s)) * (-1j) ** L * np.exp(0.5j * k * rho ** 2 / s) * E
 
 
-def coherent_source_prediction(r, phi, s, k, N, l_target, m, laser_p, laser_w0, R_beam):
+def laser_intensity_profile(r, p, l, w0):
+    """
+    |f(r)|^2 at the waist, f = the LG laser's transverse amplitude relative to a plane wave of the same a0, with the
+    C++'s own normalization (LaguerreGaussLaser::complex_amplitude): f = Npn (2r^2/w0^2)^{|l|/2}
+    1F1(-p, |l|+1, 2r^2/w0^2) e^{-r^2/w0^2}, Npn = sqrt2 sqrt((p+|l|)!/p!)/|l|!. f(0) = sqrt2 for p = l = 0
+    (theory/future_dev/pulse_envelope_and_lg_normalization.md, section 2).
+    """
+    a = abs(l)
+    npn = math.sqrt(2.0) * math.sqrt(math.factorial(p + a) / math.factorial(p)) / math.factorial(a)
+    u = 2.0 * (r / w0) ** 2
+    return (npn * u ** (0.5 * a) * scipy.special.hyp1f1(-p, a + 1, u) * np.exp(-0.5 * u)) ** 2
+
+
+def dressing_factor(rr, N, k_ratio, A_r, envelope):
+    """
+    Ponderomotive dressing factor d_N(r) of an electron at rest (theory/future_dev/ponderomotive_lens.md), for a
+    screen facing the laser, weak field, cycle-averaged <a^2>:
+
+        d_N(r) = int dxi g^N exp{i int_0^xi [k_ratio (1 + A(r) g^2) - N] dxi'} / int dxi g^N,
+
+    xi the laser phase at the electron, g(xi) the envelope amplitude, A(r) = <a^2> at the envelope's peak and
+    k_ratio = omega/omega_L the evaluated frequency. The drift along the laser stretches observer time by
+    dt_obs/dxi = (1 + A g^2)/omega_L (light-front momentum conserved), so the phase-locked N-th harmonic arrives
+    delayed by an amount that follows A(r): a radial phase (the dent) and, away from resonance, an amplitude loss.
+    O(A) Doppler corrections to the amplitude are left out. d_N -> 1 as A -> 0 at k_ratio = N.
+    """
+    xi, g = envelope
+    w_xi = np.full(len(xi), xi[1] - xi[0]); w_xi[[0, -1]] *= 0.5
+    g_N = g ** N
+    d = np.empty(len(rr), dtype=complex)
+    for start in range(0, len(rr), _DRESSING_CHUNK):
+        rate = k_ratio * (1.0 + np.outer(A_r[start:start + _DRESSING_CHUNK], g ** 2)) - N
+        phase = np.concatenate([np.zeros((len(rate), 1)),
+                                np.cumsum(0.5 * (rate[:, 1:] + rate[:, :-1]) * np.diff(xi), axis=1)], axis=1)
+        d[start:start + _DRESSING_CHUNK] = np.exp(1j * phase) @ (w_xi * g_N)
+    return d / np.sum(w_xi * g_N)
+
+
+def coherent_source_prediction(r, phi, s, k, N, l_target, m, laser_p, laser_w0, R_beam, dressing=None):
     """
     Screen field of harmonic N from electrons at rest at the waist of an LG_p^m laser (m about lab +z), in the
     weak-field limit (theory/lg_decomposition_implementation.md, "Coherent-source prediction"): the coherent
     source is the laser mode to the N-th power over the beam cylinder, u_{p,m}(r, 0)^N e^{iNm phi} for r < R_beam,
     Fresnel-propagated to s, times each electron's own near-axis angular factor (r/s)^|dl| e^{i dl phi} that
     takes the source's N m to the fitted component's l_target (dl = l_target - N m). No free parameter; only the
-    overall complex scale is undetermined. Returns (field on the screen points, dl).
+    overall complex scale is undetermined. `dressing`, if given, maps source radii to a complex factor on the
+    source (dressing_factor). Returns (field on the screen points, dl).
     """
     dl = l_target - N * m
     r_max = min(R_beam, _SOURCE_RMAX_W0 * laser_w0) if R_beam else _SOURCE_RMAX_W0 * laser_w0
@@ -240,6 +282,8 @@ def coherent_source_prediction(r, phi, s, k, N, l_target, m, laser_p, laser_w0, 
     cycles = (k * r_max * r.max() / s + 0.5 * k * r_max ** 2 / s) / (2.0 * np.pi)
     rr = np.linspace(0.0, r_max, max(_SOURCE_MIN_POINTS, int(_SOURCE_POINTS_PER_CYCLE * cycles)))
     source = lg_mode(laser_p, m, rr, 0.0, 0.0, laser_w0, k).real ** N       # phi = 0, s = 0: real
+    if dressing is not None:
+        source = source * dressing(rr)
     rho, index = np.unique(r, return_inverse=True)
     radial = fresnel_propagate_radial(source, rr, N * m, rho, s, k)[index]
     return radial * np.exp(1j * N * m * phi) * (r / s) ** abs(dl) * np.exp(1j * dl * phi), dl
@@ -389,8 +433,18 @@ def _source_model(run_dir, config_path):
             if line.strip().startswith('cylinder radius'):
                 R_beam = float(line.split()[2])
                 break
+    # Envelope amplitude g(xi) over the whole pulse (LaserField::envelope: flat top plus wings exp(-dxi^2/sigma^2),
+    # cut at wing_sigma_cutoff sigma), for dressing_factor.
+    flat, wing = (float(read_config_value(key, config_path)[0])
+                  * convert_unit_to_number(read_config_value(key, config_path)[1], config_path)
+                  for key in ('laser_flat_duration', 'laser_wing_sigma'))
+    edge = float(read_config_value('laser_wing_sigma_cutoff', config_path)[0]) * wing
+    xi = np.linspace(-edge, flat + edge, _DRESSING_XI_POINTS)
+    g = np.exp(-(np.clip(xi, None, 0.0) ** 2 + np.clip(xi - flat, 0.0, None) ** 2) / wing ** 2)
     return {'p': int(read_config_value('laser_lg_p', config_path)[0]),
-            'w0': read_length('laser_lg_w0', config_path, 'a.u.'), 'R_beam': R_beam}
+            'l': int(read_config_value('laser_lg_l', config_path)[0]),
+            'w0': read_length('laser_lg_w0', config_path, 'a.u.'), 'R_beam': R_beam,
+            'a0': float(read_config_value('laser_a0', config_path)[0]), 'envelope': (xi, g)}
 
 
 def _parse_w0_values(w0_spec, unit, config_path):
@@ -574,6 +628,21 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
                 summary['prediction'] = {'fidelity': prediction_fidelity(pred, target, weights), 'dl': dl,
                                          'r_contained': r_contained,
                                          'outside': power[r > r_contained].sum() / power.sum()}
+                # Same with the ponderomotive dressing factor (theory/future_dev/ponderomotive_lens.md): A(r) =
+                # <a^2> = a0^2 |f(r)|^2/2 from the C++'s own LG normalization.
+                k_ratio = k * lambda_L / (2.0 * np.pi)
+                sm = source_model
+
+                def dressing(rr, sm=sm, N=N, k_ratio=k_ratio):
+                    A_r = 0.5 * sm['a0'] ** 2 * laser_intensity_profile(rr, sm['p'], sm['l'], sm['w0'])
+                    return dressing_factor(rr, N, k_ratio, A_r, sm['envelope'])
+
+                pred_d, _ = coherent_source_prediction(r, phi, s, k, N, l_values[0], m, sm['p'], sm['w0'],
+                                                       sm['R_beam'], dressing=dressing)
+                d_check = dressing(np.array([0.0, sm['w0']]))
+                summary['prediction']['dressed'] = {
+                    'fidelity': prediction_fidelity(pred_d, target, weights), 'abs_d0': abs(d_check[0]),
+                    'phase_w0': np.angle(d_check[1] / d_check[0]), 'abs_ratio_w0': abs(d_check[1] / d_check[0])}
 
     context = {'run_dir': run_dir, 'config_path': config_path, 'is_incident': is_incident, 'm': m,
                'sigma': sigma, 's': s, 'lambda_L': lambda_L, 'detector_type': detector_type}
@@ -669,6 +738,11 @@ def _summary_lines(summary_rows, context, table_name):
                          f"theta^{abs(prediction['dl'])}): fidelity = {prediction['fidelity']:.4f}, measured power "
                          f"outside its {100 * _PREDICTION_CONTAINED:g}% radius "
                          f"({prediction['r_contained'] / lambda_L:.4g} lambda_L) = {prediction['outside']:.4g}")
+            dressed = prediction.get('dressed')
+            if dressed is not None:
+                lines.append(f"    with the ponderomotive dressing factor d_N(r) (theory/future_dev/"
+                             f"ponderomotive_lens.md): fidelity = {dressed['fidelity']:.4f}; |d_N(0)| = {dressed['abs_d0']:.4f}, "
+                             f"d_N(w0)/d_N(0) = {dressed['abs_ratio_w0']:.4f} e^{{{dressed['phase_w0']:+.4f}i}}")
         norm_sq = np.sum(np.abs(fit['coeffs']) ** 2)
         for (p, l), c, a in zip(row['modes'], fit['coeffs'], fit['proj']):
             lines.append(f"    p={p:2d} l={l:+3d}  a = {a.real:+.6e} {a.imag:+.6e}i  |a|^2/sum A|E|^2 = "

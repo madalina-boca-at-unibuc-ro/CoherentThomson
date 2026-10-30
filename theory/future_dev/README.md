@@ -8,8 +8,9 @@ they were obtained, and the proposed next step.
 |---|---|---|
 | [pulse_envelope_and_lg_normalization.md](pulse_envelope_and_lg_normalization.md) | The flat-top envelope leaks N = 1 radiation into N = 2 (the N = 2 crescent / 9% `l = 0`); the LG laser's on-axis field is √2 × the plane wave's at the same `a0` | Findings verified; fix = Gaussian envelope (config only); `a0` convention to decide |
 | [numerical_parameters_and_cost.md](numerical_parameters_and_cost.md) | `trajectory_NT` convergence vs γ and formula; cost model; screen defined by angle; electron number and speckle law | `trajectory_NT` verified; the rest are estimates to test |
-| [coherent_incoherent_decomposition.md](coherent_incoherent_decomposition.md) | Replacing random electron sampling by quadrature nodes, with coherent and incoherent parts computed separately; the three project steps (flat disk, Gaussian bunch, microbunching); LG decomposition of a partially coherent beam | Plan |
+| [coherent_incoherent_decomposition.md](coherent_incoherent_decomposition.md) | Replacing random electron sampling by quadrature nodes, with coherent and incoherent parts computed separately; the three project steps (flat disk, Gaussian bunch, microbunching); LG decomposition of a partially coherent beam | Step 1 **done** 2026-10-30 (`beam_distribution polar_lattice`, validated); the rest is a plan |
 | [spectral_line_and_vortex_core.md](spectral_line_and_vortex_core.md) | Mode content across the emission line; purity near the vortex core (relevance for twisted-photon absorption experiments) | Deferred by choice |
+| [ponderomotive_lens.md](ponderomotive_lens.md) | The dressing as a dented electron disk (drift along the laser ∝ `a(r)²`): the radial phase, a per-electron dressing factor `d_N(r)` for the coherent-source prediction, and tests (prediction fidelity, single-electron calibration, undressed frequency, pulse-length and `a0` scalings) | Test 1 **done** 2026-10-30: the model explains the a0 = 0.1 field to 99.99% (N = 1) and 99.8% (N = 2) with no free parameter; tests 2–4 open |
 
 **Done the same day:** `plot_observables.py`'s azimuthal derivative is now spectral (FFT), exact for
 `|l| < (N_phi−1)/2`. The old centered difference read `L_z`/`Lambda_zz` low by `1 − sin(lΔφ)/(lΔφ)`: 0.17% at
@@ -18,9 +19,9 @@ they were obtained, and the proposed next step.
 **Suggested order:**
 1. Production settings that need no code change: Gaussian envelope, `long_distance_direct_approx` with
    `trajectory_NT 50`, `Z ≳ 10 z_R`, screen sized by angle.
-2. Two cheap checks: the two-electron test that settles the form-factor `q`, and checking the coherent/incoherent
+2. Cheap checks (the dressing-factor test and the lattice beam are done): the two-electron test that settles the form-factor `q`, and checking the coherent/incoherent
    decomposition against an existing random-sampled run.
-3. Lattice/quadrature beam option, then the parameter scans (beam radius, screen half-angle, `N_R`, `N_phi`).
+3. The parameter scans (beam radius, screen half-angle, `N_R`, `N_phi`).
 4. Incoherent part and partially coherent LG decomposition (steps 2 and 3 of the project).
 5. Spectral line and vortex core.
 
