@@ -27,8 +27,8 @@ python3 py_scripts/radiation/lg_decomposition.py <run> --w0=$W0 --z0=$Z0 --z0-un
 run folders under `~/output/`.
 
 `python3 make_lens_figure.py` builds Fig. 8 (Sec. 4.4) directly from the lattice run at `a0 = 0.1`,
-`~/output_tests/ponderomotive_lens/20261030_092541`. That run and the others quoted in Sec. 1 and 4.4 are listed
-in `theory/future_dev/ponderomotive_lens.md` (Results); their configs are in
+`~/output_tests/ponderomotive_lens/20261030_111559` (pure Gaussian pulse). That run and the others quoted in
+Sec. 1 and 4.4 are listed in `theory/future_dev/ponderomotive_lens.md` (Results); their configs are in
 `theory/future_dev/tests/ponderomotive_lens/`.
 
 ## PDF

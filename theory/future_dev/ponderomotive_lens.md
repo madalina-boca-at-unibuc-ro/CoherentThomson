@@ -140,6 +140,43 @@ Coherent-source prediction fidelity for `E_−`, without → with `d_N`:
   (`lg_decomposition_implementation.md`, Verification 7). Speckle is ~4× larger at N = 2, since its transverse
   `q`-area on the same screen scales as `N²`.
 
+## Results with the report's pure Gaussian pulse (2026-10-30)
+
+Flat-top pulses are no longer used for production (the derivative discontinuity at the plateau edges gives
+unavoidable CEP-like effects), so the test was repeated with the laser of the server a0-scan configs
+(`config/expansion_a0_scan_server/`): `laser_flat_duration 0`, `wing_sigma 25` cycles, cutoff 4,
+`long_distance_direct_approx`, LG-table beam radius (1.86 w0). The other changes, as before:
+- electrons at rest, polar lattice;
+- screen at 800 w0, `R_max` 40 w0 (60 w0 at `a0 = 0.2`), 256 × 64 points.
+
+Configs: `tests/ponderomotive_lens/gaussian_lattice_*.cfg`. Job 30464, 78 s per run (1076 electrons).
+
+| Run | `a0` | N = 1: without → with `d_N` | N = 2: without → with `d_N` |
+|---|---|---|---|
+| `20261030_111837` | 0.01 | 0.9999 → 0.9999 | 0.9985 → 0.9985 |
+| `20261030_111559` | 0.1 | 0.9222 → **0.9999** | 0.5644 → **0.9986** |
+| `20261030_112109` | 0.2 | 0.3323 → **0.9996** | 0.0160 → **0.9969** |
+| `20261030_112351` | 0.2, spacing halved | 0.3344 → 0.9996 | 0.0164 → 0.9966 |
+
+- **Phase only / magnitude only:** 0.9986/0.925 (N = 1) and 0.9966/0.583 (N = 2) at `a0 = 0.1`; 0.866/0.511 and
+  0.835/0.238 at `a0 = 0.2`. At 0.2 the detuning magnitude is no longer small: `|d_2(0)| = 0.087`, i.e. the axis
+  barely emits at the evaluated frequency.
+- **Values of `d_N` at `a0 = 0.1`:** `|d_1(0)| = 0.98`, `d_1(w0)/d_1(0) = 0.92 e^{−0.85i}`; `|d_2(0)| = 0.92`,
+  `d_2(w0)/d_2(0) = 0.89 e^{−1.69i}`. This is about 0.55× the flat-top values, as the effective pulse length
+  `∫g² dξ` (31 vs 56 cycles) predicts.
+- **Fitted beams (series waist):**
+
+  | `a0` | N = 1 | N = 2 |
+  |---|---|---|
+  | 0.1 | 21.2 λ at 721 λ | 10.9 λ at 690 λ |
+  | 0.2 | 8.5 λ at 376 λ | 4.7 λ at 346 λ |
+
+- **Lattice convergence at `a0 = 0.2`:** halving the spacing changes the field by 1.0% (N = 1) and 0.66% (N = 2) in
+  amplitude.
+- **Containment:** at `a0 = 0.2`, N = 2 `E_−` has 1.06% of its power beyond 0.9 `R_max`, borderline.
+
+The report's Sec. 4.4 and Fig. 8 use these runs.
+
 ## Tests
 
 ### 1. Dressing factor on the coherent-source prediction (done; Results above)

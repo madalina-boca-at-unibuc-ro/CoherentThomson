@@ -48,9 +48,10 @@ accurate when two conditions hold:
 - $d$ resolves the laser profile; we use $d \approx w_0/10$;
 - the lattice's diffraction orders, at angles of about $\lambda_N/d$, fall outside the screen.
 
-With $d = 2.4\,\lambda_L$ a disk of radius $2w_0$ needs 1 321 electrons instead of 65 536. A run then takes 40 s
-instead of 27 min on 256 cores. Halving $d$ changes the field by less than 1%. The lattice field agrees with a
-65 536-electron random run to within that run's speckle (0.1% of the power at $N = 1$, 0.7% at $N = 2$).
+With $d = 2.4\,\lambda_L$ the disk of runs A and B (radius $1.86\,w_0$) needs 1 076 electrons instead of 65 536,
+about 60 times fewer. Run time scales with the electron count: the tests of Sec. 4.4 take 80 s each on 256 cores.
+Halving $d$ changes the field by about 1%. In a separate check, the lattice field agreed with a 65 536-electron
+random run to within that run's speckle (0.1% of the power at $N = 1$, 0.7% at $N = 2$).
 
 The interaction is classical and contains no recoil. Each electron's trajectory follows from the Lorentz force in the
 laser field. The radiation is the Liénard–Wiechert field of that trajectory.
@@ -405,8 +406,9 @@ fitted.
 
 **Test.** The setup:
 
-- electrons at rest on a flat disk of radius $2w_0$, sampled on the lattice of Sec. 1;
-- the Gaussian laser, $w_0 = 25\,\lambda_L$, with 50 flat-top cycles plus Gaussian wings, at $a_0 = 0.1$ and $0.01$;
+- the laser of runs A and B: $\mathrm{LG}_0^0$ with $w_0 = 25\,\lambda_L$ and the same pure Gaussian pulse, at
+  $a_0 = 0.01$, $0.1$ and $0.2$;
+- electrons at rest on a flat disk of the same radius as in runs A and B, sampled on the lattice of Sec. 1;
 - a screen facing the laser at $Z = 2\times10^4\,\lambda_L$, about 10 Rayleigh ranges.
 
 Electrons at rest avoid the Doppler mapping of a moving beam, so the model applies directly. Fidelity of the
@@ -414,13 +416,15 @@ prediction for $E_-$:
 
 | | $N = 1$ | $N = 2$ |
 |---|---|---|
-| $a_0 = 0.1$, without $d_N$ | 0.776 | 0.220 |
-| $a_0 = 0.1$, with $d_N$ | **0.9999** | **0.998** |
-| $a_0 = 0.1$, phase of $d_N$ only | 0.9988 | 0.949 |
-| $a_0 = 0.1$, magnitude of $d_N$ only | 0.784 | 0.323 |
 | $a_0 = 0.01$, without / with $d_N$ | 0.9999 / 0.9999 | 0.998 / 0.998 |
+| $a_0 = 0.1$, without $d_N$ | 0.922 | 0.564 |
+| $a_0 = 0.1$, with $d_N$ | **0.9999** | **0.9986** |
+| $a_0 = 0.1$, phase of $d_N$ only | 0.9986 | 0.9966 |
+| $a_0 = 0.2$, without $d_N$ | 0.332 | 0.016 |
+| $a_0 = 0.2$, with $d_N$ | **0.9996** | **0.997** |
+| $a_0 = 0.2$, phase of $d_N$ only | 0.866 | 0.835 |
 
-![The ponderomotive lens, electrons at rest, $a_0 = 0.1$. Top: the dressing factor of one electron, magnitude (left)
+![The ponderomotive lens: electrons at rest, the pulse of runs A–D, $a_0 = 0.1$. Top: the dressing factor of one electron, magnitude (left)
 and phase relative to the axis (right); the dotted line marks the resonant radius. Middle and bottom: the power
 $|E_-|^2$ on the screen (left; azimuthal mean) and its wavefront phase (right; along one ray, after removing the
 curvature of a beam focused at the interaction point) for $N = 1$ and $N = 2$. Black: simulation. Orange, dashed:
@@ -429,18 +433,22 @@ factor.](figures/fig8_ponderomotive_lens.jpg){height=80%}
 
 What the test shows:
 
-- **With the dressing factor, the prediction reproduces the simulated field** to 99.99% at $N = 1$ and 99.8% at
-  $N = 2$, with no free parameter. Without it, it explains 78% and 22%. At $a_0 = 0.01$ the factor changes nothing, as
-  it should.
-- **The lens is the delay phase.** The phase of $d_N$ alone gives almost everything; its magnitude, the detuning,
-  adds the last 5% at $N = 2$.
-- **On the screen** (Fig. 8):
-  - **$N = 1$:** the intensity barely changes; only a weak wing is added. The wavefront, though, is that of a beam
-    whose apparent focus sits about $900\,\lambda_L$ downstream, 1.7 rad more phase at 25 mrad.
-  - **$N = 2$:** its phase is twice as large ($N$ times), and the bright ring moves out from 6.5 to 13 mrad.
+- **With the dressing factor, the prediction reproduces the simulated field** to 99.7–99.99%, at both field
+  strengths and both harmonics, with no free parameter. Without it, it explains 92% ($N = 1$) and 56% ($N = 2$) at
+  $a_0 = 0.1$, and only 33% and 2% at $a_0 = 0.2$. At $a_0 = 0.01$ the factor changes nothing, as it should.
+- **The lens is the delay phase.** At $a_0 = 0.1$ the phase of $d_N$ alone gives almost everything. At $a_0 = 0.2$
+  the magnitude matters too (phase alone: 87% and 84%). Electrons then emit far enough from the evaluated
+  frequency that their contribution is visibly weakened.
+- **On the screen** (Fig. 8, $a_0 = 0.1$):
+  - **$N = 1$:** the intensity barely changes. The wavefront, though, is that of a beam whose apparent focus sits
+    about $700\,\lambda_L$ downstream: 1.3 rad more phase at 25 mrad.
+  - **$N = 2$:** the phase is twice as large ($N$ times). The ring keeps its radius (7 mrad) but gains a tail out to
+    25 mrad.
 - **The effect does not fade with distance.** The far field is the Fourier transform of the source, so a phase of a
   few radians across the source changes the angular pattern, in amplitude and phase, at any distance.
-- **It grows as $N\,a_0^2$ times the pulse length:** the dent deepens for as long as the pulse passes.
+- **It grows as $N\,a_0^2$ times the pulse length:** the dent deepens for as long as the pulse passes. Doubling
+  $a_0$ makes the phase four times larger, which is why the prediction without $d_N$ fails almost completely at
+  $a_0 = 0.2$.
 
 Runs A–D have moving electrons, which are slowed down rather than pushed forward, but the mechanism is the same.
 Extending the model to a moving beam, through the Doppler mapping of the source, is the next step.
