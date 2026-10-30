@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "../math_utils/math_constants.hpp"
@@ -247,7 +248,21 @@ struct CylinderBeamParams {
   double center_x, center_y, center_z;
   double average_px, average_py, average_pz;
   double sigma_px, sigma_py, sigma_pz;
+  // beam_distribution (optional, default random): random = independent uniform draws over the cylinder;
+  // polar_lattice = deterministic equal-area rings on a flat disk, node spacing ~beam_lattice_spacing, no sampling
+  // speckle (theory/future_dev/coherent_incoherent_decomposition.md section 3, step 1); beam_particle_count is then
+  // ignored.
+  bool polar_lattice;
+  double lattice_spacing;  // requested spacing (polar_lattice only); the rings use polar_lattice_geometry's
 };
+
+// Rings of the polar lattice on a disk of radius R: a node at the centre and rings j = 1..J at r_j = j*d with
+// round(2*pi*j) equally spaced nodes, each standing for ~d^2 of area. d is the requested spacing adjusted so that
+// the outermost ring's annulus ends at R exactly, (J + 1/2) d = R. Returns {J, d}.
+inline std::pair<int, double> polar_lattice_geometry(double radius, double spacing) {
+  const int rings = std::max(1, static_cast<int>(std::lround(radius / spacing - 0.5)));
+  return {rings, radius / (rings + 0.5)};
+}
 
 // Beam radius, in units of w0, just larger than the Laguerre-Gauss (p, l) mode's transverse extent
 // (theory/table of beam electron radius in units of w_0 for different p,l.md). The mode profile depends on l only
@@ -313,6 +328,25 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   params.sigma_py = sigma_py * convert_unit_to_number(sigma_py_units, config);
   auto [sigma_pz, sigma_pz_units] = split_value_and_unit(get_required(config, "sigma_pz"));
   params.sigma_pz = sigma_pz * convert_unit_to_number(sigma_pz_units, config);
+
+  auto distribution = config.find("beam_distribution");
+  const std::string distribution_name = distribution == config.end() ? "random" : distribution->second;
+  if (distribution_name != "random" && distribution_name != "polar_lattice") {
+    throw std::invalid_argument("beam_distribution must be random or polar_lattice (got " + distribution_name + ")");
+  }
+  params.polar_lattice = distribution_name == "polar_lattice";
+  params.lattice_spacing = 0.0;
+  if (params.polar_lattice) {
+    if (params.height != 0.0 || params.sigma_z != 0.0) {
+      throw std::invalid_argument("beam_distribution polar_lattice is a flat disk: it needs beam_cylinder_height 0 "
+                                  "and beam_sigma_z 0");
+    }
+    auto [spacing_val, spacing_unit] = split_value_and_unit(get_required(config, "beam_lattice_spacing"));
+    params.lattice_spacing = spacing_val * convert_unit_to_number(spacing_unit, config);
+    if (!(params.lattice_spacing > 0.0)) {
+      throw std::invalid_argument("beam_lattice_spacing must be > 0");
+    }
+  }
 
   return params;
 }

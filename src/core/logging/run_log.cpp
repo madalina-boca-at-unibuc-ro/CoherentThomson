@@ -146,6 +146,15 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   if (beam.radius_from_lg_table) {
     file << "  (cylinder radius from the LG (p, |l|) table: beam_cylinder_radius < 0)\n";
   }
+  if (beam.polar_lattice) {
+    auto [rings, spacing] = IoUtils::polar_lattice_geometry(beam.radius, beam.lattice_spacing);
+    file << "  distribution                polar_lattice (equal-area rings; beam_particle_count ignored), " << rings
+         << " rings\n";
+    write_kv(file, "lattice spacing", spacing, lambda_au);
+    write_kv(file, "requested spacing", beam.lattice_spacing, lambda_au);
+  } else {
+    file << "  distribution                random\n";
+  }
   write_kv(file, "cylinder height", beam.height, lambda_au);
   write_kv(file, "sigma_z", beam.sigma_z, lambda_au);
   write_kv(file, "center_x", beam.center_x, lambda_au);

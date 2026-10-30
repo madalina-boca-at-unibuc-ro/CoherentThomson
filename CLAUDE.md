@@ -61,10 +61,11 @@ caps a session at 1 h; other `srun` variants, e.g. `--exclusive`, are in `theory
   that. Claude's shell may be on the head node even while the user's terminal is in a job (check `hostname`), so
   don't build there for a compute-node run.
 - `num_threads 0` follows the job's allocation (the affinity mask), not the node's 256 CPUs.
-- Partition time limits: `debug` 1 h, `interactive` 4 h, `cpu-wide` 1 day (others in `theory/srun.txt`). Long
-  interactive runs go inside a `tmux` session on the head node (`srun ... --pty bash` started *within* tmux), so a
-  dropped connection doesn't kill the job; the step-by-step recipe and how to check a detached run are in
-  `theory/srun.txt`. `radiation_field.dat` and `run_log.txt` appear only when the run ends.
+- Partition time limits: `debug` 1 h, `interactive` 4 h, `cpu-wide` 1 day (others in `theory/srun.txt`).
+- A job dies with the terminal holding its `srun`, so long runs start `srun ... --pty bash` *inside* a `tmux`
+  session on the head node; never `exit` inside that tmux, which ends the job. The step-by-step recipe and how to
+  check a detached run are in `theory/srun.txt`. `radiation_field.dat` and `run_log.txt` appear only when the run
+  ends.
 
 ## Commands
 
@@ -121,8 +122,11 @@ default config) and drop `beam_particle_count` to e.g. `50`; run time scales wit
   `a0 = 0.1`). Their LG `p`/`l`, beam radius (fixed or table, `< 0`) and screen size are switched between
   experiments, and their header comments lag behind those switches: read the keys themselves (or the run's
   `run_log.txt`), not the header.
-- `config/expansion_a0_scan/`, `config/expansion_a0_scan_wide/`: generated `config_expansion` variants for the
-  `a0` scan of the LG mode purity, named `config_expansion_p<p>l<l>_a0_<a0>_R<R_max>.cfg`.
+- `config/expansion_a0_scan{,_wide,_server}/`: generated `config_expansion` variants for LG-mode-purity scans
+  over `a0` (Gaussian pulse, `long_distance_direct_approx`), named `config_expansion_p<p>l<l>_a0_<a0>_R<R_max>.cfg`.
+  `expansion_a0_scan_server/` has a `README.md` (running, per-run processing commands, the bounded `--z0` list
+  for `lg_decomposition.py`, results) and `run_batch.sh`, which builds `--clean-first` on the node and runs its
+  configs in sequence, logging the config → run-folder mapping to `~/output/a0_scan_server_logs/index.txt`.
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols, 2-space indent). **There is no test suite**
 and no enforced lint command.
@@ -230,8 +234,11 @@ rectangular/circular detectors) instead of `radiation_field.dat`. For `mu > nu` 
 - The detector has its own direction (`detector_direction_theta/phi`, default `(0,0)` = forward).
 - The beam cylinder's axis follows the mean momentum (`average_px/py/pz`), not Oz. `beam_center_x/y/z` are applied
   **before** that rotation, so `beam_center_z` moves along the direction of motion.
-- Electron positions are independent random draws (no lattice). `beam_sigma_z` (required) adds an unclipped Gaussian
-  displacement to the uniform z, smoothing the cylinder's sharp ends whose `sinc` form factor otherwise leaves a
+- Electron positions are independent random draws by default. `beam_distribution polar_lattice` (optional key,
+  default `random`; flat disk only, with `beam_lattice_spacing`) places deterministic equal-area rings instead,
+  ignoring `beam_particle_count`: no sampling speckle and far fewer electrons for coherent-field tests
+  (`theory/future_dev/coherent_incoherent_decomposition.md`; `run_log.txt` prints the actual spacing).
+- `beam_sigma_z` (required) adds an unclipped Gaussian displacement to the uniform z, smoothing the cylinder's sharp ends whose `sinc` form factor otherwise leaves a
   large coherent term at `N ~ 1e5–1e6` (`theory/gaussian_smoothed_electron_cylinder.md`). At `0` the Gaussian draw is
   skipped, so the beam (and every output) is byte-identical to the plain cylinder. With a fixed `random_seed`, a
   smaller `beam_particle_count` gives the first electrons of a larger one, so use different seeds for independent
@@ -318,7 +325,7 @@ modes follow `theory/long_distance_direct_simplified_coding_guide.md` (reviewed 
 Flat `key value [unit]` lines. `IoUtils::convert_unit_to_number` resolves units (`lambda`, `pi`, `mc`,
 `cycles_adim`, `omega_laser`, `w0`, `a.u.`, ...); check it before adding a unit.
 - **An unrecognized unit only warns** and assumes `1.0`, so a typo fails silently.
-- Keys are required (`get_required`) except `require_clean_build`.
+- Keys are required (`get_required`) except `require_clean_build` and `beam_distribution`.
 - **A key with a blank value is dropped**, so reading it throws `std::out_of_range` (`IoUtils::get_required`
   names the missing key; a bare `config.at(...)` doesn't).
 - `w0` is valid only with `laser_type=laguerre_gauss`.

@@ -49,7 +49,17 @@ computed directly.
 
 ## 3. The three steps
 
-1. **Flat disk:** F_coh from regularly placed nodes, equal-weight hexagonal or polar rings (the C++ sums electrons
+1. **Flat disk** (**implemented 2026-10-30**: `beam_distribution polar_lattice` with `beam_lattice_spacing`, rings
+   at `r_j = j d` with `round(2πj)` equally spaced nodes, `(J + ½) d = R`; `IoUtils::polar_lattice_geometry`).
+   Validated on the rest setup (`ponderomotive_lens.md`, Results):
+   - the random beam is unchanged byte for byte;
+   - spacing 2.44 λ (1321 electrons, 39 s on 256 CPUs) against 1.22 λ: the screen field changes by
+     6e-3 (N = 1) and 9e-3 (N = 2) in amplitude, and the scale follows the electron count to 0.2%;
+   - against the random 65536-electron run (1601 s): residual power 1.1e-3 (N = 1) and 6.8e-3 (N = 2), that run's
+     speckle;
+   - power at other `l`: 1e-7 (N = 1) and 1e-4 (N = 2), against 7e-4 and 6e-3 for the random run.
+
+   The plan: F_coh from regularly placed nodes, equal-weight hexagonal or polar rings (the C++ sums electrons
    without weights). Spacing: grating orders at `θ = λ_s/d` must fall outside the screen, `d < λ_s/(2θ_max)` (≈ 11 λ
    for the (0,0) run), and the amplitude and dressing phase must be sampled, `d ≲ w0/5` (≈ 5 λ). That gives
    `N ≈ π R_b²/d² ≈ 300` instead of 28,000–65,000, with no speckle. Convergence: stability under halving d. Polar
