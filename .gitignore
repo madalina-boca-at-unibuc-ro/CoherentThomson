@@ -17,3 +17,5 @@ CoherentThomson.code-workspace
 # Simulation run outputs (output_folder in config points outside the repo by
 # default, but ignore a local one too in case that ever changes)
 output/
+
+AGENTS.md
