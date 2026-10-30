@@ -40,6 +40,13 @@ every machine). Python scripts in `py_scripts/` plot those outputs.
   code. A pure Gaussian (`laser_flat_duration 0`) removes it. The LG laser's on-axis field is √2 × the plane wave's at
   the same `a0`. Both: `theory/future_dev/pulse_envelope_and_lg_normalization.md`. Findings and plans not yet acted on
   (cost and minimal parameters, `trajectory_NT`, coherent/incoherent decomposition): `theory/future_dev/README.md`.
+- **Ponderomotive dressing acts as a lens** (electrons at rest; `theory/future_dev/ponderomotive_lens.md`): each
+  electron drifts along the laser ∝ its local `⟨a²⟩`, so the disk dents and the emission picks up a radial phase
+  `∝ N·a0²·n_cyc`. That phase doesn't vanish as `Z → ∞`. This explains why the field at `N ≥ 2` (and at `N = 1` for
+  larger `a0`) isn't a single LG mode. With a per-electron dressing factor `d_N(r)` on the source, `lg_decomposition.py`'s
+  coherent-source prediction reaches fidelity 0.9999/0.998 (N = 1/2) at `a0 = 0.1` with no free parameter (test 1).
+  Tests 2–4 are still open. Test configs are in `theory/future_dev/tests/ponderomotive_lens/` and write to
+  `~/output_tests/ponderomotive_lens/`, not `~/output/`.
 
 ## Machines
 
@@ -122,11 +129,17 @@ default config) and drop `beam_particle_count` to e.g. `50`; run time scales wit
   `a0 = 0.1`). Their LG `p`/`l`, beam radius (fixed or table, `< 0`) and screen size are switched between
   experiments, and their header comments lag behind those switches: read the keys themselves (or the run's
   `run_log.txt`), not the header.
-- `config/expansion_a0_scan{,_wide,_server}/`: generated `config_expansion` variants for LG-mode-purity scans
+- `config/expansion_a0_scan{_wide,_server}/`: generated `config_expansion` variants for LG-mode-purity scans
   over `a0` (Gaussian pulse, `long_distance_direct_approx`), named `config_expansion_p<p>l<l>_a0_<a0>_R<R_max>.cfg`.
+  The first-pass R10/R20 set (`config/expansion_a0_scan/`) was removed after commit `aa12078`; get it from there.
   `expansion_a0_scan_server/` has a `README.md` (running, per-run processing commands, the bounded `--z0` list
   for `lg_decomposition.py`, results) and `run_batch.sh`, which builds `--clean-first` on the node and runs its
   configs in sequence, logging the config → run-folder mapping to `~/output/a0_scan_server_logs/index.txt`.
+- `theory/scientific_report/`: the 2026-10-29 progress report for the group (`progress_report.md`, plus an A5 PDF
+  for reading on phones). Its `README.md` maps report labels A–D to run folders and has the wider `--w0`/`--z0`
+  lists used for those runs. It also has the commands for rebuilding the figures (`make_figures.py`,
+  `make_lens_figure.py`; both read run folders under `~/output*/`) and the PDF (pandoc + `tectonic`). If a result
+  quoted there changes, update the report too.
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols, 2-space indent). **There is no test suite**
 and no enforced lint command.
@@ -180,7 +193,8 @@ python3 py_scripts/radiation/lg_decomposition.py [run_folder] [--incident] [--p-
                                                    # reference.md; history: ..._implementation.md); --self-test needs
                                                    # no run. Writes lg_decomposition.dat + run_log. Electrons
                                                    # at rest: also a parameter-free coherent-source prediction
-                                                   # (fidelity), the test for N >= 2, which isn't one LG mode
+                                                   # (fidelity), the test for N >= 2, which isn't one LG mode;
+                                                   # reported twice, without and with the dressing factor d_N
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>  # spherical only
 python3 py_scripts/radiation/plot_observables.py [--incident] [run_folder]   # rectangular/circular facing ±Oz only
                                                                              # (--incident: any laser direction)
