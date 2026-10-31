@@ -11,10 +11,12 @@ carried by each harmonic. We then ask how close each harmonic is to a single LG 
 
 The report has two parts, the first two steps of the plan for the electron beam:
 
-- **Part I (Sec. 1–4): a flat electron disk**, the ideal, fully coherent case. The results come from four
+- **Part I (Sec. 1–5): a flat electron disk**, the ideal, fully coherent case. The results come from four
   simulations: a Gaussian laser ($\mathrm{LG}_0^0$) and an $\mathrm{LG}_2^2$ laser, each at two field strengths. A
   second set of tests, with electrons at rest, explains the lens-like effect the emitted beams show (Sec. 4.4).
-- **Part II (Sec. 5): a Gaussian bunch length**, which shows how coherence is lost. The disk is given a
+  Sec. 5 repeats the four simulations with the electrons on a regular lattice instead of at random, which removes
+  the sampling noise.
+- **Part II (Sec. 6): a Gaussian bunch length**, which shows how coherence is lost. The disk is given a
   thickness, and we check how the field of Part I changes.
 
 The third step, a bunch with ponderomotive microbunching that regains some of the coherence, is still to come.
@@ -44,11 +46,13 @@ The four runs:
 trajectories. The coherent field is a sum over the electrons, in effect an integral of the single-electron field
 over the disk. When the simulated electrons are placed at random, as in runs A–D, the sum also contains an artificial
 incoherent part. The random positions leave a speckle background whose relative power is of order (number of modes
-the screen resolves)/(number of simulated electrons): here 0.1–1% of the power, spread over all $l$, and larger at
-$N = 2$. A real bunch has $10^3$–$10^5$ times more electrons, so its own background is that much weaker. The speckle
-is therefore a sampling artefact, not physics.
+the screen resolves)/(number of simulated electrons), spread over all $l$. Measured against the lattice runs of
+Sec. 5, it is 0.2–1.4% of the power at $N = 1$ and 3–10% at $N = 2$ in runs A–D. A real bunch has $10^3$–$10^5$
+times more electrons, so its own background is that much weaker. The speckle is therefore a sampling artefact, not
+physics.
 
-For the tests of Sec. 4.4 we place the electrons on a regular lattice instead. There is one electron at the centre,
+For the tests of Sec. 4.4 and the repeat of runs A–D in Sec. 5 we place the electrons on a regular lattice
+instead. There is one electron at the centre,
 and concentric rings with the same spacing $d$ in radius and along each ring, so every electron stands for the same
 area. This turns the sum into a quadrature of the integral rather than a random sample, so it has no speckle. It is
 accurate when two conditions hold:
@@ -245,7 +249,8 @@ Angular momentum per photon, integrated over the screen (units of $\hbar$):
 - Every emitted photon has spin exactly $-1$: all harmonics are circularly polarized with a single helicity. The other
   helicity carries $\sim 10^{-12}$ of the power.
 - The orbital angular momentum agrees with $N(m+\sigma) - \sigma$ to 1–4%. The $\mathrm{LG}_2^2$, $a_0 = 0.2$
-  harmonics (run D) deviate most, and part of that is the screen clipping the beam (Section 4).
+  harmonics (run D) deviate most. On the lattice (Sec. 5) every value agrees to $10^{-4}$: the deviations are
+  sampling noise.
 - The second harmonic of a Gaussian laser carries one unit of orbital angular momentum, converted from the laser's
   spin.
 
@@ -404,7 +409,7 @@ where:
 
 The phase of $d_N$ is the delay. Its magnitude drops below 1 where the electron's redshifted frequency differs from
 the $\omega$ we evaluate at. That $\omega$ is resonant on a ring at $r \approx 0.6\,w_0$, not on the axis, because the
-LG mode's on-axis field is $\sqrt2$ times the plane-wave value used for $\omega$ (Sec. 6).
+LG mode's on-axis field is $\sqrt2$ times the plane-wave value used for $\omega$ (Sec. 7).
 
 For electrons at rest the emitted field can then be predicted without any free parameter. The source of harmonic $N$
 is the laser mode to the $N$-th power, times $d_N(r)$, over the disk. We propagate it to the screen (Fresnel
@@ -461,11 +466,93 @@ What the test shows:
 Runs A–D have moving electrons, which are slowed down rather than pushed forward, but the mechanism is the same.
 Extending the model to a moving beam, through the Doppler mapping of the source, is the next step.
 
+# 5. Lattice versus random sampling
+
+Runs A–D place 65\ 536 electrons at random on the disk, and their fields carry the speckle described in Sec. 1. We
+repeated all four with the electrons on the lattice of Sec. 1 (spacing $d \approx 2.5\,\lambda_L$). Everything
+else is unchanged: laser, beam, screen and post-processing. The lattice needs 1\ 076 electrons for the
+$\mathrm{LG}_0^0$ disk and 3\ 319 for the larger $\mathrm{LG}_2^2$ disk, 60 and 20 times fewer, and a run takes
+40–110 s on 256 cores instead of 37 min. As a convergence check, run D was repeated with $d$ halved
+(13\ 070 electrons). The field changes by 0.4% ($N = 1$) and 1.8% ($N = 2$) in amplitude, that is, 0.002% and 0.03%
+of the power.
+
+## 5.1 The speckle of the random runs
+
+The two fields of each run are compared point by point on the screen: the lattice field $F_\mathrm{lat}$ is scaled
+by the best complex factor $c$ (close to the ratio of the electron numbers), and $\eta$ is the share of the random
+field's power that it does not explain:
+
+$$
+\eta = \frac{\|F_\mathrm{rand} - c\,F_\mathrm{lat}\|^2}{\|c\,F_\mathrm{lat}\|^2},
+$$
+
+summed over the screen and all six components of $F$.
+
+| Run | $\eta$ at $N = 1$ | $\eta$ at $N = 2$ |
+|---|---|---|
+| A: $\mathrm{LG}_0^0$, $a_0 = 0.1$ | 0.16% | 4.2% |
+| B: $\mathrm{LG}_0^0$, $a_0 = 0.2$ | 0.39% | 3.4% |
+| C: $\mathrm{LG}_2^2$, $a_0 = 0.1$ | 0.43% | 3.2% |
+| D: $\mathrm{LG}_2^2$, $a_0 = 0.2$ | 1.4% | 10% |
+
+$\eta$ is the speckle, the artificial incoherent part of the random runs. It is larger at $N = 2$ and on the larger
+screen of run D, which resolves more modes. For run B, the bunch-length test (Sec. 6) found the same values (0.3%
+and 3%) on a different random sample.
+
+![$F^{01}$ at $N = 2$, carrier removed as in Fig. 2, for runs A–D (rows): random sampling (left) and the lattice
+(right). The lattice removes the speckle background and leaves clean phase spirals out to the edge of the
+screen.](figures/fig9_lattice_vs_random_N2.jpg){height=80%}
+
+## 5.2 Angular momentum
+
+Orbital angular momentum per photon (units of $\hbar$; spin is $-1.000$ in every case):
+
+| Run | $N$ | random | lattice | expected $N(m+\sigma) - \sigma$ |
+|---|---|---|---|---|
+| A | 1 | $-0.0001$ | $0.0000$ | 0 |
+| | 2 | $-1.0139$ | $-1.0000$ | $-1$ |
+| B | 1 | $-0.0009$ | $0.0000$ | 0 |
+| | 2 | $-1.0215$ | $-0.9999$ | $-1$ |
+| C | 1 | $-1.9914$ | $-2.0000$ | $-2$ |
+| | 2 | $-4.9511$ | $-5.0000$ | $-5$ |
+| D | 1 | $-1.9627$ | $-2.0000$ | $-2$ |
+| | 2 | $-5.1955$ | $-5.0000$ | $-5$ |
+
+On the lattice, angular-momentum conservation holds to $1.3\times10^{-4}$ in every run. The 1–4% deviations of
+Sec. 3.4 were sampling noise, in run D as well.
+
+## 5.3 LG decomposition
+
+Same analysis as Sec. 4.3 ($E_-$), random → lattice:
+
+| Run | $N$ | $l$ purity | best mode | share | $w_0$ [$\lambda_L$] | $z_0$ [$10^5\,\lambda_L$] | all modes |
+|---|---|---|---|---|---|---|---|
+| A | 1 | 0.999 → 1.000 | $\mathrm{LG}_0^0$ | 0.994 → 0.995 | 21.4 | 5 | 1.01 → 1.01 |
+| | 2 | 0.972 → 1.000 | $\mathrm{LG}_0^{-1}$ | 0.905 → 0.945 | 10.6 | 5 | 0.94 → 0.97 |
+| B | 1 | 0.997 → 1.000 | $\mathrm{LG}_0^0$ | 0.915 → 0.923 | 8.7 | 3 | 0.99 → 1.00 |
+| | 2 | 0.968 → 1.000 | $\mathrm{LG}_0^{-1}$ | 0.800 → 0.830 | 4.0 | 2 | 0.94 → 0.97 |
+| C | 1 | 0.996 → 1.000 | $\mathrm{LG}_2^{-2}$ | 0.987 → 0.991 | 25.1 | 1 | 0.99 → 1.00 |
+| | 2 | 0.971 → 1.000 | $\mathrm{LG}_0^{-5}$ | 0.674 → 0.692 | 9.8 | 0 | 0.73 → 0.76 |
+| D | 1\* | 0.987 → 1.000 | $\mathrm{LG}_2^{-2}$ | 0.793 → 0.800 | 24.1 | 1 | 0.89 → 0.89 |
+| | 2 | 0.911 → 1.000 | $\mathrm{LG}_1^{-5}$ | 0.531 → 0.581 | 7.2 | 0 | 0.83 → 0.91 |
+
+Best mode, $w_0$ and $z_0$ are the same for both samplings. \*Under-resolved, as in Sec. 4.3.
+
+- **All the power is at the expected $l$** (purity above 0.9999). The 0.1–9% at other $l$ in Sec. 4.3 was speckle.
+- **The mode shares rise by the speckle fraction**, share$_\mathrm{lat} \approx$ share$_\mathrm{rand}\,(1 + \eta)$:
+  e.g. run D at $N = 2$, $0.531 \times 1.10 = 0.584$ against 0.581. The best mode, its waist and its waist position do
+  not change.
+- **The conclusions of Sec. 4.3 stand.** The Gaussian laser's harmonics are close to single LG modes (now 95–99.5% at
+  $a_0 = 0.1$), the lens at $a_0 = 0.2$ is unchanged, and the $\mathrm{LG}_2^2$ laser's $N = 2$ is not a single mode
+  (at most 69% in one mode). Run D's lower $N = 1$ share (0.80) is not sampling either; it remains under-resolved
+  on its screen.
+- **The lattice is the better method for these runs**: exact angular momentum, no speckle, and 20–60 times cheaper.
+
 # Part II: a Gaussian bunch length
 
-# 5. Loss of coherence in a bunch of finite length
+# 6. Loss of coherence in a bunch of finite length
 
-## 5.1 What we expect
+## 6.1 What we expect
 
 In Part I all electrons start in one plane. A real bunch also has a length. Take a Gaussian longitudinal
 distribution of r.m.s. length $\sigma$. As long as the bunch is much shorter than the laser's Rayleigh range
@@ -491,7 +578,7 @@ $$
 
 A test of this picture is whether the lens of Sec. 4.4 survives the bunch length unchanged.
 
-## 5.2 Setup
+## 6.2 Setup
 
 We repeat run B ($\mathrm{LG}_0^0$, $a_0 = 0.2$, $\gamma \approx 13.5$ head-on, screen radius $25\,w_0$), with the
 65 536 electrons spread along $z$ with a Gaussian of r.m.s. length $\sigma$. The lengths are chosen to give
@@ -505,7 +592,7 @@ For each run and harmonic we fit the field to the reference, $F_\sigma \approx c
 six components of $F$. The model predicts $c = \tilde\rho(q_N)$. The residual, divided by $1 - \tilde\rho^2$, is
 $\eta$, the incoherent power of the sample relative to its coherent power.
 
-## 5.3 Results
+## 6.3 Results
 
 | $q_1\sigma$ | $N$ | $q_N\sigma$ | $\tilde\rho$ | $\lvert c\rvert/\tilde\rho$ | $\arg c$ [rad] | $\eta$ |
 |---|---|---|---|---|---|---|
@@ -525,7 +612,7 @@ $\eta$, the incoherent power of the sample relative to its coherent power.
 ![The field of Part II ($F^{01}$, carrier removed as in Fig. 2) for the flat disk and two bunch lengths (rows), at
 $N = 1$ and $2$ (columns). At $N = 1$ the beam is unchanged, only weaker. At $N = 2$, $q_2\sigma = 2$ (bottom right),
 the coherent spiral is still on the axis at about 1/7 of its amplitude, and the incoherent speckle, of comparable
-size, covers the whole screen.](figures/fig9_bunch_length_field.jpg){height=80%}
+size, covers the whole screen.](figures/fig10_bunch_length_field.jpg){height=80%}
 
 **The lens survives.** LG decomposition of $E_-$ (Sec. 4), with the waist $w_0$ and waist position $z_0$ of the
 single LG beam that best matches the field:
@@ -547,7 +634,7 @@ single LG beam that best matches the field:
 - **Share and $l$ purity fall only through the added incoherent power.** Adding the incoherent part to the reference
   share predicts 0.765 ($q_2\sigma = 1$; measured 0.764) and about 0.29 ($q_2\sigma = 2$; measured 0.263).
 
-## 5.4 What this means for a real bunch
+## 6.4 What this means for a real bunch
 
 - **A Gaussian bunch length only multiplies the coherent field by $e^{-q_N^2\sigma^2/2}$** and adds an incoherent
   part. The ponderomotive lens, and everything else in the coherent field, is unchanged as long as the bunch is
@@ -563,19 +650,20 @@ single LG beam that best matches the field:
   separately, the coherent part from the form factor and the incoherent part from single-electron fields; that is
   planned.
 
-# 6. Limitations of these results
+# 7. Limitations of these results
 
 - One frequency per harmonic, the on-axis one. Electrons at different radii are dressed differently and emit at
   slightly different frequencies (Sec. 4.4); at one frequency this shows as the lens, but how the mode content changes
   across the emission line is not followed yet.
-- Runs A–D sample the electrons at random, so they carry a 0.1–1% speckle background (Sec. 1). The lattice removes
-  it; runs A–D have not yet been repeated with it.
+- Sec. 2–4 use runs A–D, which sample the electrons at random and carry a speckle background (0.2–1.4% of the
+  power at $N = 1$, 3–10% at $N = 2$). Sec. 5 repeats them on the lattice, without it; Part II is still random.
 - An idealized electron beam: no energy or angular spread. Part I uses a zero-thickness disk, fully coherent; Part
   II adds only a Gaussian length, tested at nanometre lengths, far shorter than real bunches.
 - In Part II the incoherent part is that of the 65 536 simulated electrons, too large by the ratio of real to
-  simulated electrons (Sec. 5.4). The bunch-length test uses the undressed $q_N$; the dressed value differs by
+  simulated electrons (Sec. 6.4). The bunch-length test uses the undressed $q_N$; the dressed value differs by
   $6\times10^{-5}$ relative, below what the test resolves.
 - With our LG normalization, the Gaussian mode's on-axis field is $\sqrt2$ times that of a plane wave with the same
   $a_0$, so "$a_0$" is not quite the peak field strength.
 - At $a_0 = 0.2$ the $\mathrm{LG}_2^2$, $N = 1$ beam is under-resolved on the $25\,w_0$ screen. A rerun on a smaller
-  screen would settle whether its lower mode share (0.79, against 0.99 at $a_0 = 0.1$) is physical.
+  screen would settle whether its lower mode share (0.79, against 0.99 at $a_0 = 0.1$) is physical. It is not
+  sampling: the lattice gives the same 0.80 (Sec. 5).

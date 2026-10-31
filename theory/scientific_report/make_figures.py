@@ -1,5 +1,5 @@
 """Builds the report's composite figures from the runs' PNGs (after their post-processing): figs. 1-7 from runs A-D,
-fig. 9 from the bunch-length runs (Part II).
+fig. 9 from runs A-D and their lattice reruns (Sec. 5), fig. 10 from the bunch-length runs (Part II).
 
 Run from this folder: python3 make_figures.py (the runs are in ~/output/progress_report_20261029/).
 """
@@ -11,6 +11,8 @@ OUT = 'figures'
 RUNS_DIR = '~/output/progress_report_20261029'
 RUNS = {'LG00_a0.1': 'runs_A-D/20261029_132340', 'LG22_a0.1': 'runs_A-D/20261029_140030',
         'LG00_a0.2': 'runs_A-D/20261029_143739', 'LG22_a0.2': 'runs_A-D/20261029_151457',
+        'LG00_a0.1_lat': 'runs_A-D_lattice/20261031_093730', 'LG22_a0.1_lat': 'runs_A-D_lattice/20261031_094054',
+        'LG00_a0.2_lat': 'runs_A-D_lattice/20261031_094539', 'LG22_a0.2_lat': 'runs_A-D_lattice/20261031_094906',
         # Part II: run B's setup on one transverse sample, Gaussian bunch length with q_1 sigma = 0 (ref), 0.5, 1
         'bunch_ref': 'bunch_length/20261030_143857', 'bunch_qs05': 'bunch_length/20261030_155222',
         'bunch_qs1': 'bunch_length/20261030_162911'}
@@ -72,4 +74,7 @@ all_runs('lg_w0_z0_map', 'fig7_lg_w0_z0_all_runs.jpg', 1100)
 grid([(case, N, 'field_F01_radial_phase') for case in ('bunch_ref', 'bunch_qs05', 'bunch_qs1') for N in (1, 2)],
      [f'{name}, N = {N}: q_N sigma = {N * qs:g}'  # ASCII: PIL's default font has no Greek
       for name, qs in (('flat disk', 0), ('sigma = 1.1 nm', 0.5), ('sigma = 2.2 nm', 1)) for N in (1, 2)], 2, 1100,
-     'fig9_bunch_length_field.jpg')
+     'fig10_bunch_length_field.jpg')
+grid([(case + suffix, 2, 'field_F01_radial_phase') for case, _ in CASES for suffix in ('', '_lat')],
+     [f'{label}: {name}, {kind}' for label, (_, name) in zip('ABCD', CASES) for kind in ('random', 'lattice')], 2, 1100,
+     'fig9_lattice_vs_random_N2.jpg')

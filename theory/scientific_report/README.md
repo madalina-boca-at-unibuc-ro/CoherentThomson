@@ -1,18 +1,19 @@
-# Scientific report (progress report, 2026-10-29; Part II added 2026-10-31)
+# Scientific report (progress report, 2026-10-29; Sec. 5 and Part II added 2026-10-31)
 
 `progress_report.md` is the report for the group; `progress_report.pdf` is the version to send (A5 pages, readable on
 a phone). Notes for rebuilding it:
 
 ## Runs and configs
 
-Every run the report quotes is in `~/output/progress_report_20261029/` (moved there on 2026-10-31 from `~/output/`
-and `~/output_tests/{ponderomotive_lens,bunch_length}/`; run folder names unchanged), in four groups. The configs
-are copied into [configs/](configs/) with the same groups; each is byte-identical to the run's own `config.cfg` and
+Every run the report quotes is in `~/output/progress_report_20261029/`, in five groups: moved there on 2026-10-31
+from `~/output/` and `~/output_tests/{ponderomotive_lens,bunch_length}/` (run folder names unchanged), or written
+there directly (`runs_A-D_lattice/`). The configs are in [configs/](configs/) with the same groups; each is
+byte-identical to the run's own `config.cfg` and, except for `runs_A-D_lattice/`,
 to the original in `config/expansion_a0_scan_server/` or `theory/future_dev/tests/{ponderomotive_lens,bunch_length}/`.
 The output folder's `README.md` repeats this manifest with the batch logs, and its `SHA256SUMS` covers the outputs.
 
-The Part I builds were dirty; each of those run folders' `source.patch` applies to the recorded commit. The Part II
-builds are clean.
+Except for Part II, the builds were dirty; each of those run folders' `source.patch` applies to the recorded commit.
+The Part II builds are clean.
 
 **`runs_A-D/`**: Sections 1–4.3, Figs. 1–7. Commit `5176781` (dirty only in `CLAUDE.md`), job 30438 on
 `hpc-node02`, 65536 electrons, ~37 min each on 256 CPUs.
@@ -47,7 +48,25 @@ code (later `465c0bd`), job 30462.
 
 Results and discussion of both lens groups: `theory/future_dev/ponderomotive_lens.md` (Results).
 
-**`bunch_length/`**: Part II (Sec. 5, Fig. 9). Run B's config with a Gaussian bunch length `beam_sigma_z`, all four
+**`runs_A-D_lattice/`**: Sec. 5, Fig. 9. Runs A–D with `beam_distribution polar_lattice`, `beam_lattice_spacing
+2.5 lambda` (configs written for this, not copies: only those two keys and `output_folder` differ from A–D), plus D
+with the spacing halved. Commit `196223e` (dirty only by the then-untracked configs and scripts), Slurm job 30467 on
+`hpc-node02`, written directly to this folder by `configs/runs_A-D_lattice/run_batch.sh` (build, runs and the
+post-processing below).
+
+| Label | Case | Run | Electrons | Config (`configs/runs_A-D_lattice/`) |
+|---|---|---|---|---|
+| A | LG(0,0), a0 = 0.1 | `20261031_093730` | 1076 | `config_expansion_p0l0_a0_01_R15_lattice.cfg` |
+| B | LG(0,0), a0 = 0.2 | `20261031_094539` | 1076 | `config_expansion_p0l0_a0_02_R25_lattice.cfg` |
+| C | LG(2,2), a0 = 0.1 | `20261031_094054` | 3319 | `config_expansion_p2l2_a0_01_R15_lattice.cfg` |
+| D | LG(2,2), a0 = 0.2 | `20261031_094906` | 3319 | `config_expansion_p2l2_a0_02_R25_lattice.cfg` |
+| D, spacing halved | | `20261031_095357` | 13070 | `config_expansion_p2l2_a0_02_R25_lattice_fine.cfg` |
+
+Sec. 5's numbers: `python3 compare_lattice_random.py` (speckle η, lattice convergence, orbital angular momentum with
+more digits) and `python3 summarize_runs.py <run> ...` (the Sec. 3.4 / 4.3 rows of any run; it reproduces the A–D
+tables).
+
+**`bunch_length/`**: Part II (Sec. 6, Fig. 10). Run B's config with a Gaussian bunch length `beam_sigma_z`, all four
 on one transverse sample. Commit `088b7ad` (clean), `hpc-node02`, ~37 min each. Logs and the config → run index:
 `logs/bunch_length/` in the output folder.
 
@@ -58,14 +77,14 @@ on one transverse sample. Commit `088b7ad` (clean), `hpc-node02`, ~37 min each. 
 | q₁σ = 0.5 (σ = 1.1 nm) | `20261030_155222` | `p0l0_a0_02_R25_sigma_qs05.cfg` |
 | q₁σ = 1 (σ = 2.2 nm) | `20261030_162911` | `p0l0_a0_02_R25_sigma_qs1.cfg` |
 
-The Sec. 5.3 amplitude table is the output of `theory/future_dev/tests/bunch_length/compare_bunch_length.py` (no
+The Sec. 6.3 amplitude table is the output of `theory/future_dev/tests/bunch_length/compare_bunch_length.py` (no
 arguments; it finds the runs here). The lens table comes from each run's `run_log.txt` (`lg_decomposition.py` with
 a bounded `--z0` list). Full analysis: `theory/future_dev/tests/bunch_length/README.md`.
 
 ## Post-processing
 
-Runs A–D: as in `config/expansion_a0_scan_server/README.md`, except that `lg_decomposition.py` was run with a wider
-w0 list (the default range missed run D's N = 1 optimum):
+Runs A–D and their lattice reruns: as in `config/expansion_a0_scan_server/README.md`, except that
+`lg_decomposition.py` was run with a wider w0 list (the default range missed run D's N = 1 optimum):
 
 ```
 W0=$(python3 -c "import numpy as np; print(','.join(f'{v:.4g}' for v in np.geomspace(1.5,75,101)))")
@@ -75,8 +94,9 @@ python3 py_scripts/radiation/lg_decomposition.py <run> --w0=$W0 --z0=$Z0 --z0-un
 
 ## Figures
 
-`python3 make_figures.py` (in this folder) rebuilds `figures/fig1`–`fig7` from the PNGs of runs A–D and `fig9` from
-those of the bunch-length runs (all under `~/output/progress_report_20261029/`).
+`python3 make_figures.py` (in this folder) rebuilds `figures/fig1`–`fig7` from the PNGs of runs A–D, `fig9` from
+those and the lattice reruns, and `fig10` from those of the bunch-length runs (all under
+`~/output/progress_report_20261029/`).
 
 `python3 make_lens_figure.py` builds Fig. 8 (Sec. 4.4) directly from `lens_gaussian_pulse/20261030_111559`.
 
