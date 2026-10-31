@@ -91,8 +91,8 @@ The 2026-10-27 runs are not on the server, so the Verification 6 setup was rerun
 - backscatter screen at 2e4 λ, `R_max = 40 w0`;
 - 256 × 64 screen points, `trajectory_NT 100`.
 
-Configs are in `tests/ponderomotive_lens/`; output is in `~/output_tests/ponderomotive_lens/`. All runs used one
-exclusive node (job 30462).
+Configs are in `tests/ponderomotive_lens/`; output is in `~/output/progress_report_20261029/lattice_check_flat_top/`
+(moved there with the report's other runs). All runs used one exclusive node (job 30462).
 
 | Run | Beam | `a0` | Time (256 CPUs) |
 |---|---|---|---|
@@ -149,7 +149,8 @@ unavoidable CEP-like effects), so the test was repeated with the laser of the se
 - electrons at rest, polar lattice;
 - screen at 800 w0, `R_max` 40 w0 (60 w0 at `a0 = 0.2`), 256 × 64 points.
 
-Configs: `tests/ponderomotive_lens/gaussian_lattice_*.cfg`. Job 30464, 78 s per run (1076 electrons).
+Configs: `tests/ponderomotive_lens/gaussian_lattice_*.cfg`. Job 30464, 78 s per run (1076 electrons). Output:
+`~/output/progress_report_20261029/lens_gaussian_pulse/`.
 
 | Run | `a0` | N = 1: without → with `d_N` | N = 2: without → with `d_N` |
 |---|---|---|---|

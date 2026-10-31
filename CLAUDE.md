@@ -86,8 +86,12 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   header comments lag behind the keys: read the keys (or the run's `run_log.txt`).
 - `config/expansion_a0_scan_server/`: `a0` scan for LG-mode purity; its `README.md` covers running (`run_batch.sh`),
   processing and results. `expansion_a0_scan_wide/` holds one config. The removed R10/R20 set is in commit `aa12078`.
-- `theory/scientific_report/`: the 2026-10-29 group progress report; its `README.md` maps results to run folders and
-  rebuilds figures/PDF. If a quoted result changes, update the report.
+- `theory/scientific_report/`: the 2026-10-29 group progress report; its `README.md` maps every quoted result to a
+  run and a config (`configs/`, frozen copies) and rebuilds figures/PDF. Its runs live in
+  `~/output/progress_report_20261029/` (manifest, logs, `SHA256SUMS`). If a quoted result changes, update the report.
+- `theory/future_dev/tests/`: test inputs for the future-dev plans, all writing to `~/output_tests/...`:
+  `one_electron_on_axis{,_spectrum}.cfg` (seconds per run), `nt_scan.py` (`trajectory_NT` convergence, runs the
+  binary itself, ~3 min), and `bunch_length/`, `ponderomotive_lens/` (each with configs and a `README.md`).
 
 Formatting: `clang-format -i` on touched files (Google style, 120 cols). **No test suite**, no lint command.
 
@@ -102,6 +106,8 @@ Formatting: `clang-format -i` on touched files (Google style, 120 cols). **No te
 ### Plotting
 
 Every script plots the latest run by default; the optional trailing argument is a **run folder**, not a `.dat`.
+"Latest" is looked up under `config/config.cfg`'s `output_folder` (`run_output_utils.py`), whatever config made the
+run: for a run under `~/output_tests/` or another folder, pass the run folder explicitly.
 PNGs go to `<run>/png_folder/<module>/` (`MODULE_NAME` comes from the script's folder; don't hardcode it).
 `plot_observables.py`, `plot_point_spectrum_observables.py` and `lg_decomposition.py` also **write** their own
 sections into `run_log.txt`. Conventions and internals: `py_scripts/PLOTTING_NOTES.md`.

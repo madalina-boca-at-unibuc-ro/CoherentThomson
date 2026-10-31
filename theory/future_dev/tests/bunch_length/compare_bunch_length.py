@@ -8,7 +8,10 @@ For each sigma > 0 run and harmonic N, against the near-zero-sigma reference on 
 F is the total (LR + SR + BR) Faraday tensor, the six independent components; the circular screen is equal-area,
 so every point has the same weight.
 
-Usage: python3 compare_bunch_length.py [index.txt]   (default ~/output_tests/bunch_length/logs/index.txt)
+Usage: python3 compare_bunch_length.py [index.txt [runs_dir]]
+  defaults: ~/output/progress_report_20261029/logs/bunch_length/index.txt and .../progress_report_20261029/bunch_length;
+  the index records the runs' original paths (~/output_tests/bunch_length/<run>), so a run that has moved is looked up
+  by its folder name in runs_dir.
 """
 
 import re
@@ -17,15 +20,17 @@ from pathlib import Path
 
 import numpy as np
 
+REPORT = Path.home() / "output/progress_report_20261029"
 PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
 
 
-def read_runs(index_path):
+def read_runs(index_path, runs_dir):
   runs = {}
   for line in Path(index_path).read_text().splitlines():
     m = re.search(r"END\s+(\S+)\s+rc=0\s+run=(\S+)", line)
     if m:
-      runs[m.group(1)] = Path(m.group(2))
+      run = Path(m.group(2))
+      runs[m.group(1)] = run if run.is_dir() else Path(runs_dir) / run.name
   return runs
 
 
@@ -69,8 +74,9 @@ def read_k1_over_kL(run):
 
 
 def main():
-  index = sys.argv[1] if len(sys.argv) > 1 else str(Path.home() / "output_tests/bunch_length/logs/index.txt")
-  runs = read_runs(index)
+  index = sys.argv[1] if len(sys.argv) > 1 else REPORT / "logs/bunch_length/index.txt"
+  runs_dir = sys.argv[2] if len(sys.argv) > 2 else REPORT / "bunch_length"
+  runs = read_runs(index, runs_dir)
   ref = runs.pop("ref")
   xy_ref = np.loadtxt(ref / "electron_beam_scatter.dat", skiprows=2)[:, :2]
   omega, F_ref = read_field(ref)

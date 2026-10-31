@@ -35,8 +35,10 @@ bash config/expansion_a0_scan_server/run_batch.sh
 
 It builds on that node (`--clean-first`, `-march=native`), then runs the four cases one after another, each on all
 CPUs of the allocation. Progress and the config → run-folder mapping go to `~/output/a0_scan_server_logs/index.txt`,
-with one solver log per config. Expected roughly 25–45 min per case on 256 cores (an extrapolation from `ad1`: each
-case is 16× an R10 run's electrons × screen points, and an R10 run took 13 min on 32 cores).
+with one solver log per config (the logs of the report's runs A–D are now in
+`~/output/progress_report_20261029/logs/a0_scan_server/`). Expected roughly 25–45 min per case on 256 cores (an
+extrapolation from `ad1`: each case is 16× an R10 run's electrons × screen points, and an R10 run took 13 min on 32
+cores).
 
 ## Processing each run
 

@@ -1,7 +1,7 @@
 ---
 title: Coherent nonlinear Thomson scattering of Laguerre–Gauss laser beams
 subtitle: Progress report
-date: 30 October 2026
+date: 31 October 2026
 ---
 
 We calculate the radiation emitted when an intense, circularly polarized Laguerre–Gauss (LG) laser pulse collides
@@ -9,9 +9,17 @@ head-on with a relativistic electron beam. The radiation of all electrons is add
 a detector screen far downstream. From this field we compute the energy and angular momentum (spin and orbital)
 carried by each harmonic. We then ask how close each harmonic is to a single LG mode, and with which waist.
 
-The results come from four simulations: a Gaussian laser ($\mathrm{LG}_0^0$) and an $\mathrm{LG}_2^2$ laser, each at
-two field strengths. A second set of tests, with electrons at rest, explains the lens-like effect the emitted beams
-show (Sec. 4.4).
+The report has two parts, the first two steps of the plan for the electron beam:
+
+- **Part I (Sec. 1–4): a flat electron disk**, the ideal, fully coherent case. The results come from four
+  simulations: a Gaussian laser ($\mathrm{LG}_0^0$) and an $\mathrm{LG}_2^2$ laser, each at two field strengths. A
+  second set of tests, with electrons at rest, explains the lens-like effect the emitted beams show (Sec. 4.4).
+- **Part II (Sec. 5): a Gaussian bunch length**, which shows how coherence is lost. The disk is given a
+  thickness, and we check how the field of Part I changes.
+
+The third step, a bunch with ponderomotive microbunching that regains some of the coherence, is still to come.
+
+# Part I: a flat electron disk
 
 # 1. Setup
 
@@ -396,7 +404,7 @@ where:
 
 The phase of $d_N$ is the delay. Its magnitude drops below 1 where the electron's redshifted frequency differs from
 the $\omega$ we evaluate at. That $\omega$ is resonant on a ring at $r \approx 0.6\,w_0$, not on the axis, because the
-LG mode's on-axis field is $\sqrt2$ times the plane-wave value used for $\omega$ (Sec. 5).
+LG mode's on-axis field is $\sqrt2$ times the plane-wave value used for $\omega$ (Sec. 6).
 
 For electrons at rest the emitted field can then be predicted without any free parameter. The source of harmonic $N$
 is the laser mode to the $N$-th power, times $d_N(r)$, over the disk. We propagate it to the screen (Fresnel
@@ -453,14 +461,120 @@ What the test shows:
 Runs A–D have moving electrons, which are slowed down rather than pushed forward, but the mechanism is the same.
 Extending the model to a moving beam, through the Doppler mapping of the source, is the next step.
 
-# 5. Limitations of these results
+# Part II: a Gaussian bunch length
+
+# 5. Loss of coherence in a bunch of finite length
+
+## 5.1 What we expect
+
+In Part I all electrons start in one plane. A real bunch also has a length. Take a Gaussian longitudinal
+distribution of r.m.s. length $\sigma$. As long as the bunch is much shorter than the laser's Rayleigh range
+($z_R \approx 2000\,\lambda_L$), an electron that starts a distance $z_0$ behind the disk meets the same laser field
+a little later, so it follows the same trajectory shifted in time. Its emitted field is then the disk electron's
+field times a phase:
+
+$$
+e(z_0) = e(0)\,e^{iq_Nz_0},\qquad q_N = N k_1 + k_L ,
+$$
+
+where $k_1 = \omega_1/c$ and $k_L$ is the laser wave number (head-on, on axis; across the screen, which spans
+$\sim 10^{-4}$ rad, $q_N$ is constant to $10^{-8}$). Averaging over $z_0$ gives the bunch form factor:
+
+$$
+F_\sigma = \tilde\rho(q_N)\,F_0 + R,\qquad \tilde\rho(q) = e^{-q^2\sigma^2/2}.
+$$
+
+- The **coherent field** keeps its shape (mode, waist, waist position, phase winding) and its amplitude falls by
+  $\tilde\rho$, so its power falls by $\tilde\rho^2$.
+- The rest, $R$, is **incoherent**: its power is $N\langle|e|^2\rangle\,(1-\tilde\rho^2)$, proportional to the
+  number of electrons $N$ rather than $N^2$.
+
+A test of this picture is whether the lens of Sec. 4.4 survives the bunch length unchanged.
+
+## 5.2 Setup
+
+We repeat run B ($\mathrm{LG}_0^0$, $a_0 = 0.2$, $\gamma \approx 13.5$ head-on, screen radius $25\,w_0$), with the
+65 536 electrons spread along $z$ with a Gaussian of r.m.s. length $\sigma$. The lengths are chosen to give
+$q_1\sigma = 0.25$, $0.5$ and $1$, that is $\sigma = 0.56$, $1.1$ and $2.2$ nm; at $N = 2$, $q_2\sigma$ is twice
+as large. A reference run with $\sigma \approx 0$ uses the same transverse positions, so the four runs can be
+compared point by point on the screen, without the speckle of Sec. 1 getting in the way. (The reference and run B
+are two different random samples of the same disk. They agree to within the speckle: mode share 0.919 against
+0.915 at $N = 1$, 0.808 against 0.800 at $N = 2$.)
+
+For each run and harmonic we fit the field to the reference, $F_\sigma \approx c\,F_0$, over the whole screen and all
+six components of $F$. The model predicts $c = \tilde\rho(q_N)$. The residual, divided by $1 - \tilde\rho^2$, is
+$\eta$, the incoherent power of the sample relative to its coherent power.
+
+## 5.3 Results
+
+| $q_1\sigma$ | $N$ | $q_N\sigma$ | $\tilde\rho$ | $\lvert c\rvert/\tilde\rho$ | $\arg c$ [rad] | $\eta$ |
+|---|---|---|---|---|---|---|
+| 0.25 | 1 | 0.25 | 0.969 | 0.9994 | 0.003 | 0.0029 |
+| | 2 | 0.50 | 0.883 | 0.997 | 0.008 | 0.030 |
+| 0.5 | 1 | 0.50 | 0.883 | 0.997 | 0.005 | 0.0031 |
+| | 2 | 1.00 | 0.607 | 0.989 | 0.014 | 0.033 |
+| 1 | 1 | 1.00 | 0.607 | 0.988 | 0.009 | 0.0036 |
+| | 2 | 2.00 | 0.136 | 0.935 | $-0.040$ | 0.034 |
+
+- **The coherent field falls as the form factor predicts**: $|c| = \tilde\rho$ to 1.2% up to $q\sigma = 1$. The
+  small remaining deviation depends only on $q\sigma$, the same at $N = 1$ and $N = 2$. It comes from the one random
+  draw of the $z$ positions, not from physics, and stays within the bound set by the incoherent part.
+- **The rest is the incoherent part**: $\eta$ is the same in all runs (0.3% at $N = 1$, 3% at $N = 2$), so the
+  residual grows exactly as $1 - \tilde\rho^2$.
+
+![The field of Part II ($F^{01}$, carrier removed as in Fig. 2) for the flat disk and two bunch lengths (rows), at
+$N = 1$ and $2$ (columns). At $N = 1$ the beam is unchanged, only weaker. At $N = 2$, $q_2\sigma = 2$ (bottom right),
+the coherent spiral is still on the axis at about 1/7 of its amplitude, and the incoherent speckle, of comparable
+size, covers the whole screen.](figures/fig9_bunch_length_field.jpg){height=80%}
+
+**The lens survives.** LG decomposition of $E_-$ (Sec. 4), with the waist $w_0$ and waist position $z_0$ of the
+single LG beam that best matches the field:
+
+| $q_1\sigma$ | $N$ | best mode | share | $l$ purity | $w_0$ [$\lambda_L$] | $z_0$ [$10^5\,\lambda_L$] | $\lvert a\rvert/\lvert a_\mathrm{ref}\rvert$ |
+|---|---|---|---|---|---|---|---|
+| 0 | 1 | $\mathrm{LG}_0^0$ | 0.919 | 0.998 | 8.55 | 2.81 | 1 |
+| 0.25 | 1 | $\mathrm{LG}_0^0$ | 0.920 | 0.997 | 8.56 | 2.81 | 0.969 |
+| 0.5 | 1 | $\mathrm{LG}_0^0$ | 0.921 | 0.997 | 8.56 | 2.81 | 0.882 |
+| 1 | 1 | $\mathrm{LG}_0^0$ | 0.917 | 0.991 | 8.57 | 2.78 | 0.601 |
+| 0 | 2 | $\mathrm{LG}_0^{-1}$ | 0.808 | 0.976 | 4.05 | 2.05 | 1 |
+| 0.25 | 2 | $\mathrm{LG}_0^{-1}$ | 0.802 | 0.967 | 4.02 | 2.06 | 0.880 |
+| 0.5 | 2 | $\mathrm{LG}_0^{-1}$ | 0.764 | 0.919 | 4.03 | 2.06 | 0.600 |
+| 1 | 2 | $\mathrm{LG}_0^{-1}$ | 0.263 | 0.331 | 4.04 | 2.06 | 0.126 |
+
+- **Same mode, same waist, same waist position.** Even at $q_2\sigma = 2$, where the coherent part holds only a third of
+  the power on the screen, $w_0$ moves by less than 1% and $z_0$ by about 1%. The mode amplitude scales by
+  $\tilde\rho$.
+- **Share and $l$ purity fall only through the added incoherent power.** Adding the incoherent part to the reference
+  share predicts 0.765 ($q_2\sigma = 1$; measured 0.764) and about 0.29 ($q_2\sigma = 2$; measured 0.263).
+
+## 5.4 What this means for a real bunch
+
+- **A Gaussian bunch length only multiplies the coherent field by $e^{-q_N^2\sigma^2/2}$** and adds an incoherent
+  part. The ponderomotive lens, and everything else in the coherent field, is unchanged as long as the bunch is
+  much shorter than $z_R$.
+- **Coherence needs $\sigma \lesssim 1/q_N \approx 2$ nm** at these XUV harmonics ($\lambda_1 \approx 14$ nm). Real
+  bunches are 3–30 $\lambda_L$ = 30–300 $\mu$m long, $q_1\sigma \sim 10^4$–$10^5$: their coherent emission at
+  these harmonics is zero for every practical purpose. That is why the third step, microbunching at the
+  emitted wavelength, matters.
+- **The incoherent part here belongs to the simulation, not to a real bunch.** The coherent power grows as $N^2$
+  and the incoherent as $N$, so $\eta$ is that of 65 536 electrons. A bunch of $10^8$–$10^{10}$ electrons has an
+  incoherent fraction $10^3$–$10^5$ times smaller at the same $\tilde\rho$. The drops in share and purity in the
+  table are therefore larger than a real bunch would show. To get both parts right, they must be computed
+  separately, the coherent part from the form factor and the incoherent part from single-electron fields; that is
+  planned.
+
+# 6. Limitations of these results
 
 - One frequency per harmonic, the on-axis one. Electrons at different radii are dressed differently and emit at
   slightly different frequencies (Sec. 4.4); at one frequency this shows as the lens, but how the mode content changes
   across the emission line is not followed yet.
 - Runs A–D sample the electrons at random, so they carry a 0.1–1% speckle background (Sec. 1). The lattice removes
   it; runs A–D have not yet been repeated with it.
-- An idealized electron beam: a zero-thickness disk with no energy or angular spread, fully coherent.
+- An idealized electron beam: no energy or angular spread. Part I uses a zero-thickness disk, fully coherent; Part
+  II adds only a Gaussian length, tested at nanometre lengths, far shorter than real bunches.
+- In Part II the incoherent part is that of the 65 536 simulated electrons, too large by the ratio of real to
+  simulated electrons (Sec. 5.4). The bunch-length test uses the undressed $q_N$; the dressed value differs by
+  $6\times10^{-5}$ relative, below what the test resolves.
 - With our LG normalization, the Gaussian mode's on-axis field is $\sqrt2$ times that of a plane wave with the same
   $a_0$, so "$a_0$" is not quite the peak field strength.
 - At $a_0 = 0.2$ the $\mathrm{LG}_2^2$, $N = 1$ beam is under-resolved on the $25\,w_0$ screen. A rerun on a smaller

@@ -1,5 +1,6 @@
 """Builds the report's ponderomotive-lens figure (fig8) from the lattice run at a0 = 0.1 with the report's pure
-Gaussian pulse, electrons at rest (~/output_tests/ponderomotive_lens/, theory/future_dev/ponderomotive_lens.md, Results).
+Gaussian pulse, electrons at rest (~/output/progress_report_20261029/lens_gaussian_pulse/,
+theory/future_dev/ponderomotive_lens.md, Results).
 
 Top: the dressing factor d_N(r) of one electron (amplitude, and phase relative to the axis). Then one row per
 harmonic: the azimuthally averaged |E_-|^2 on the screen and its wavefront phase (along phi = 0, with the phase of a
@@ -24,7 +25,7 @@ from plot_field import get_screen_coordinates, read_length
 from plot_observables import _get_E_total, _read_fundamental_frequency_au
 import pandas as pd
 
-RUN = os.path.expanduser('~/output_tests/ponderomotive_lens/20261030_111559')
+RUN = os.path.expanduser('~/output/progress_report_20261029/lens_gaussian_pulse/20261030_111559')
 OUT = 'figures/fig8_ponderomotive_lens.jpg'
 INK, MUTED = '#2b2b2b', '#8a8a85'
 BLUE, ORANGE = '#2a78d6', '#eb6834'      # categorical slots 1 and 2 (validated pair)

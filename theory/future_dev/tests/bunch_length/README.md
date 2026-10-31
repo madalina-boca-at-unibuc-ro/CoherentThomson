@@ -2,7 +2,8 @@
 
 Prepared 2026-10-30. Step 2 of `../../coherent_incoherent_decomposition.md`, as a numerical check: run B of the
 progress report (LG (0,0), a0 = 0.2, γ ≈ 13.5 head-on, R_max 25 w0, 65536 random electrons;
-`config/expansion_a0_scan_server/config_expansion_p0l0_a0_02_R25.cfg`, run `~/output/20261029_143739`) with a
+`config/expansion_a0_scan_server/config_expansion_p0l0_a0_02_R25.cfg`, run
+`~/output/progress_report_20261029/runs_A-D/20261029_143739`) with a
 Gaussian bunch length `beam_sigma_z` (zero-height cylinder, so z is a pure Gaussian).
 
 ## Expectation
@@ -56,8 +57,10 @@ Per harmonic N, over the screen (all six F components, or E_−):
 
 ## Results (2026-10-30)
 
-Runs on `hpc-node02`, commit `088b7ad` (clean), Release, ~37 min each; config → run in
-`~/output_tests/bunch_length/logs/index.txt`: ref `20261030_143857`, qs025 `_151536`, qs05 `_155222`, qs1 `_162911`.
+Runs on `hpc-node02`, commit `088b7ad` (clean), Release, ~37 min each: ref `20261030_143857`, qs025 `_151536`,
+qs05 `_155222`, qs1 `_162911`. They are Part II of the progress report and were moved (2026-10-31) to
+`~/output/progress_report_20261029/bunch_length/`, the logs to `.../logs/bunch_length/` (its `index.txt` keeps the
+original `~/output_tests/bunch_length/` paths; `compare_bunch_length.py` looks moved runs up by name).
 Transverse positions are identical across the four runs.
 
 **Amplitude law** (`compare_bunch_length.py` here; F total, six components; η = resid / (1 − ρ̃²)):
@@ -101,8 +104,9 @@ Transverse positions are identical across the four runs.
   speckle filling the screen, not a wider beam.
 - `radial_phase` maps: at q₂σ = 2 the same spiral is visible on axis at ~1/7 the reference amplitude, with speckle of
   comparable size over the whole screen.
-- The reference vs run B (`~/output/20261029_143739`, another transverse sample): N = 1 share 0.919 vs 0.915, series
-  z0 2.807e5 vs 2.815e5; N = 2 share 0.808 vs 0.800, z0 2.048e5 vs 2.029e5. They agree within speckle.
+- The reference vs run B (`~/output/progress_report_20261029/runs_A-D/20261029_143739`, another transverse
+  sample): N = 1 share 0.919 vs 0.915, series z0 2.807e5 vs 2.815e5; N = 2 share 0.808 vs 0.800, z0 2.048e5 vs
+  2.029e5. They agree within speckle.
 
 **Conclusion:** a Gaussian bunch length only multiplies the coherent field by `exp(−q_N²σ²/2)` and adds the
 incoherent remainder; the ponderomotive lens (mode, waist, waist position) is unaffected for σ ≪ z_R.
