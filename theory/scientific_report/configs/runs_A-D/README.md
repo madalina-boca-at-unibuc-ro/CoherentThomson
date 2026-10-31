@@ -1,5 +1,8 @@
 # a0 scan on the server: LG (0,0) and (2,2), a0 = 0.1 and 0.2
 
+Moved here on 2026-10-31 from `config/expansion_a0_scan_server/` (with `run_batch.sh`), next to the four configs
+it describes; the configs in `config/` were removed then.
+
 Prepared 2026-10-29 on `ad1` from a first pass with 8192 electrons on a 10 w0 screen (the "R10 runs", tables
 below). These four runs are for the progress report. a0 = 0.3 is left out: on the R10 screen it was clipped by 11–21%
 and its N = 2 had visibly larger sampling noise. The report just says a0 = 0.3 is expected to be worse (stronger
@@ -30,7 +33,7 @@ Inside a compute-node job (`theory/srun.txt`: `srun` inside `tmux` on the head n
 
 ```
 git pull
-bash config/expansion_a0_scan_server/run_batch.sh
+bash theory/scientific_report/configs/runs_A-D/run_batch.sh
 ```
 
 It builds on that node (`--clean-first`, `-march=native`), then runs the four cases one after another, each on all

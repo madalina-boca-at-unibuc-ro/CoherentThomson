@@ -75,9 +75,12 @@ Configs are flat `key value [unit]` text files covering detector geometry and di
 frequency/envelope/polarization/mode, beam particle count/geometry, initial momentum distribution, radiation
 formula and spectrum settings, and thread count. Provided configs:
 
-- `config/config.cfg`: the default, for current experiments.
+- `config/config.cfg`: the default, for current experiments (random electron positions).
+- `config/config_lattice.cfg`: the same with a polar-lattice beam (`beam_distribution polar_lattice`).
+- `config/config_spectrum.cfg`: a dense frequency scan at a single screen point.
 - `config/config_cross_check.cfg`: parameter-matched to the independent Python reference implementation.
-- `config/config_initial_momentum.cfg`.
+
+Configs of past production runs are kept with the results that used them (e.g. `theory/scientific_report/configs/`).
 
 `output_folder` is taken relative to `$HOME`, so the same config works on every machine the repo is checked out on.
 

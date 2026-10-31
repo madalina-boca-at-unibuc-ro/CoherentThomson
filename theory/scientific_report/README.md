@@ -9,7 +9,8 @@ Every run the report quotes is in `~/output/progress_report_20261029/`, in five 
 from `~/output/` and `~/output_tests/{ponderomotive_lens,bunch_length}/` (run folder names unchanged), or written
 there directly (`runs_A-D_lattice/`). The configs are in [configs/](configs/) with the same groups; each is
 byte-identical to the run's own `config.cfg` and, except for `runs_A-D_lattice/`,
-to the original in `config/expansion_a0_scan_server/` or `theory/future_dev/tests/{ponderomotive_lens,bunch_length}/`.
+to the original in `config/expansion_a0_scan_server/` (removed 2026-10-31; its README and `run_batch.sh` are now in
+`configs/runs_A-D/`) or `theory/future_dev/tests/{ponderomotive_lens,bunch_length}/`.
 The output folder's `README.md` repeats this manifest with the batch logs, and its `SHA256SUMS` covers the outputs.
 
 Except for Part II, the builds were dirty; each of those run folders' `source.patch` applies to the recorded commit.
@@ -83,7 +84,7 @@ a bounded `--z0` list). Full analysis: `theory/future_dev/tests/bunch_length/REA
 
 ## Post-processing
 
-Runs A–D and their lattice reruns: as in `config/expansion_a0_scan_server/README.md`, except that
+Runs A–D and their lattice reruns: as in [configs/runs_A-D/README.md](configs/runs_A-D/README.md), except that
 `lg_decomposition.py` was run with a wider w0 list (the default range missed run D's N = 1 optimum):
 
 ```

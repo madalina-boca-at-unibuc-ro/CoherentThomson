@@ -80,6 +80,9 @@ computed directly.
    coherent = `|b(q)|²` × the single-electron field. If the bunching comes from an energy modulation, momenta are
    correlated with z₀: sum over a few momentum slices, each with its own trajectory and form factor. The incoherent
    term is unchanged. All deterministic, a few hundred to a few thousand trajectories in total.
+   - **A 3D lattice will be needed** (decided 2026-10-31): the polar lattice extended along z, with a modulated
+     longitudinal density to represent the microbunching. `beam_distribution polar_lattice` is flat-disk only so far
+     (it throws unless `beam_cylinder_height 0`).
 
 Assumptions: electrons independent apart from their one-particle distribution (no space charge, no correlations
 beyond ρ); shot-averaged results; bunch length ≪ z_R.

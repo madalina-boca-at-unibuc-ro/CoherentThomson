@@ -144,7 +144,7 @@ Coherent-source prediction fidelity for `E_−`, without → with `d_N`:
 
 Flat-top pulses are no longer used for production (the derivative discontinuity at the plateau edges gives
 unavoidable CEP-like effects), so the test was repeated with the laser of the server a0-scan configs
-(`config/expansion_a0_scan_server/`): `laser_flat_duration 0`, `wing_sigma 25` cycles, cutoff 4,
+(`config/expansion_a0_scan_server/`, now `theory/scientific_report/configs/runs_A-D/`): `laser_flat_duration 0`, `wing_sigma 25` cycles, cutoff 4,
 `long_distance_direct_approx`, LG-table beam radius (1.86 w0). The other changes, as before:
 - electrons at rest, polar lattice;
 - screen at 800 w0, `R_max` 40 w0 (60 w0 at `a0 = 0.2`), 256 × 64 points.

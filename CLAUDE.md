@@ -77,17 +77,17 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
 
 **Iterating on code changes:** copy a config (don't edit `config/config.cfg` unless the task is about it) and drop
 `beam_particle_count` to e.g. `50`. Configs:
-- `config/config.cfg`: default, for current experiments; parameters change freely.
-- `config/config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`. Use it for every
-  C++-vs-Python comparison; update it when `INPUTS` change.
-- `config/config_spectrum.cfg`: `dense_frequency_spectrum true` on one screen point (`plot_point_spectrum*.py`).
-- `config/config_expansion*.cfg`: LG laser, large fine circular screen, for LG-mode decomposition
-  (`theory/LG_mode_decomposition.md`). `_rest*` = electrons at rest (65536 electrons, ~27 min on 256 CPUs). Their
-  header comments lag behind the keys: read the keys (or the run's `run_log.txt`).
-- `config/expansion_a0_scan_server/`: `a0` scan for LG-mode purity; its `README.md` covers running (`run_batch.sh`),
-  processing and results. `expansion_a0_scan_wide/` holds one config. The removed R10/R20 set is in commit `aa12078`.
+- `config/` holds only generic configs (old experiment configs removed 2026-10-31; they are in git history, and
+  those behind quoted results are frozen next to them, below):
+  - `config.cfg`: default (random beam), for current experiments; parameters change freely.
+  - `config_lattice.cfg`: `config.cfg` plus `beam_distribution polar_lattice` and `beam_lattice_spacing`; keep the
+    other keys in step with `config.cfg`.
+  - `config_spectrum.cfg`: `dense_frequency_spectrum true` on one screen point (`plot_point_spectrum*.py`).
+  - `config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`. Use it for every
+    C++-vs-Python comparison; update it when `INPUTS` change.
 - `theory/scientific_report/`: the 2026-10-29 group progress report; its `README.md` maps every quoted result to a
-  run and a config (`configs/`, frozen copies) and rebuilds figures/PDF. Its runs live in
+  run and a config (`configs/`, frozen copies; `configs/runs_A-D/README.md` is the a0-scan's running and
+  post-processing recipe, with `run_batch.sh`) and rebuilds figures/PDF. Its runs live in
   `~/output/progress_report_20261029/` (manifest, logs, `SHA256SUMS`). If a quoted result changes, update the report.
 - `theory/future_dev/tests/`: test inputs for the future-dev plans, all writing to `~/output_tests/...`:
   `one_electron_on_axis{,_spectrum}.cfg` (seconds per run), `nt_scan.py` (`trajectory_NT` convergence, runs the
@@ -153,7 +153,9 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
   `radiation_field.dat` is lab-frame components on the detector's local grid (mirrored `(x, −y)` facing −Oz).
 - The beam axis follows the mean momentum; `beam_center_x/y/z` apply **before** that rotation.
 - `beam_distribution polar_lattice` (with `beam_lattice_spacing`) places deterministic equal-area rings, ignoring
-  `beam_particle_count`: no speckle, far fewer electrons for coherent tests.
+  `beam_particle_count`: no speckle, far fewer electrons for coherent tests. Flat disk only (throws unless
+  `beam_cylinder_height 0`); a 3D lattice with a modulated z-density is planned for the microbunching step
+  (`theory/future_dev/coherent_incoherent_decomposition.md`).
 - `beam_sigma_z` smooths the cylinder ends with a Gaussian z displacement (`theory/gaussian_smoothed_electron_cylinder.md`);
   `0` is byte-identical to the plain cylinder. A fixed `random_seed` with fewer electrons gives the first electrons
   of a larger beam: use different seeds for independent samples.
