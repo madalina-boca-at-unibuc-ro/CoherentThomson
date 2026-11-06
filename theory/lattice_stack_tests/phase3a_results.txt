@@ -1,0 +1,82 @@
+=== Run A, a0 = 0.1, 1,076 sites per sheet, 16 x 8 screen, long_distance_direct_approx. Total charge fixed.
+
+--- Uniform control and b_1 stacks, 3 periods; Lambda_1 from the log: 1.376404e-03 lambda
+uniform zeta=0 S=14 P=3        N=1 pred +0.000000  c +0.000000-0.000000j  |c-pred| 1.1e-08  |c|^2 0.00000  resid(fit) 1.6e-08  resid(pred) 2.0e-08
+uniform zeta=0 S=14 P=3        N=2 pred +0.000000  c -0.000000+0.000000j  |c-pred| 5.6e-08  |c|^2 0.00000  resid(fit) 1.1e-07  resid(pred) 1.2e-07
+zeta=1 S=14 P=3                N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 1.9e-08  |c|^2 0.19364  resid(fit) 1.5e-08  resid(pred) 2.5e-08
+zeta=1 S=14 P=3                N=2 pred +0.352834+0.000000j  c +0.352834+0.000000j  |c-pred| 6.5e-08  |c|^2 0.12449  resid(fit) 1.5e-07  resid(pred) 1.6e-07
+zeta=1 S=28 P=3                N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 1.9e-08  |c|^2 0.19364  resid(fit) 1.5e-08  resid(pred) 2.5e-08
+zeta=1 S=28 P=3                N=2 pred +0.352834+0.000000j  c +0.352834+0.000000j  |c-pred| 6.1e-08  |c|^2 0.12449  resid(fit) 1.4e-07  resid(pred) 1.6e-07
+Grid change, |F(S=28) - F(S=14)| / |F_flat|: N=1: 2.2e-10, N=2: 3.3e-08
+
+--- One period: other zeta, and the phase origin
+zeta=1 S=14 P=1                N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 1.9e-08  |c|^2 0.19364  resid(fit) 1.5e-08  resid(pred) 2.5e-08
+zeta=1 S=14 P=1                N=2 pred +0.352834+0.000000j  c +0.352834+0.000000j  |c-pred| 6.0e-08  |c|^2 0.12449  resid(fit) 1.5e-07  resid(pred) 1.6e-07
+zeta=1.5 S=14 P=1              N=1 pred -0.557937+0.000000j  c -0.557937+0.000000j  |c-pred| 1.6e-08  |c|^2 0.31129  resid(fit) 2.4e-08  resid(pred) 2.9e-08
+zeta=1.5 S=14 P=1              N=2 pred +0.486091+0.000000j  c +0.486091-0.000000j  |c-pred| 1.7e-07  |c|^2 0.23628  resid(fit) 1.2e-07  resid(pred) 2.1e-07
+zeta=1.5 S=28 P=1              N=1 pred -0.557937+0.000000j  c -0.557937+0.000000j  |c-pred| 1.6e-08  |c|^2 0.31129  resid(fit) 2.4e-08  resid(pred) 2.9e-08
+zeta=1.5 S=28 P=1              N=2 pred +0.486091+0.000000j  c +0.486091-0.000000j  |c-pred| 4.9e-08  |c|^2 0.23628  resid(fit) 1.2e-07  resid(pred) 1.3e-07
+zeta=1 S=14 P=1 phase=0.7      N=1 pred -0.336569-0.283488j  c -0.336569-0.283488j  |c-pred| 2.7e-08  |c|^2 0.19364  resid(fit) 1.5e-08  resid(pred) 3.1e-08
+zeta=1 S=14 P=1 phase=0.7      N=2 pred +0.059970+0.347700j  c +0.059970+0.347700j  |c-pred| 6.2e-08  |c|^2 0.12449  resid(fit) 1.6e-07  resid(pred) 1.7e-07
+
+--- Beam file and q in the log against the log's b
+uniform S=14 P=3               45192 electrons: b from beam file +0.0000003+0.0000000j, log -0.0000000+0.0000000j, difference 2.6e-07
+zeta=1 S=14 P=3                45192 electrons: b from beam file -0.4400506-0.0000000j, log -0.4400506+0.0000000j, difference 2.7e-08
+zeta=1 S=28 P=3                90384 electrons: b from beam file -0.4400506+0.0000000j, log -0.4400506-0.0000000j, difference 2.7e-09
+zeta=1 S=14 P=1                15064 electrons: b from beam file -0.4400506+0.0000000j, log -0.4400506+0.0000000j, difference 1.2e-08
+zeta=1.5 S=14 P=1              15064 electrons: b from beam file -0.5579365+0.0000000j, log -0.5579365-0.0000000j, difference 2.2e-08
+zeta=1.5 S=28 P=1              30128 electrons: b from beam file -0.5579365+0.0000000j, log -0.5579365-0.0000000j, difference 2.7e-09
+zeta=1 S=14 P=1 phase=0.7      15064 electrons: b from beam file -0.3365692+0.2834884j, log -0.3365693+0.2834884j, difference 8.5e-08
+
+--- One screen point, 64 sites per sheet
+direct                         N=1 pred -0.440051+0.000000j  c -0.440051-0.000000j  |c-pred| 3.7e-08  |c|^2 0.19364  resid(fit) 5.3e-14  resid(pred) 3.7e-08
+direct                         N=2 pred +0.352834+0.000000j  c +0.352104-0.000125j  |c-pred| 7.4e-04  |c|^2 0.12398  resid(fit) 2.5e-04  resid(pred) 7.8e-04
+simplified                     N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 2.9e-08  |c|^2 0.19364  resid(fit) 2.5e-10  resid(pred) 2.9e-08
+simplified                     N=2 pred +0.352834+0.000000j  c +0.351070-0.000050j  |c-pred| 1.8e-03  |c|^2 0.12325  resid(fit) 7.2e-07  resid(pred) 1.8e-03
+long_distance_direct_approx    N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 1.6e-08  |c|^2 0.19364  resid(fit) 2.6e-16  resid(pred) 1.6e-08
+long_distance_direct_approx    N=2 pred +0.352834+0.000000j  c +0.352050-0.000172j  |c-pred| 8.0e-04  |c|^2 0.12394  resid(fit) 2.7e-04  resid(pred) 8.5e-04
+long_distance_simplified_approx N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 1.6e-08  |c|^2 0.19364  resid(fit) 1.1e-13  resid(pred) 1.6e-08
+long_distance_simplified_approx N=2 pred +0.352834+0.000000j  c +0.352212-0.000404j  |c-pred| 7.4e-04  |c|^2 0.12405  resid(fit) 3.2e-05  resid(pred) 7.4e-04
+b_20: ratio=20 zeta=1 S=120    N=1 pred +0.164748+0.000000j  c +0.164748-0.000000j  |c-pred| 2.6e-08  |c|^2 0.02714  resid(fit) 8.8e-17  resid(pred) 2.6e-08
+b_20: ratio=20 zeta=1 S=120    N=2 pred +0.130781+0.000000j  c +0.123447+0.000221j  |c-pred| 7.3e-03  |c|^2 0.01524  resid(fit) 1.5e-03  resid(pred) 7.5e-03
+b_20: ratio=20 zeta=1.111 S=120 N=1 pred +0.243302+0.000000j  c +0.243302-0.000000j  |c-pred| 1.1e-07  |c|^2 0.05920  resid(fit) 2.3e-16  resid(pred) 1.1e-07
+b_20: ratio=20 zeta=1.111 S=120 N=2 pred +0.157086+0.000000j  c +0.169567-0.000585j  |c-pred| 1.2e-02  |c|^2 0.02875  resid(fit) 1.7e-03  resid(pred) 1.3e-02
+
+--- The period follows a0: a0 = 0.2, same keys (Lambda_1 is computed)
+Lambda_1 = 1.396947e-03 lambda
+a0=0.2 zeta=1 S=14 P=1         N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 1.6e-08  |c|^2 0.19364  resid(fit) 7.6e-16  resid(pred) 1.6e-08
+a0=0.2 zeta=1 S=14 P=1         N=2 pred +0.352834+0.000000j  c +0.352339+0.000110j  |c-pred| 5.1e-04  |c|^2 0.12414  resid(fit) 2.9e-04  resid(pred) 5.8e-04
+
+--- Tilted collision, small plane-wave disk, theta = 0.9 pi, a0 = 0.2: only q_axial can be matched
+q_transverse / |q_axial| = 4.338326e-04
+tilted zeta=1 S=14 P=1         N=1 pred -0.440051+0.000000j  c -0.440051+0.000000j  |c-pred| 9.4e-09  |c|^2 0.19364  resid(fit) 7.7e-08  resid(pred) 7.7e-08
+tilted zeta=1 S=14 P=1         N=2 pred +0.352834+0.000000j  c +0.352834-0.000000j  |c-pred| 5.7e-08  |c|^2 0.12449  resid(fit) 4.2e-08  resid(pred) 7.0e-08
+tilted zeta=1 S=14 P=1         280 electrons: b from beam file -0.4382034-0.0000000j, log -0.4382034+0.0000000j, difference 2.5e-08
+
+--- Warnings in the log
+periods H / Lambda_mod      1.600000e+00 (requested 1.500000e+00)
+stack sheets                8 (64 sites each, charge weight 1/8)
+WARNING: the stack holds 1.6 periods, not a whole number: b doesn't reduce to the cold-beam value
+WARNING: 5 sheets per period is below 3 N_max Lambda_mod / Lambda_1 = 6: moved sheets can give a wrong b at the highest harmonics; see the log's sheet sum against the cold-beam value
+
+Written to /home/madalina/Dropbox/work/bin/c++/codes/CoherentThomson/theory/lattice_stack_tests/phase3a_results.txt
+
+=== On-axis N = 2 against the screen: phase3a_on_axis_n2.py, 64 sites per sheet
+--- point: |F_flat|/sqrt(values), N=1 and N=2: 5.759e-14, 8.616e-23
+zeta=1 S=120 N=1: pred +0.164748+0.000000j c +0.164748-0.000000j |c-pred| 2.6e-08  |F - pred F_flat|: 3.71e-21 = 2.6e-08 of |F_flat|
+zeta=1 S=120 N=2: pred +0.130781+0.000000j c +0.123447+0.000221j |c-pred| 7.3e-03  |F - pred F_flat|: 1.58e-24 = 7.5e-03 of |F_flat|
+zeta=1.111 S=120 N=1: pred +0.243302+0.000000j c +0.243302-0.000000j |c-pred| 1.1e-07  |F - pred F_flat|: 1.56e-20 = 1.1e-07 of |F_flat|
+zeta=1.111 S=120 N=2: pred +0.157086+0.000000j c +0.169567-0.000585j |c-pred| 1.2e-02  |F - pred F_flat|: 2.66e-24 = 1.3e-02 of |F_flat|
+zeta=1 S=240 N=1: pred +0.164748+0.000000j c +0.164748-0.000000j |c-pred| 2.6e-08  |F - pred F_flat|: 3.71e-21 = 2.6e-08 of |F_flat|
+zeta=1 S=240 N=2: pred +0.130781+0.000000j c +0.123490+0.000218j |c-pred| 7.3e-03  |F - pred F_flat|: 1.57e-24 = 7.5e-03 of |F_flat|
+zeta=1.111 S=240 N=1: pred +0.243302+0.000000j c +0.243302-0.000000j |c-pred| 1.1e-07  |F - pred F_flat|: 1.56e-20 = 1.1e-07 of |F_flat|
+zeta=1.111 S=240 N=2: pred +0.157086+0.000000j c +0.169505-0.000609j |c-pred| 1.2e-02  |F - pred F_flat|: 2.65e-24 = 1.3e-02 of |F_flat|
+--- screen: |F_flat|/sqrt(values), N=1 and N=2: 1.477e-14, 2.282e-18
+zeta=1 S=120 N=1: pred +0.164748+0.000000j c +0.164748+0.000000j |c-pred| 4.8e-08  |F - pred F_flat|: 4.77e-20 = 1.2e-07 of |F_flat|
+zeta=1 S=120 N=2: pred +0.130781+0.000000j c +0.130780+0.000000j |c-pred| 4.1e-07  |F - pred F_flat|: 2.72e-23 = 4.3e-07 of |F_flat|
+zeta=1.111 S=120 N=1: pred +0.243302+0.000000j c +0.243302-0.000000j |c-pred| 1.2e-07  |F - pred F_flat|: 5.23e-20 = 1.3e-07 of |F_flat|
+zeta=1.111 S=120 N=2: pred +0.157086+0.000000j c +0.157087-0.000000j |c-pred| 7.9e-07  |F - pred F_flat|: 5.21e-23 = 8.2e-07 of |F_flat|
+zeta=1 S=240 N=1: pred +0.164748+0.000000j c +0.164748+0.000000j |c-pred| 4.8e-08  |F - pred F_flat|: 4.77e-20 = 1.2e-07 of |F_flat|
+zeta=1 S=240 N=2: pred +0.130781+0.000000j c +0.130780+0.000000j |c-pred| 4.1e-07  |F - pred F_flat|: 2.71e-23 = 4.3e-07 of |F_flat|
+zeta=1.111 S=240 N=1: pred +0.243302+0.000000j c +0.243302-0.000000j |c-pred| 1.2e-07  |F - pred F_flat|: 5.23e-20 = 1.3e-07 of |F_flat|
+zeta=1.111 S=240 N=2: pred +0.157086+0.000000j c +0.157087-0.000000j |c-pred| 7.9e-07  |F - pred F_flat|: 5.21e-23 = 8.2e-07 of |F_flat|

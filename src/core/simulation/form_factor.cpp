@@ -38,9 +38,7 @@ FormFactor compute_form_factor(const std::vector<Particle::Electron>& electron_b
   MathUtils::RealFourVector n_s(1.0, n[0], n[1], n[2]);
   double omega_s_over_c = PhysUtils::non_linear_Thomson_formula(k_L, dressed, n_s, 1);
   MathUtils::RealFourVector k_s = n_s * omega_s_over_c;
-  // The phase a translated electron's field picks up, measured against the solver (theory/dev_notes.md): shifting it
-  // along its free worldline keeps the laser phase fixed, which brings in the undressed K_s.P / K_L.P.
-  MathUtils::RealFourVector q = k_s - k_L * (MathUtils::contract(P, k_s) / MathUtils::contract(P, k_L));
+  MathUtils::RealFourVector q = PhysUtils::translation_wavevector(P, k_L, k_s);
 
   std::complex<double> A(0.0, 0.0);
   for (const Particle::Electron& electron : electron_beam) {

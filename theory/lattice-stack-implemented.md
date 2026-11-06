@@ -7,9 +7,9 @@ questions are in [lattice_stack-work.md](lattice_stack-work.md).
 | Part | Status |
 |---|---|
 | Preparation: trajectory memory | Done, commit `3052872` |
-| Phase 1: uniform stack | Done, awaiting the user's review; not committed yet |
-| Phase 2: density model | Not started |
-| Phase 3a: `b₁` | Not started |
+| Phase 1: uniform stack | Done, commits `2fd28d0`, `ec1517d`, `8ccd0e6`; run by the user on `M` = 1, 2, 4 |
+| Phase 2: density model | Done; the user chose moved sheets |
+| Phase 3a: `b₁` | Done and committed, awaiting the user's review |
 | Phase 3b: `b₂₀` | Not started |
 
 ## Preparation: trajectory memory (2026-11-06)
@@ -158,3 +158,142 @@ cmake -B build/ && cmake --build build/ --clean-first
 
 Run them from the repository root. Finished runs in `~/output_tests/lattice_stack/` are reused, so delete them after
 changing the solver. These runs came from a dirty build on top of `db70d2b`, and each folder holds its `source.patch`.
+
+## Phase 2: density model (2026-11-06)
+
+**Tool.** `theory/lattice_stack_tests/phase2_density_model.py`, standalone. With no arguments it runs the checkpoint in about 1 min
+and writes `phase2_results.txt`; `--zeta` gives one case at any `q`, `N`, sheet count and origin; `--run` compares with a run's log.
+
+**Two options, both at fixed total charge.** With `φ = K z + origin`, `K = 2π/Λ_mod`, uniform sheets `z_j = (j − (SP−1)/2) d`, `d = Λ_mod/S`:
+
+- *Charges:* sheets stay at `z_j`, each with the charge of its bin, from the map's exact crossings of the bin edges on all branches.
+- *Moved:* equal charges, `K z_j → K z_j + ζ sin(K z_j + origin)`.
+
+**Checkpoint results.**
+
+| Check | Result |
+|---|---|
+| Charge | Sums to 1 within 2e-16, no negative bin. At `ζ = 1` the lightest bin is about 0.5 of the mean, the heaviest 23 at `S = 280` |
+| Density | Bin charges match the brief's formula away from folds: 3e-8 at `ζ = 0.5` and 2e-8 at `ζ = 1.5`, `S = 4480` (median) |
+| Direct integral against Bessel | At most 4e-16, for `n` = 1, 2, 20, 40 and `ζ` = 0, 1, 1.111, 1.5 |
+| Uniform control, `ζ = 0` | `|b|` at most 4e-16 |
+| Log, uniform stacks | Tool against `run_log.txt`: 4e-8 for `M` = 2, 4, 14, about the 7 digits of the log's `q` |
+| Charges by a second route | Nearest-sheet binning of 4e7 phases against exact crossings: at most 3e-7 |
+
+**Errors of the sheet sum, relative to `|b_n|`, origin 0:**
+
+| N (`n`, `Λ_mod = 20Λ`) | `ζ` | `S` | Charges, sheet spacing | Charges, sinc divided out | Charges, 4e7-point binning | Moved |
+|---|---|---|---|---|---|---|
+| 1 (20) | 1 | 120 | 10% | 5.9% | 3e-8 | 2e-16 |
+| 1 (20) | 1 | 280 | 1.6% | 0.80% | 9e-8 | 1e-15 |
+| 1 (20) | 1 | 560 | 0.37% | 0.16% | 2e-7 | 2e-15 |
+| 1 (20) | 1.111 | 280 | 2.1% | 1.3% | 6e-8 | 2e-16 |
+| 2 (40) | 1 | 120 | 44% | 33% | 8e-7 | 3e-15 |
+| 2 (40) | 1 | 280 | 7.3% | 4.1% | 1e-6 | 1e-15 |
+| 2 (40) | 1 | 560 | 1.6% | 0.80% | 1e-6 | 1e-15 |
+| 2 (40) | 1.111 | 280 | 10% | 7.2% | 9e-7 | 2e-16 |
+
+The spacing error dominates; computing the charges adds almost nothing. Near `ζ = 1.5`, `J₂₀(30)` is close to zero (`b = 0.0048`), so
+relative errors there are not a useful measure.
+
+**Findings beyond the brief.**
+
+- *Phase origin:* the charges' error depends on where the bins fall relative to the density's cusp. At `n = 20`, `ζ = 1`, `S = 280` it
+  is 1.6%, 5.9% and 0.37% at origins 0, 0.7 and −2.3. At origin 0.7 it is mostly a phase: `|b|` is 0.75% low, with a phase error of about
+  0.06 rad. Moved sheets stay below 1e-14.
+- *Sheet count:* moved sheets fail abruptly. `S = 120` is exact at N = 1, 2 and has 100% error at N = 3 (`n = S/2`). `S = 180` is good to N = 3
+  at `ζ` = 1 and 1.111, and `S = 120` reaches only 1.6e-5 at N = 2 for `ζ = 1.5`. Choose `S` from the highest harmonic wanted.
+- *Envelope:* on the peak the two agree. Off it they can differ, because moved sheets leave `H` for `ζ > 1` or a non-zero origin (0.10 `Λ_mod` at
+  each end for `ζ = 1`, origin 0.7, and 0.16 for `ζ = 1.5`, origin 0.7). There, `|b|` half a line width from the peak is 0.127 moved and 0.112 charges
+  (`P = 3`). Folding the moved sheets back into `H` recovers the charges' value, to about 3e-5. At `ζ = 1`, origin 0, nothing leaves `H`
+  and the charges converge to the moved value as `S` grows.
+- *Replica:* at `q d = 2π`, `|b| = 1` for charges and 0.11 to 0.18 for moved sheets (`ζ = 1`). Moved stacks have no complete replica.
+
+**What this does not show.** The moved sheets' accuracy at `q = n K` is partly by construction: their sum is the rule for the same integral that
+defines `b_n`. None of this has gone through the solver. Modulated stacks have not been compared with a log or a field.
+
+**To reproduce:** `.venv/bin/python theory/lattice_stack_tests/phase2_density_model.py`, from the repository root.
+
+## Phase 3a: bunched stack in the solver (2026-11-06)
+
+**Config.** `beam_stack_modulation` (optional) picks the stack: `true` uses the keys below and ignores `beam_stack_sheets` and `beam_stack_spacing`, noting that in the
+log; `false` does the opposite. Both sets can stay in a config. A `beam_modulation_*` key without the switch is an error, so it can't go silently unused.
+
+| Key | Meaning |
+|---|---|
+| `beam_modulation_zeta` | `ζ ≥ 0`; `0` is the uniform control |
+| `beam_modulation_period_ratio` | `r = Λ_mod/Λ₁`, any positive real number |
+| `beam_modulation_sheets_per_period` | `S`, a whole number |
+| `beam_modulation_periods` | `P`; `M = round(S P)`, with a warning if that isn't a whole number of periods |
+| `beam_modulation_phase` | Optional, default 0: `φ = K z + phase`, `z` from the stack centre |
+
+**Geometry.** `Λ₁ = 2π/|q·axis|`, from the exact `q` at harmonic 1 along the detector normal, with the configured `average_p`.
+`d = Λ_mod/S`, `H = M d`. Sheets start at `(j − (M−1)/2) d` and move by `(ζ/K) sin(K z + phase)`, with charge `1/M` each.
+`main.cpp` now creates the detector before the beam. Folding sheets back into `H` is left out, as agreed.
+
+**Log.** `Λ₁`, `Λ_mod`, `q_transverse/|q_axial|`, `S`, `H/Λ_mod`, `d`, `H`, how far sheets leave `±H/2`, and for each harmonic the sheet sum
+against the map's phase integral. It warns on a non-whole `P` and on `S < 3 N_max r`.
+
+**Plot.** `plot_beam_density_z.py` draws a bunched stack's sheets against the drift map, with several sheets per bin, using `Λ_mod`, `H` and the phase from the log.
+
+**Unchanged beams.** Against the pre-change binary, all `.dat` files are byte-identical for a flat lattice, an `M = 14` stack, and a random
+beam with `simplified`, `direct` and `long_distance_direct_approx`. Thirteen bad configs stop with an error: ten listed in
+`phase3a_noop_and_rejects.py` and three with a required key missing. The switch came after the checkpoint runs below, which set only `beam_modulation_*`. Adding it was checked
+to leave a bunched stack's `.dat` files byte-identical, so those results stand; `phase3a_checkpoint.py` now sets the switch and will recompute instead of reusing them.
+
+### Checkpoint results
+
+Run A (`a0 = 0.1`, 1,076 sites per sheet, 16 × 8 screen, `long_distance_direct_approx`), fixed total charge. `c` is the best complex factor in
+`F = c F_flat`; the prediction is `(-1)^n J_n(nζ) e^{+inφ₀}`. Residual: `|F − c F_flat|/|F_flat|`. Full output: `lattice_stack_tests/phase3a_results.txt`.
+
+| Stack | N | Prediction | `\|c−pred\|` | `\|c\|²` | Residual |
+|---|---|---|---|---|---|
+| Uniform, `ζ = 0`, S = 14, P = 3 | 1 | 0 | 1e-8 | below 1e-15 | 2e-8 |
+| | 2 | 0 | 6e-8 | below 1e-14 | 1e-7 |
+| `ζ = 1`, S = 14, P = 3 | 1 | −0.440051 | 2e-8 | 0.19364 | 2e-8 |
+| | 2 | +0.352834 | 7e-8 | 0.12449 | 2e-7 |
+| `ζ = 1`, S = 28, P = 3 | 1 | −0.440051 | 2e-8 | 0.19364 | 2e-8 |
+| | 2 | +0.352834 | 6e-8 | 0.12449 | 1e-7 |
+| `ζ = 1.5`, S = 14, P = 1 | 1 | −0.557937 | 2e-8 | 0.31129 | 2e-8 |
+| | 2 | +0.486091 | 2e-7 | 0.23628 | 1e-7 |
+| `ζ = 1`, S = 14, P = 1, phase 0.7 | 1 | −0.336569 − 0.283488i | 3e-8 | 0.19364 | 2e-8 |
+| | 2 | +0.059970 + 0.347700i | 6e-8 | 0.12449 | 2e-7 |
+
+- **Grid:** `|F(S=28) − F(S=14)|/|F_flat|` is 2e-10 at N = 1 and 3e-8 at N = 2 (`ζ = 1`, P = 3). This replaces the brief's 1 nm against 0.5 nm.
+- **Power against the flat disk:** `|J₁(1)|² = 0.1936` and `|J₂(2)|² = 0.1245`, against about zero for the uniform stack of the same length.
+- **Beam file:** `b` recomputed from `electron_beam_scatter.dat` and the log's `q` agrees with the log's `b` to at most 3e-7, the limit of the 7 digits of `q`.
+- **Radiation formulas** (one on-axis point, N = 1, `ζ = 1`): `direct`, `simplified` and both approximate long-distance modes give `|c−pred|` at most 4e-8.
+- **`a0 = 0.2`** with the same keys: `Λ₁` becomes 1.3969e-3 `λ_L` (13.97 nm), and at N = 1 `|c−pred|` is 2e-8.
+- **Tilted, θ = 0.9π** (small plane-wave disk, `a0 = 0.2`, `q_transverse/|q_axial|` = 4.3e-4): `|c−pred|` is 9e-9 and 6e-8.
+
+**The switch** (`phase3a_switch.py`, against the solver just before it): `true` with both key sets, `false` with both key sets, and no switch with no modulation keys each give
+all 5 `.dat` files byte-identical to a run with only the keys in use.
+
+**Preview of `b₂₀`** (`r = 20`, `S` = 120 and 240, 64 sites per sheet, 16 × 8 screen, residual 1e-7 to 8e-7):
+
+| `ζ` | N | Prediction | `c` | `\|c−pred\|` |
+|---|---|---|---|---|
+| 1 | 1 | +0.164748 | +0.164748 | 5e-8 |
+| 1 | 2 | +0.130781 | +0.130780 | 4e-7 |
+| 1.111 | 1 | +0.243302 | +0.243302 | 1e-7 |
+| 1.111 | 2 | +0.157086 | +0.157087 | 8e-7 |
+
+**On-axis N = 2 is not a useful test.** At one on-axis point, `|c−pred|` at N = 2 is 5e-4 to 1e-2, and the four formulas disagree by about 1e-3. There, the flat
+field is about 2.6e4 times below the screen's rms (8.6e-23 against 2.3e-18), so the deviation of about 1.6e-24 is about 7e-7 of that rms. It doesn't change with `S`. Its origin
+is not established, and on the screen it has no visible effect.
+
+### Not tested
+
+- The full 1,076-site `b₂₀` stack and a 128 × 64 screen (`lg_decomposition.py` on a bunched stack, in particular), the cluster, GCC 13.3, an LG laser with `l ≠ 0`.
+- Momentum spread or energy modulation: every sheet keeps `average_p`.
+- A detector with `q·axis < 0`. The code handles the sign, but no run covers it.
+- Off-peak field scans of bunched stacks, in particular non-integer `r` and a non-whole `P`.
+
+### To reproduce
+
+```
+.venv/bin/python theory/lattice_stack_tests/phase3a_noop_and_rejects.py <solver built at 8ccd0e6>
+.venv/bin/python theory/lattice_stack_tests/phase3a_switch.py <solver built before the switch; that build no longer exists>
+.venv/bin/python theory/lattice_stack_tests/phase3a_checkpoint.py     # about 20 min on 24 threads
+.venv/bin/python theory/lattice_stack_tests/phase3a_on_axis_n2.py
+```

@@ -1,6 +1,7 @@
 import sys
 import os
 import math
+import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -32,6 +33,33 @@ def read_beam_geometry(config_path):
     if sheets and int(sheets[0]) > 1:
         H = int(sheets[0]) * read_length("beam_stack_spacing", config_path)
     return H, sigma_z, z_c
+
+def read_modulation(run_dir, config_path):
+    """
+    The bunched stack's map, from the run's log: {zeta, phase, Lambda_mod, H}, in lambda and rad, or None for any other beam.
+    """
+    try:
+        if read_config_value("beam_stack_modulation", config_path)[0] != "true":
+            return None
+    except ValueError:
+        return None
+    zeta = float(read_config_value("beam_modulation_zeta", config_path)[0])
+    with open(os.path.join(run_dir, "run_log.txt")) as log_file:
+        log = log_file.read()
+    def length(label):
+        return float(re.search(re.escape(label) + r"\s+\S+ a\.u\.\s+(\S+) lambda", log).group(1))
+    phase = math.pi * float(re.search(r"phase\s+(\S+) pi", log).group(1))
+    return {"zeta": zeta, "phase": phase, "Lambda_mod": length("Lambda_mod"), "H": length("stack length H = M d")}
+
+def modulated_density(bins, modulation, z_c):
+    """
+    The bunched density averaged over each histogram bin, from a fine sample of the drift map on the uniform stack.
+    """
+    K = 2 * math.pi / modulation["Lambda_mod"]
+    H = modulation["H"]
+    uniform = (np.arange(4_000_000) + 0.5) / 4_000_000 * H - H / 2
+    moved = z_c + uniform + modulation["zeta"] / K * np.sin(K * uniform + modulation["phase"])
+    return np.histogram(moved, bins=bins, density=True)[0]
 
 def analytic_density(z, H, sigma_z, z_c):
     """
@@ -67,8 +95,51 @@ def read_axial_positions(scatter_path, config_path):
     axis = p_mean / norm if norm >= 1e-12 else np.array([0.0, 0.0, 1.0])
     return data[['x', 'y', 'z']].to_numpy() @ axis
 
+def plot_modulated_density(run_dir, config_path, modulation):
+    """
+    A bunched stack: the sheets per bin against the drift map's density. Needs electron_beam_scatter.dat, and the bins
+    hold several sheets each, since single moved sheets say little about the density.
+    """
+    z_c = read_length("beam_center_z", config_path)
+    H = modulation["H"]
+    spread = H / 2 + modulation["zeta"] * modulation["Lambda_mod"] / (2 * math.pi)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    scatter_path = os.path.join(run_dir, "electron_beam_scatter.dat")
+    if os.path.exists(scatter_path):
+        z = read_axial_positions(scatter_path, config_path)
+        sheets = len(np.unique(np.round(z / H, 10)))
+        n_bins = max(20, sheets // 4)
+    else:
+        print(f"No '{scatter_path}' (needs plot_beam_scatter=true); plotting the analytic density only")
+        z = None
+        n_bins = 200
+    bins = np.linspace(z_c - 1.05 * spread, z_c + 1.05 * spread, n_bins + 1)
+    if z is not None:
+        ax.hist(z, bins=bins, density=True, histtype='stepfilled', color='lightsteelblue',
+                label=f"sheets ({sheets}, {len(z)} electrons)")
+    ax.stairs(modulated_density(bins, modulation, z_c), bins, color='crimson', lw=1.5, label="drift map")
+    for edge in (z_c - H / 2, z_c + H / 2):
+        ax.axvline(edge, color='gray', ls='--', lw=1)
+    ax.set_title(f"Bunched stack along the beam axis   ($\\zeta$ = {modulation['zeta']:g}, "
+                 f"$H/\\Lambda_{{mod}}$ = {H / modulation['Lambda_mod']:g})", fontsize=12, fontweight='bold')
+    ax.set_xlabel(r"z along beam axis [$\lambda$]", fontsize=11)
+    ax.set_ylabel(r"normalized density [1/$\lambda$]", fontsize=11)
+    ax.set_ylim(bottom=0)
+    ax.legend()
+    png_dir = os.path.join(run_dir, "png_folder", MODULE_NAME)
+    os.makedirs(png_dir, exist_ok=True)
+    output_img = os.path.join(png_dir, "beam_density_z_plot.png")
+    plt.savefig(output_img, dpi=200, bbox_inches='tight')
+    print(f"Successfully saved density plot to {output_img}")
+    plt.show()
+
 def plot_density(run_dir):
     config_path = os.path.join(run_dir, "config.cfg")
+    modulation = read_modulation(run_dir, config_path)
+    if modulation is not None:
+        plot_modulated_density(run_dir, config_path, modulation)
+        return
+
     H, sigma_z, z_c = read_beam_geometry(config_path)
     if H == 0.0 and sigma_z == 0.0:
         print("beam_cylinder_height = 0 and beam_sigma_z = 0: every electron sits at z = beam_center_z, "

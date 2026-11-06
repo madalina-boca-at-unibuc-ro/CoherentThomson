@@ -9,6 +9,7 @@
 #include "../include/io_utils/io_utils.hpp"
 #include "../include/math_utils/math_constants.hpp"
 #include "../include/math_utils/math_utils.hpp"
+#include "../include/particle/electron_factory.hpp"
 #include "../include/phys_utils/phys_utils.hpp"
 #include "../include/radiation/radiation_plotter.hpp"
 
@@ -152,7 +153,51 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
          << " rings\n";
     write_kv(file, "lattice spacing", spacing, lambda_au);
     write_kv(file, "requested spacing", beam.lattice_spacing, lambda_au);
-    if (beam.stack_sheets > 1) {
+    if (beam.modulation.active) {
+      const IoUtils::CylinderBeamParams::Modulation& modulation = beam.modulation;
+      const Particle::ModulationGeometry geometry =
+          Particle::modulation_geometry(beam, laser, detector.get_normal_direction());
+      const size_t N_min = IoUtils::get_number_of_harmonics_min(config);
+      const size_t N_harmonics = IoUtils::get_number_of_harmonics(config);
+      file << "  bunched stack               equal charges on moved sheets, phi = K z + phase, "
+              "K z -> K z + zeta sin(K z + phase)\n";
+      if (config.count("beam_stack_sheets") > 0 || config.count("beam_stack_spacing") > 0) {
+        file << "  (beam_stack_modulation true: beam_stack_sheets and beam_stack_spacing are ignored)\n";
+      }
+      file << "  zeta                        " << modulation.zeta << "\n";
+      file << "  phase                       " << modulation.phase / MathUtils::pi << " pi\n";
+      file << "  Lambda_mod / Lambda_1       " << modulation.period_ratio << "\n";
+      write_kv(file, "Lambda_1 = 2 pi / |q_axial|", geometry.lambda_1, lambda_au);
+      write_kv(file, "Lambda_mod", geometry.lambda_mod, lambda_au);
+      file << "  q_transverse / |q_axial|    " << geometry.q_transverse / std::abs(geometry.q_axial) << "\n";
+      file << "  sheets per period S         " << modulation.sheets_per_period << "\n";
+      file << "  periods H / Lambda_mod      " << geometry.length / geometry.lambda_mod << " (requested "
+           << modulation.periods << ")\n";
+      file << "  stack sheets                " << beam.stack_sheets << " (" << IoUtils::polar_lattice_site_count(rings)
+           << " sites each, charge weight 1/" << beam.stack_sheets << ")\n";
+      write_kv(file, "uniform spacing d", geometry.spacing, lambda_au);
+      write_kv(file, "stack length H = M d", geometry.length, lambda_au);
+      write_kv(file, "sheets beyond +-H/2, by", geometry.spill, lambda_au);
+      file << "  represented charge          " << form_factor.total_charge_weight << " electrons in " << num_electrons
+           << " trajectories\n";
+      file << "  N  n = N ratio   sheet sum (1/M) sum_j exp(i q_N z_j)           cold-beam value                   "
+              "|difference|/|cold|\n";
+      for (const Particle::ModulationHarmonic& harmonic :
+           Particle::modulation_harmonics(beam, geometry, N_min, N_harmonics)) {
+        file << "  " << harmonic.N << "  " << harmonic.n << "  (" << harmonic.sheet_sum.real() << ", "
+             << harmonic.sheet_sum.imag() << ")";
+        if (harmonic.cold) {
+          file << "  (" << harmonic.cold->real() << ", " << harmonic.cold->imag() << ")  "
+               << std::abs(harmonic.sheet_sum - *harmonic.cold) / std::max(std::abs(*harmonic.cold), 1e-300);
+        } else {
+          file << "  none: needs an integer n and whole periods";
+        }
+        file << "\n";
+      }
+      for (const std::string& warning : Particle::modulation_warnings(beam, N_min + N_harmonics - 1)) {
+        file << "  WARNING: " << warning << "\n";
+      }
+    } else if (beam.stack_sheets > 1) {
       const double M = static_cast<double>(beam.stack_sheets);
       file << "  stack sheets                " << beam.stack_sheets << " (" << IoUtils::polar_lattice_site_count(rings)
            << " sites each, charge weight 1/" << beam.stack_sheets << ")\n";

@@ -8,12 +8,68 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 | This file | The current work: analysis, decisions, open questions. |
 | [lattice-stack-implemented.md](lattice-stack-implemented.md) | What was actually done, and how it was checked. |
 
-## Status (2026-11-06)
+## Resume here (written 2026-11-06, for continuing on another computer)
 
-- Working by discussion: each part of the brief is discussed before it is implemented.
-- Done: the trajectory memory fix, commit `3052872` on branch `lattice-stack`.
-- Phase 1 is implemented and its checkpoint passes (`lattice-stack-implemented.md`). It waits for the user's review and is
-  not committed yet. Phase 2 does not start until the user says so.
+**Where things stand.** Everything is committed on branch `lattice-stack`, not merged into `main`. Preparation, Phase 1, Phase 2 and Phase 3a are
+implemented. Phase 3a's checkpoint passes and **waits for the user's review**. Phase 3b has not started and must not start until the user says so.
+
+**How the user works on this** (Claude's memory files stay on the old computer, so this is the record):
+
+- Discuss each part of the brief first. Implement only after the user says so, one phase at a time, and stop at each checkpoint for review.
+- Keep three documents: the brief (the proposal), this file (current work and decisions), `lattice-stack-implemented.md` (what was done and how it was checked).
+- `py_scripts/` is for postprocessing only. Tools and checks for this project go in `theory/lattice_stack_tests/`.
+- Validation is at `a0 = 0.1`.
+
+**To pick up on the other computer:**
+
+```
+git pull                      # after the user's push; branch lattice-stack
+cmake -B build/ && cmake --build build/ --clean-first     # always rebuild: -march=native, and Dropbox may sync bin/ and build/
+```
+
+Then read this section, the Phase 3a part of `lattice-stack-implemented.md`, and `theory/lattice_stack_tests/phase3a_results.txt`.
+
+**Not carried over by git:**
+
+- Runs in `~/output/lattice_stack/` and `~/output_tests/lattice_stack/`. The results files in `theory/lattice_stack_tests/` keep the numbers. Without those runs, the
+  checks recompute instead of reusing them: `phase3a_checkpoint.py` takes about 20 min on 24 threads, and it needed recomputing anyway once it began setting the switch.
+- The saved pre-change solvers. For the byte-identity scripts, build the commit before the change (`8ccd0e6` for `phase3a_noop_and_rejects.py`; for `phase3a_switch.py`,
+  a build of the Phase 3a code without the switch no longer exists, and that check's result is in `lattice-stack-implemented.md`) and copy the binary out.
+- `config/config_lattice_stack.cfg` holds the user's current experiment: bunched stack, `ζ = 1`, ratio 1, S = 14, P = 1, on a 64 × 64 screen.
+
+**Decisions made so far:**
+
+| Topic | Decision |
+|---|---|
+| Validation | At `a0 = 0.1` |
+| Charge | Fixed total: `1/M` per sheet |
+| Modulation | **Equal charges on moved sheets**, not the brief's charges on equidistant sheets (the table below) |
+| `ζ` | Any `ζ ≥ 0`, including 1 and above: moved sheets never evaluate the singular density |
+| Selecting the stack | `beam_stack_modulation true/false`; both key sets can stay in a config; a `beam_modulation_*` key without the switch is an error |
+| Keys | `beam_modulation_zeta`, `_period_ratio`, `_sheets_per_period`, `_periods`, optional `_phase` |
+| Period | Ratio `r = Λ_mod/Λ₁`, not a length. `Λ₁ = 2π/\|q·axis\|` with the exact `q` at harmonic 1, computed from the laser, `average_p` and detector normal. This replaces decision 4 below for the period |
+| Length | `H = M d` before the sheets move, `d = Λ_mod/S`. Any `P`, with a warning unless whole |
+| Folding sheets back into `H` | Not implemented. Same `b` on the peak; only needed for off-peak scans on a strictly flat envelope. A small optional key if wanted later |
+
+**Next step: Phase 3b, to discuss once the user has reviewed 3a.** The brief's plan is the same target frequency with `Λ_mod = 20 Λ₁`. What to settle:
+
+- **Sheets:** S = 120 is enough for N = 1, 2 at `ζ` up to about 1.1. N = 3 needs S = 180. `S` follows from the highest harmonic wanted.
+- **`ζ`:** the brief says start at the 3a value, then near the maximum of `|J₂₀(20ζ)|`, at `ζ = 1.111` (`|b₂₀|` = 0.243, against 0.165 at `ζ = 1`).
+- **Cost, one period, S = 120, 1,076 sites per sheet (129,120 trajectories):** about 9 min on 24 threads on the 16 × 8 screen, from 0.10 CPU-s per trajectory (confirmed by the 3a runs).
+  On a full 128 × 64 screen, about 1.2 h on 256 cores, from the earlier estimate of 8.7 CPU-s per trajectory.
+- **Already seen:** with 64 sites per sheet on the 16 × 8 screen, `c` matches to 4e-7 at N = 2 and 8e-7 at `ζ = 1.111`. The full lattice and the mode decomposition are untested.
+- **Phase:** with `phase 0`, a one-period stack has its density peaks at the two ends, not the middle. `phase 1.0 pi` centres them, changing only the sign of `c` at odd `n`.
+
+## Phase 2 decision: why moved sheets
+
+| | Charges on equidistant sheets | Equal charges on moved sheets |
+|---|---|---|
+| `b` at `n = N Λ_mod/Λ` | Error 1.6% (N = 1) and 7.3% (N = 2) at 280 sheets, `ζ = 1` | Below 1e-13 at 280 sheets, N up to 5 |
+| Sheets per period for N = 1, 2, `ζ = 1` | At least 560 for 1.6% at N = 2 | 120 |
+| Depends on the phase origin | Yes: 0.37% to 5.9% at 280 sheets, mostly a phase error | No |
+| Envelope off the peak | Stays inside `H` | Leaves `H` for `ζ > 1` or a non-zero origin, unless folded back |
+| Replica at `q d = 2π` | `|b| = 1` | `|b|` = 0.11 to 0.18 at `ζ = 1` |
+| Solver change | Sheet weights | Sheet positions |
 
 ## Decisions so far
 
@@ -88,16 +144,17 @@ Consequences:
 ## Open items
 
 - **Report PDF** must be rebuilt where pandoc exists (`theory/scientific_report/README.md`, section PDF). The Markdown is corrected.
-- **The period in Phase 3:** decision 4 predates decision 5. The log now lists both values, and they differ by 7e-6 at `a0 = 0.1`.
-- **CLAUDE.md edits proposed on 2026-11-06, not applied:** the lattice constraint should also name `beam_sigma_z 0`;
-  `beam_lattice_spacing` should be listed as optional; the `plot_processed.py` usage needs correcting; and a pointer to
-  the brief should be added.
-- **Next:** the user's review of Phase 1, then the discussion of Phase 2.
-- **Phase 3b plan, as discussed:** one modulation period (about 275 nm, 296,000 trajectories at 1 nm), at 1 nm and 0.5 nm on the
-  small screen; a full screen once if the mode decomposition is wanted; more periods only for an explicit finite-train test.
-- **Later for Phase 2:** a standalone Python tool for `b` at any `q`, `N` and ζ from the sheet weights, checked against the log.
-- **Phase 3 keys:** `H` need not be a whole number of periods (log `H/Λ_mod`, warn); sheets per period should be whole, with `d`
-  adjusted and logged.
+- **CLAUDE.md:** the `plot_processed.py` usage correction proposed on 2026-11-06 was not applied.
+- **Next:** see "Resume here".
+- **Phase 3b plan, updated for moved sheets:** one modulation period (about 275 nm; S = 120 gives 129,120 trajectories), at S and 2S on the small screen;
+  a full screen once if the mode decomposition is wanted; more periods only for an explicit finite-train test.
+- **On-axis N = 2:** the small deviation at one on-axis point (`lattice-stack-implemented.md`, Phase 3a) is unexplained, though about 7e-7 of the screen's rms field.
+- **`plot_beam_density_z.py` on uniform stacks:** the histogram's automatic bins don't line up with the sheets, so the bars form misleading blocks. The red analytic line is right. A
+  one-bar-per-sheet histogram would fix it; offered, not requested. Bunched stacks have their own plot and are fine.
+- **Config header:** `config/config_lattice_stack.cfg` is described as a 16 × 8 uniform stack in its first lines and holds the user's experiment now. Decide whether to keep a separate model config.
+- **The `/import` offer** for Codex or Gemini configs from the `/init` step was never taken up.
+- **Phase 2 tool:** `theory/lattice_stack_tests/phase2_density_model.py` gives `b` at any `q`, `N` and ζ. So far it is checked against
+  the log, on uniform and bunched stacks.
 
 ## Analysis of the brief (as given to the user on 2026-11-06)
 
