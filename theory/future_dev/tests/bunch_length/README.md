@@ -13,10 +13,12 @@ time: `e(z₀) = e(0) e^{iqz₀}`. Then for the same transverse sample
 
   F_σ = ρ̃(q) F_0 + R,   ρ̃(q) = exp(−q²σ²/2),   ⟨|R|²⟩ = N⟨|e|²⟩ (1 − ρ̃²),
 
-with `q_N = N k_1 + k_L` (head-on, on axis; the screen spans ~1e-4 rad, so q is constant over it to ~1e-8). The
+with `q_N = N (k_1 + k_L)` (head-on, on axis; the screen spans ~1e-4 rad, so q is constant over it to ~1e-8). The
 coherent field keeps its shape (waist, z0, `l`, radial phase), its amplitude falls by ρ̃, and the residual R is
-incoherent noise whose power relative to the coherent part grows as (1 − ρ̃²)/ρ̃². The dressed q
-(`q = k_s − (K_s·P/K_L·P) k_L`) differs from this one by ~6e-5 relative, which this test can't resolve.
+incoherent noise whose power relative to the coherent part grows as (1 − ρ̃²)/ρ̃². The exact dressed q
+(`q = k_s − (K_s·P/K_L·P) k_L`, measured in `theory/lattice_stack_tests/`) differs from this one by 3e-5 relative at
+`a0 = 0.2`, which this test can't resolve. Before 2026-11-06 this test used `N k_1 + k_L`, wrong by 7e-4 at N = 2; tables
+below may still carry those values.
 
 ## Runs
 

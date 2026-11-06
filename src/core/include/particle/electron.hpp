@@ -27,10 +27,11 @@ public:
   // starts at initial_tau. The full trajectory (including this initial
   // state) is recorded on every subsequent set_state() call. Storage for
   // N_tau points is reserved only when compute_trajectory() runs, so an
-  // electron waiting its turn holds just its initial state.
+  // electron waiting its turn holds just its initial state. charge_weight is the charge this electron stands for, in
+  // units of one electron; it scales its radiated field and nothing in its motion.
   Electron(const Core::MathUtils::RealFourVector& initial_position,
            const Core::MathUtils::RealFourVector& initial_momentum, const double initial_tau, const double d_tau,
-           const size_t N_tau);
+           const size_t N_tau, const double charge_weight = 1.0);
   ~Electron();
 
   // Advances the current state by one proper-time step d_tau: reads the
@@ -74,6 +75,7 @@ public:
   double get_tau_0() const { return tau_0; }
   double get_d_tau() const { return d_tau; }
   size_t get_N_tau() const { return N_tau; }
+  double get_charge_weight() const { return charge_weight; }
 
   // The recorded trajectory
   const std::vector<State>& get_trajectory() const { return trajectory; }
@@ -89,6 +91,7 @@ private:
   double tau_0;  // initial value of the proper time
   double d_tau;  // tau_step in the numerical integration
   size_t N_tau;  // number of steps in the numerical integration
+  double charge_weight;
   // these are stored in each electron.
 
   // Phase-space derivative (dx^\mu/d\tau, dp^\mu/d\tau) at a given

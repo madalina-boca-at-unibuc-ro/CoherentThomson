@@ -26,6 +26,11 @@ def read_beam_geometry(config_path):
     except ValueError:
         print("No 'beam_sigma_z' in this run's config (older run); using sigma_z = 0")
         sigma_z = 0.0
+    # A lattice stack (M sheets, spacing d) is drawn as the uniform density it samples, over H = M d.
+    with open(config_path) as config_file:
+        sheets = [line.split()[1] for line in config_file if line.split()[:1] == ["beam_stack_sheets"]]
+    if sheets and int(sheets[0]) > 1:
+        H = int(sheets[0]) * read_length("beam_stack_spacing", config_path)
     return H, sigma_z, z_c
 
 def analytic_density(z, H, sigma_z, z_c):

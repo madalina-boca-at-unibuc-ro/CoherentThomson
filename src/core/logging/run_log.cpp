@@ -152,6 +152,16 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
          << " rings\n";
     write_kv(file, "lattice spacing", spacing, lambda_au);
     write_kv(file, "requested spacing", beam.lattice_spacing, lambda_au);
+    if (beam.stack_sheets > 1) {
+      const double M = static_cast<double>(beam.stack_sheets);
+      file << "  stack sheets                " << beam.stack_sheets << " (" << IoUtils::polar_lattice_site_count(rings)
+           << " sites each, charge weight 1/" << beam.stack_sheets << ")\n";
+      write_kv(file, "stack spacing", beam.stack_spacing, lambda_au);
+      write_kv(file, "stack length H = M d", M * beam.stack_spacing, lambda_au);
+      write_kv(file, "first-to-last sheet span", (M - 1.0) * beam.stack_spacing, lambda_au);
+      file << "  represented charge          " << form_factor.total_charge_weight << " electrons in " << num_electrons
+           << " trajectories\n";
+    }
   } else {
     file << "  distribution                random\n";
   }
@@ -204,8 +214,7 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
          << (incident.half_width > 0.0 ? "sized to the beam" : "of the detector") << " (incident_config.cfg)\n";
     write_kv(file, "  distance", incident.distance, lambda_au);
     if (incident.half_width > 0.0) {
-      write_kv(file, detector_type == "CircularDetector" ? "  R_max" : "  half-width", incident.half_width,
-               lambda_au);
+      write_kv(file, detector_type == "CircularDetector" ? "  R_max" : "  half-width", incident.half_width, lambda_au);
       file << "    = 2 x LG table radius x w(Z); / w0 = " << incident.half_width / lg_w0_au << "\n";
     }
   }

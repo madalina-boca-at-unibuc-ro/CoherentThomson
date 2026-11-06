@@ -11,19 +11,22 @@
 namespace Core::Simulation {
 
 // Single-wavevector form factor of the initial electron positions (theory/thomson_form_factor_diagnostic.md):
-// b(q) = (1/N) sum_j exp(i q.r_j(0)), with one run-level q = k_s - k_L. A diagnostic only: it does not enter the
-// radiation calculation. All wavevectors are four-vectors in atomic units (1/bohr), K = (omega/c, k).
+// b(q) = (1/W) sum_j w_j exp(i q.r_j(0)), W = sum_j w_j, with one run-level q = k_s - k_L and w_j each electron's
+// charge weight (1 unless the beam is a lattice stack). A diagnostic only: it does not enter the radiation calculation.
+// All wavevectors are four-vectors in atomic units (1/bohr), K = (omega/c, k).
 struct FormFactor {
   size_t num_electrons;
-  // Mean initial momentum: the beam average of the 3-momenta, put back on the mass shell.
+  double total_charge_weight;  // W, the charge the simulated electrons stand for, in units of one electron
+  // Mean initial momentum: the charge-weighted beam average of the 3-momenta, put back on the mass shell.
   MathUtils::RealFourVector mean_momentum;
   // The same ponderomotively dressed momentum (PhysUtils::dressed_momentum) the radiation frequencies are built from.
   MathUtils::RealFourVector dressed_momentum;
   double omega_s;                 // scattered fundamental, non_linear_Thomson_formula(k_L, dressed, n_s, 1) * c
   MathUtils::RealFourVector k_L;  // incident laser, omega_L/c (1, n_L)
   MathUtils::RealFourVector k_s;  // scattered photon, omega_s/c (1, n_s), n_s = the detector's own normal direction
-  // q = k_s - k_L; only its spatial part enters b. Whether the k_L term should instead carry the factor
-  // (K_s.P)/(K_L.P) once omega_s is dressed is an open question (see CLAUDE.md).
+  // q = k_s - k_L; only its spatial part enters b. The measured slope of the field carries the factor (K_s.P)/(K_L.P)
+  // on the k_L term, with the undressed P: a 7e-6 / 3e-5 relative difference head-on at a0 = 0.1 / 0.2, ~2% of the
+  // transverse q in tilted geometries (theory/dev_notes.md).
   MathUtils::RealFourVector q;
   std::complex<double> b;
 };

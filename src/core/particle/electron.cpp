@@ -10,10 +10,11 @@ namespace Core::Particle {
 
 Electron::Electron(const Core::MathUtils::RealFourVector& initial_position,
                    const Core::MathUtils::RealFourVector& initial_momentum, const double initial_tau,
-                   const double d_tau, const size_t N_tau)
+                   const double d_tau, const size_t N_tau, const double charge_weight)
     : tau_0(initial_tau),
       d_tau(d_tau),
       N_tau(N_tau),
+      charge_weight(charge_weight),
       initial_position(initial_position),
       initial_momentum(initial_momentum),
       current_position(initial_position),

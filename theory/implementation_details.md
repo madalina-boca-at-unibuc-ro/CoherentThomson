@@ -157,6 +157,10 @@ These are the same long-distance formulas with the same outputs; only the evalua
 - **Two scalars instead of six.** In the long-distance modes the $\tau$ loop accumulates only $p_1,p_2$ per
   frequency. The six tensor components are formed once per (screen point, frequency) at reconstruction.
 
+**Charge weights.** Each electron's field is scaled by its `charge_weight` (`1/M` on an `M`-sheet lattice stack, otherwise
+1) exactly once per (frequency, screen point), where it joins the shared sum: the local accumulators in the exact modes, the
+`amplitude` of the reconstruction in the long-distance modes. A weight of 1 leaves the output byte-identical.
+
 ## 4. Optimizations of the phase factor
 
 For each (screen point, $\tau$) every mode needs the complex exponential $e^{ik\phi}$, and it dominates the run

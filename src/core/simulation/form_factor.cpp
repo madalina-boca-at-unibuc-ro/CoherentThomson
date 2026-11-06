@@ -14,18 +14,20 @@ FormFactor compute_form_factor(const std::vector<Particle::Electron>& electron_b
   }
   const double c = PhysUtils::AtomicUnits::c;
   const double mc = PhysUtils::AtomicUnits::m_0 * c;
-  const double N = static_cast<double>(electron_beam.size());
 
+  double W = 0.0;
   double px = 0.0, py = 0.0, pz = 0.0;
   for (const Particle::Electron& electron : electron_beam) {
     const MathUtils::RealFourVector& p = electron.get_initial_momentum();
-    px += p[1];
-    py += p[2];
-    pz += p[3];
+    const double w = electron.get_charge_weight();
+    W += w;
+    px += w * p[1];
+    py += w * p[2];
+    pz += w * p[3];
   }
-  px /= N;
-  py /= N;
-  pz /= N;
+  px /= W;
+  py /= W;
+  pz /= W;
   MathUtils::RealFourVector P(std::sqrt(px * px + py * py + pz * pz + mc * mc), px, py, pz);
 
   // Same k1 and dressed momentum as Simulation::init_simulation_parameters, but n2 is the detector's actual normal
@@ -41,10 +43,10 @@ FormFactor compute_form_factor(const std::vector<Particle::Electron>& electron_b
   std::complex<double> A(0.0, 0.0);
   for (const Particle::Electron& electron : electron_beam) {
     double phase = MathUtils::dot3(q, electron.get_initial_position());
-    A += std::complex<double>(std::cos(phase), std::sin(phase));
+    A += electron.get_charge_weight() * std::complex<double>(std::cos(phase), std::sin(phase));
   }
 
-  return {electron_beam.size(), P, dressed, omega_s_over_c * c, k_L, k_s, q, A / N};
+  return {electron_beam.size(), W, P, dressed, omega_s_over_c * c, k_L, k_s, q, A / W};
 }
 
 }  // namespace Core::Simulation

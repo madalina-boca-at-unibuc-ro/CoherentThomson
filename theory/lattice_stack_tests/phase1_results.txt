@@ -1,0 +1,50 @@
+k_1 = 725.536100 k_L, analytic q_1 = 726.536100 k_L, translation slope s_1 = 726.531125 k_L
+Lambda_1 = 2 pi / q_1 = 1.376394e-03 lambda_L
+
+=== Scan through the minimum at H = Lambda_1, d = 1e-4 lambda_L, fixed total charge
+M=2                    H/Lam= 0.145 | b=+0.974064-7e-16j err=6.4e-09 | N=1: B=+0.974065 c=+0.974065-1.6e-09j |c-B|=3.1e-08 resid=4.3e-08 | N=2: B=+0.897604 c=+0.897604-4.3e-08j |c-B|=1.0e-07 resid=2.6e-07 |
+M=4                    H/Lam= 0.291 | b=+0.874323-3e-16j err=1.2e-09 | N=1: B=+0.874324 c=+0.874324+2.0e-08j |c-B|=5.3e-08 resid=6.4e-08 | N=2: B=+0.548782 c=+0.548782-2.6e-08j |c-B|=7.4e-08 resid=1.7e-07 |
+M=7                    H/Lam= 0.509 | b=+0.631124+1e-15j err=4.2e-09 | N=1: B=+0.631129 c=+0.631129-1.1e-08j |c-B|=6.4e-08 resid=7.2e-08 | N=2: B=-0.017446 c=-0.017446-1.0e-08j |c-B|=4.9e-08 resid=1.1e-07 |
+M=10                   H/Lam= 0.727 | b=+0.334670+1e-16j err=5.8e-09 | N=1: B=+0.334677 c=+0.334677+1.4e-08j |c-B|=2.4e-08 resid=3.4e-08 | N=2: B=-0.224397 c=-0.224397+2.8e-09j |c-B|=1.8e-08 resid=6.7e-08 |
+M=12                   H/Lam= 0.872 | b=+0.144306+5e-16j err=4.0e-08 | N=1: B=+0.144313 c=+0.144313+1.1e-09j |c-B|=6.2e-09 resid=1.9e-08 | N=2: B=-0.136308 c=-0.136308+9.5e-09j |c-B|=4.1e-08 resid=1.0e-07 |
+M=14                   H/Lam= 1.017 | b=-0.017000+5e-16j err=1.0e-08 | N=1: B=-0.016994 c=-0.016994-2.1e-09j |c-B|=4.7e-09 resid=1.7e-08 | N=2: B=+0.017421 c=+0.017421+1.1e-08j |c-B|=5.0e-08 resid=1.1e-07 |
+M=16                   H/Lam= 1.162 | b=-0.134934+2e-17j err=2.1e-08 | N=1: B=-0.134928 c=-0.134928-1.2e-08j |c-B|=3.5e-08 resid=3.6e-08 | N=2: B=+0.120870 c=+0.120870-1.4e-09j |c-B|=2.4e-08 resid=6.1e-08 |
+M=18                   H/Lam= 1.308 | b=-0.202096-2e-16j err=2.8e-08 | N=1: B=-0.202093 c=-0.202093+3.8e-09j |c-B|=2.5e-08 resid=2.8e-08 | N=2: B=+0.117825 c=+0.117825-9.8e-09j |c-B|=2.7e-08 resid=7.1e-08 |
+M=21                   H/Lam= 1.526 | b=-0.209764+2e-16j err=1.7e-08 | N=1: B=-0.209766 c=-0.209766+1.9e-09j |c-B|=2.4e-08 resid=2.5e-08 | N=2: B=-0.017379 c=-0.017379-1.3e-08j |c-B|=4.7e-08 resid=1.1e-07 |
+M=24                   H/Lam= 1.744 | b=-0.132767+5e-17j err=4.3e-08 | N=1: B=-0.132772 c=-0.132772+8.4e-09j |c-B|=3.7e-08 resid=3.8e-08 | N=2: B=-0.094450 c=-0.094450+1.9e-09j |c-B|=2.0e-08 resid=4.4e-08 |
+M=28                   H/Lam= 2.034 | b=+0.016976-2e-15j err=7.4e-10 | N=1: B=+0.016969 c=+0.016969+2.7e-09j |c-B|=8.0e-09 resid=1.8e-08 | N=2: B=+0.017320 c=+0.017320+1.4e-08j |c-B|=4.9e-08 resid=1.1e-07 |
+
+=== Exact minimum, H = Lambda_1 (d = Lambda_1 / M), and its refinement
+M=14 d=Lam/14          H/Lam= 1.000 | b=-0.000000+8e-16j err=5.6e-09 | N=1: B=+0.000007 c=+0.000007-1.8e-09j |c-B|=5.8e-09 resid=1.7e-08 | N=2: B=-0.000007 c=-0.000007+1.9e-08j |c-B|=5.5e-08 resid=1.2e-07 |
+M=28 d=Lam/28          H/Lam= 1.000 | b=-0.000000+2e-16j err=5.6e-09 | N=1: B=+0.000007 c=+0.000007-1.8e-09j |c-B|=5.8e-09 resid=1.7e-08 | N=2: B=-0.000007 c=-0.000007+1.6e-08j |c-B|=4.9e-08 resid=1.1e-07 |
+M=56 d=Lam/56          H/Lam= 1.000 | b=-0.000000-1e-16j err=5.6e-09 | N=1: B=+0.000007 c=+0.000007-1.8e-09j |c-B|=5.8e-09 resid=1.7e-08 | N=2: B=-0.000007 c=-0.000007+1.7e-08j |c-B|=5.1e-08 resid=1.1e-07 |
+
+=== Spacing refinement at fixed H and charge (d = 1e-4 against 0.5e-4 lambda_L)
+M=14 d=0.5e-4          H/Lam= 0.509 | b=+0.627019+2e-17j err=1.8e-08 | N=1: B=+0.627023 c=+0.627023+4.3e-08j |c-B|=4.5e-08 resid=5.4e-08 | N=2: B=-0.016994 c=-0.016994-1.8e-08j |c-B|=4.9e-08 resid=1.1e-07 |
+    H = 7e-4 lambda_L, N=1: |F_fine - F_coarse| / |F_1| = 4.106e-03, discrete prediction 4.105e-03
+    H = 7e-4 lambda_L, N=2: |F_fine - F_coarse| / |F_1| = 4.525e-04, discrete prediction 4.525e-04
+M=28 d=0.5e-4          H/Lam= 1.017 | b=-0.016890-2e-16j err=9.3e-09 | N=1: B=-0.016883 c=-0.016883-1.7e-09j |c-B|=4.9e-09 resid=1.7e-08 | N=2: B=+0.016969 c=+0.016969+1.5e-08j |c-B|=4.7e-08 resid=1.1e-07 |
+    H = 14e-4 lambda_L, N=1: |F_fine - F_coarse| / |F_1| = 1.105e-04, discrete prediction 1.105e-04
+    H = 14e-4 lambda_L, N=2: |F_fine - F_coarse| / |F_1| = 4.518e-04, discrete prediction 4.518e-04
+M=42 d=0.5e-4          H/Lam= 1.526 | b=-0.208400+3e-17j err=1.6e-08 | N=1: B=-0.208402 c=-0.208402+8.2e-09j |c-B|=3.4e-08 resid=3.5e-08 | N=2: B=-0.016928 c=-0.016928-1.6e-08j |c-B|=4.6e-08 resid=1.1e-07 |
+    H = 21e-4 lambda_L, N=1: |F_fine - F_coarse| / |F_1| = 1.365e-03, discrete prediction 1.365e-03
+    H = 21e-4 lambda_L, N=2: |F_fine - F_coarse| / |F_1| = 4.507e-04, discrete prediction 4.507e-04
+
+=== Off-centre stack: beam_center_z shifts the phase by exp(-i s z)
+N=1: predicted c = -0.092729+0.624279j, measured c = -0.092729+0.624279j, |c-B| = 6.0e-08
+N=2: predicted c = 0.016693+0.005071j, measured c = 0.016693+0.005071j, |c-B| = 5.0e-08
+
+=== Control, diagnostic only: q d = 2 pi rephases the sheets (d = Lambda_1), one screen point
+M=2: |b| = 1.000000000, H = 2 Lambda_1
+M=3: |b| = 1.000000000, H = 3 Lambda_1
+M=5: |b| = 1.000000000, H = 5 Lambda_1
+
+=== Radiation formulas at the exact minimum and at H = Lambda_1 / 2, one screen point (totals)
+direct                            H=Lam    B=+6.91e-06 c=+6.908133e-06-1.5e-09j |c-B|=2.9e-09 resid=2.9e-09
+direct                            H=Lam/2  B=+6.42e-01 c=+6.419986e-01-2.8e-08j |c-B|=1.4e-07 resid=1.4e-07
+simplified                        H=Lam    B=+6.91e-06 c=+6.908133e-06-1.5e-09j |c-B|=2.9e-09 resid=3.0e-09
+simplified                        H=Lam/2  B=+6.42e-01 c=+6.419986e-01-2.8e-08j |c-B|=1.4e-07 resid=1.4e-07
+long_distance_direct_approx       H=Lam    B=+6.91e-06 c=+6.908131e-06-1.5e-09j |c-B|=3.0e-09 resid=3.0e-09
+long_distance_direct_approx       H=Lam/2  B=+6.42e-01 c=+6.419985e-01-3.5e-08j |c-B|=5.3e-08 resid=5.3e-08
+long_distance_simplified_approx   H=Lam    B=+6.91e-06 c=+6.908131e-06-1.5e-09j |c-B|=3.0e-09 resid=3.0e-09
+long_distance_simplified_approx   H=Lam/2  B=+6.42e-01 c=+6.419985e-01-3.5e-08j |c-B|=5.3e-08 resid=5.3e-08

@@ -701,13 +701,20 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   `(epsilon_1, epsilon_2)` plane at the waist, `F^{mu nu}` rotated to `(epsilon_1, epsilon_2, n)`. Runs built
   before this wrote lab-frame components there, which is the same thing only for a laser along +Oz; read older
   runs' `incident_field.dat` accordingly.
-- **Initial form factor `b(q)` (`simulation/form_factor.cpp`): dressed `omega_s`, `q` unsettled.** It deviates
+- **Initial form factor `b(q)` (`simulation/form_factor.cpp`): dressed `omega_s`; correct `q` measured on 2026-11-06,
+  see the end of this item.** It deviates
   from `theory/thomson_form_factor_diagnostic.md` by using the **dressed** `omega_s` (same
   `non_linear_Thomson_formula` + `dressed_momentum` as the radiation frequencies; the user's choice over the spec's
   undressed one) while keeping `q = k_s − k_L`. Once `omega_s` is dressed, `K_s·P ≠ K_L·P`, and shifting an
   electron along its free worldline suggests the consistent phase uses `q = k_s − (K_s·P / K_L·P) k_L` (undressed
   mean `P`). Derived without a check. The ratio is ~0.98 head-on at `a0 = 0.2` (negligible there) but larger in
-  tilted geometries. Settle before relying on `b` away from head-on collisions.
+  tilted geometries. **Settled by measurement on 2026-11-06** (`theory/lattice_stack_tests/q_formula_*.py`): translating
+  the beam gives the field the phase `e^{-i q·r}` with `q_N = N [k_1 − (K_1·P / K_L·P) k_L]`, undressed `P`, to ≤ 1e-7
+  relative head-on (`a0` 0.1, 0.2; `N` 1, 2) and ≤ 4e-5 `k_L` per axis at `θ = 0.9π, 0.75π` (small plane-wave disk,
+  on axis, `N` = 1). `b` still uses `k_s − k_L`, off by 7e-6 / 3e-5 relative head-on at `a0` 0.1 / 0.2 and by the
+  ratio's ~2% in the transverse `q` when tilted. For harmonics, `N k_1 + k_L` is wrong: harmonic `N` takes `N` laser
+  photons. A tilted **wide** disk (46.5 λ, `θ = 0.9π`) misses the transverse slope by ~2–4%; a small disk doesn't, so the
+  likely cause is the fixed integration window: edge electrons meet the pulse many cycles early or late and are cut off.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,
   should reproduce the classical Thomson differential radiation distribution** (`dP/dOmega` proportional to
   `1+cos^2(theta)` for the repo's default circular polarization — `laser_zeta_1`/`zeta_2` giving `zeta_1=(1,0)`,

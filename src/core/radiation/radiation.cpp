@@ -193,6 +193,8 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
   size_t N_d = detector.get_total_points();
   size_t N_freq = frequencies_list.size();
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
+  // The electron's share of the field, applied once per (frequency, screen point) where it joins the shared sum.
+  const double charge_weight = electron.get_charge_weight();
   double d_tau = electron.get_d_tau();
 
   // Simulation::init_simulation_parameters builds frequencies_list as an arithmetic progression in
@@ -393,9 +395,12 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
     }
 
     for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
-      field.field[i_freq][i_d].long_range += local_long[i_freq];
-      field.field[i_freq][i_d].short_range += local_short[i_freq];
-      field.field[i_freq][i_d].boundary += local_boundary[i_freq];
+      Simulation::PackedFaraday& target = field.field[i_freq][i_d];
+      for (size_t index = 0; index < 6; ++index) {
+        target.long_range[index] += charge_weight * local_long[i_freq][index];
+        target.short_range[index] += charge_weight * local_short[i_freq][index];
+        target.boundary[index] += charge_weight * local_boundary[i_freq][index];
+      }
     }
   }
 }
@@ -435,6 +440,8 @@ void compute_radiation_long_distance(const Particle::Electron& electron, const s
   size_t N_d = detector.get_total_points();
   size_t N_freq = frequencies_list.size();
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
+  // The electron's share of the field, applied once per (frequency, screen point) where it joins the shared sum.
+  const double charge_weight = electron.get_charge_weight();
   double d_tau = electron.get_d_tau();
   if (N_tau == 0 || N_freq == 0) return;
 
@@ -554,7 +561,7 @@ void compute_radiation_long_distance(const Particle::Electron& electron, const s
     for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
       // e^{ik(|x_0| - |X| + r^0(tau_m))}/|x_0|; the simplified bulk p_a also carries ik (guide 5.2), while the
       // direct p_a is complete as accumulated (guide 5.1).
-      MathUtils::Complex amplitude = std::polar(inv_x0_norm, frequencies_list[i_freq] * constant_phase);
+      MathUtils::Complex amplitude = std::polar(charge_weight * inv_x0_norm, frequencies_list[i_freq] * constant_phase);
       MathUtils::Complex bulk_factor =
           use_direct_formula ? amplitude : MathUtils::Complex{0.0, frequencies_list[i_freq]} * amplitude;
       Simulation::PackedFaraday& target = field.field[i_freq][i_d];
@@ -642,6 +649,8 @@ void compute_radiation_long_distance_stepped(const Particle::Electron& electron,
   const double k0 = frequencies_list[0];
   const bool multi_frequency = N_freq > 1;
   const std::vector<Particle::Electron::State>& trajectory = electron.get_trajectory();
+  // The electron's share of the field, applied once per (frequency, screen point) where it joins the shared sum.
+  const double charge_weight = electron.get_charge_weight();
   const double d_tau = electron.get_d_tau();
   const MathUtils::RealFourVector& reference = trajectory[0].position;  // r(tau_m)
   constexpr size_t L = kScreenBlock;
@@ -838,7 +847,8 @@ void compute_radiation_long_distance_stepped(const Particle::Electron& electron,
       // |x_0| - |X| + r^0(tau_m), kept out of the stepped phase; e^{ik|X|} is applied in run_simulation.
       double constant_phase = delta_R[l] + reference[0];
       for (size_t i_freq = 0; i_freq < N_freq; i_freq++) {
-        MathUtils::Complex amplitude = std::polar(inv_x0_norm, frequencies_list[i_freq] * constant_phase);
+        MathUtils::Complex amplitude =
+            std::polar(charge_weight * inv_x0_norm, frequencies_list[i_freq] * constant_phase);
         MathUtils::Complex bulk_factor =
             use_direct_formula ? amplitude : MathUtils::Complex{0.0, frequencies_list[i_freq]} * amplitude;
         Simulation::PackedFaraday& target = field.field[i_freq][i_d];

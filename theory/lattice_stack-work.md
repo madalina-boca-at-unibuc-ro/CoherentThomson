@@ -12,7 +12,8 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 
 - Working by discussion: each part of the brief is discussed before it is implemented.
 - Done: the trajectory memory fix, commit `3052872` on branch `lattice-stack`.
-- Phase 1 is **not** implemented. It waits for the user's go-ahead.
+- Phase 1 is implemented and its checkpoint passes (`lattice-stack-implemented.md`). It waits for the user's review and is
+  not committed yet. Phase 2 does not start until the user says so.
 
 ## Decisions so far
 
@@ -31,7 +32,8 @@ formula, with nothing measured. Here `k_s` is the dressed fundamental along the 
 `k_L` is the laser wavevector. So:
 
 - `Λ = 2π/|q| = 2π/|k_s - k_L|`, and the modulation period follows from it directly.
-- For radiation harmonic `N`, on axis and head-on, `|q_N| = N k_1 + k_L` (report Sec. 6.1).
+- For radiation harmonic `N`, on axis and head-on, `|q_N| = N (k_1 + k_L)`, because harmonic `N` absorbs `N` laser
+  photons. **Report Sec. 6.1 has `N k_1 + k_L`, which is wrong for `N ≥ 2`** (see "The exact `q`" below).
 - The brief's sheet-translation test is the only thing that *measures* a slope. It becomes a one-off check that the
   solver follows the analytic value, not an input. The prediction is `2k/(1+β₀)`, which differs from the analytic `q`
   by 7e-6 at `a0 = 0.1` (9e-4 rad across 280 nm), far too little to matter.
@@ -40,12 +42,61 @@ formula, with nothing measured. Here `k_s` is the dressed fundamental along the 
 Still to settle for Phase 3: whether the config gives `Λ_mod` as a length or in units of the computed `Λ`. Units of
 `Λ` would keep the phase matching exact when `a0` changes (`Λ` = 13.77 nm at `a0 = 0.1`, 13.97 nm at `0.2`).
 
+### The exact `q` (measured 2026-11-06)
+
+A recorded open point (`theory/dev_notes.md`, `coherent_incoherent_decomposition.md`) asked whether the phase should use
+`k_s − k_L` or `k_s − (K_s·P / K_L·P) k_L`. Translating the beam and fitting the field phase settles it: the field gets
+`e^{-i q·r}` with `q_N = N [k_1 − (K_1·P / K_L·P) k_L]`, undressed `P`. On axis and head-on, this is `2 N k_1 / (1+β₀)`.
+
+Head-on, slope over the screen, in `k_L` (`q_formula_head_on.py`):
+
+| `a0` | N | Measured | Dressed form | `N (k_1 + k_L)` | `N k_1 + k_L` |
+|---|---|---|---|---|---|
+| 0.1 | 1 | 726.531123 | 726.531125 | 726.536100 | 726.536100 |
+| 0.1 | 2 | 1453.062208 | 1453.062250 | 1453.072200 | 1452.072200 |
+| 0.2 | 1 | 715.846822 | 715.846892 | 715.866500 | 715.866500 |
+| 0.2 | 2 | 1431.693636 | 1431.693784 | 1431.733000 | 1430.733000 |
+
+Tilted, small plane-wave disk (R = 0.1 λ_L, 20 electrons), one on-axis point, N = 1 (`q_formula_tilted_small_disk.py`):
+
+| θ | `a0` | Axis | Measured | Dressed form | `k_s − k_L` |
+|---|---|---|---|---|---|
+| 0.9π | 0.2 | x | −0.302958 | −0.302958 | −0.309017 |
+| 0.9π | 0.2 | z | 698.329299 | 698.329309 | 698.347957 |
+| 0.9π | 0.1 | x | −0.307480 | −0.307480 | −0.309017 |
+| 0.9π | 0.1 | z | 708.751768 | 708.751725 | 708.756457 |
+| 0.75π | 0.2 | x | −0.693245 | −0.693245 | −0.707107 |
+| 0.75π | 0.2 | z | 611.016322 | 611.016345 | 611.030207 |
+
+Consequences:
+
+- **The stack period:** `Λ = 2π/|k_s − k_L|` (decision 4) stays, as the difference is negligible head-on: 9e-4 rad across
+  280 nm at `a0 = 0.1`.
+- **Tilted wide disks are unreliable:** a 46.5 λ_L disk at θ = 0.9π misses the x slope by 2–4% (`q_formula_tilted_wide_disk.py`,
+  and also the screen fit). The small disk does not, which points to the fixed integration window (`tau_0_traj`, known bug).
+  Head-on over a stack this does not apply, and the Phase 1 scan tests that directly.
+- **Report numbers:** with `N (k_1 + k_L)` in `compare_bunch_length.py`, the Sec. 6.3 table changes at N = 2 only:
+
+| `q₁σ` | `q₂σ` before → after | ρ̃ before → after | `\|c\|/ρ̃` before → after |
+|---|---|---|---|
+| 0.25 | 0.4996 → 0.5000 | 0.88265 → 0.88250 | 0.99676 → 0.99694 |
+| 0.5 | 0.9993 → 1.0000 | 0.60697 → 0.60654 | 0.98885 → 0.98955 |
+| 1 | 1.9986 → 2.0000 | 0.13573 → 0.13535 | 0.93546 → 0.93808 |
+
 ## Open items
 
+- **Report Sec. 6:** whether to correct the formula (line 564, and the note in Sec. 7 about the "undressed `q_N`" and
+  6e-5) and the N = 2 values above. Not done; the user decides.
+- **`b` in `form_factor.cpp`** still uses `k_s − k_L` by decision 4. Switching to the exact form would be a one-line change.
 - **CLAUDE.md edits proposed on 2026-11-06, not applied:** the lattice constraint should also name `beam_sigma_z 0`;
   `beam_lattice_spacing` should be listed as optional; the `plot_processed.py` usage needs correcting; and a pointer to
   the brief should be added.
-- **Next:** the user's go-ahead on Phase 1, with the design as discussed below.
+- **Next:** the user's review of Phase 1, then the discussion of Phase 2.
+- **Phase 3b plan, as discussed:** one modulation period (about 275 nm, 296,000 trajectories at 1 nm), at 1 nm and 0.5 nm on the
+  small screen; a full screen once if the mode decomposition is wanted; more periods only for an explicit finite-train test.
+- **Later for Phase 2:** a standalone Python tool for `b` at any `q`, `N` and ζ from the sheet weights, checked against the log.
+- **Phase 3 keys:** `H` need not be a whole number of periods (log `H/Λ_mod`, warn); sheets per period should be whole, with `d`
+  adjusted and logged.
 
 ## Analysis of the brief (as given to the user on 2026-11-06)
 

@@ -68,7 +68,7 @@ def read_field(run):
 
 
 def read_k1_over_kL(run):
-  # q_N = N k_1 + k_L head-on, on axis; k_s at N = 1 in units of k_L is in the form-factor section of run_log.txt
+  # q_N = N (k_1 + k_L) head-on, on axis (harmonic N absorbs N laser photons); k_s at N = 1 in units of k_L is in the form-factor section of run_log.txt
   m = re.search(r"k_s\s+\(.*?\)\s+a\.u\.\s+\[\(\S+,\s*\S+,\s*(\S+)\)\s*k_L\]", (run / "run_log.txt").read_text())
   return float(m.group(1))
 
@@ -93,7 +93,7 @@ def main():
     assert np.allclose(om, omega)
     for i, N in enumerate(omega):
       a, b = F_ref[i].ravel(), F[i].ravel()
-      qs = (N * k1 + 1.0) * two_pi * sigma  # k_L = 2 pi / lambda
+      qs = N * (k1 + 1.0) * two_pi * sigma  # k_L = 2 pi / lambda
       rho = np.exp(-qs**2 / 2)
       nref = np.vdot(a, a).real
       c = np.vdot(a, b) / nref

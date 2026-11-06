@@ -254,6 +254,13 @@ struct CylinderBeamParams {
   // ignored.
   bool polar_lattice;
   double lattice_spacing;  // requested spacing (polar_lattice only); the rings use polar_lattice_geometry's
+  // Longitudinal stack (polar_lattice only, theory/CoherentThomson-lattice-stack-implementation.md): the same lattice
+  // repeated on stack_sheets parallel sheets, stack_spacing apart, centred on z = 0 before beam_center and the beam
+  // rotation. Each sheet gets 1/stack_sheets of the charge, so the total matches the flat disk. beam_stack_sheets is
+  // optional (default 1, the flat disk); beam_cylinder_height and beam_sigma_z stay 0, since they would smear the
+  // sheets.
+  size_t stack_sheets;
+  double stack_spacing;
 };
 
 // Rings of the polar lattice on a disk of radius R: a node at the centre and rings j = 1..J at r_j = j*d with
@@ -262,6 +269,14 @@ struct CylinderBeamParams {
 inline std::pair<int, double> polar_lattice_geometry(double radius, double spacing) {
   const int rings = std::max(1, static_cast<int>(std::lround(radius / spacing - 0.5)));
   return {rings, radius / (rings + 0.5)};
+}
+
+// Number of nodes on one sheet of the polar lattice with `rings` rings: the centre plus round(2*pi*j) per ring.
+inline size_t polar_lattice_site_count(int rings) {
+  size_t count = 1;
+  for (int j = 1; j <= rings; ++j)
+    count += static_cast<size_t>(std::lround(2.0 * MathUtils::pi * j));
+  return count;
 }
 
 // Beam radius, in units of w0, just larger than the Laguerre-Gauss (p, l) mode's transverse extent
@@ -345,6 +360,32 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
     params.lattice_spacing = spacing_val * convert_unit_to_number(spacing_unit, config);
     if (!(params.lattice_spacing > 0.0)) {
       throw std::invalid_argument("beam_lattice_spacing must be > 0");
+    }
+  }
+
+  params.stack_sheets = 1;
+  params.stack_spacing = 0.0;
+  auto stack_sheets = config.find("beam_stack_sheets");
+  auto stack_spacing = config.find("beam_stack_spacing");
+  if (stack_sheets == config.end() && stack_spacing != config.end()) {
+    throw std::invalid_argument("beam_stack_spacing needs beam_stack_sheets");
+  }
+  if (stack_sheets != config.end()) {
+    if (!params.polar_lattice) {
+      throw std::invalid_argument("beam_stack_sheets needs beam_distribution polar_lattice");
+    }
+    size_t parsed_length = 0;
+    const long sheets = std::stol(stack_sheets->second, &parsed_length);
+    if (parsed_length != stack_sheets->second.size() || sheets < 1) {
+      throw std::invalid_argument("beam_stack_sheets must be an integer >= 1 (got " + stack_sheets->second + ")");
+    }
+    params.stack_sheets = static_cast<size_t>(sheets);
+    if (params.stack_sheets > 1) {
+      auto [spacing_val, spacing_unit] = split_value_and_unit(get_required(config, "beam_stack_spacing"));
+      params.stack_spacing = spacing_val * convert_unit_to_number(spacing_unit, config);
+      if (!(params.stack_spacing > 0.0)) {
+        throw std::invalid_argument("beam_stack_spacing must be > 0");
+      }
     }
   }
 

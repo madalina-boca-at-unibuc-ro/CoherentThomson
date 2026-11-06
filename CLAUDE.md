@@ -19,8 +19,9 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
   `L_N = N(m+σ)−σ`, `σ = 2 Im(ζ₁*ζ₂)`. It was ~5% low at N = 2, likely the old centered-difference `∂φ` (replaced
   by an exact FFT derivative on 2026-10-29): re-run `plot_observables.py` on older runs before reading OAM numbers.
 - `b(q)` (`Simulation::compute_form_factor`, spec `theory/thomson_form_factor_diagnostic.md`): one scalar at
-  harmonic 1 along the detector normal, using the beam's actual mean momentum. Possibly inconsistent away from
-  head-on collisions: don't rely on it in tilted geometries.
+  harmonic 1 along the detector normal, using the beam's actual mean momentum. It keeps `q = k_s − k_L`; the field's
+  measured phase is `e^{-i q·r}` with `q_N = N [k_1 − (K_1·P / K_L·P) k_L]`, undressed `P` (negligible head-on, ~2% of
+  the transverse `q` tilted; `theory/dev_notes.md`). Note `q_N ≠ N k_1 + k_L`.
 - `LaguerreGaussLaser` matches the standard LG mode at the waist and at `Z = 10 z_R` (to `1e-7`, after the
   2026-10-27 curvature-sign fix), but isn't physics-reviewed against the literature (Allen et al. 1992; Siegman
   ch. 17). `PhysUtils::non_linear_Thomson_formula` is flagged in-code as needing review.
@@ -82,6 +83,8 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   - `config.cfg`: default (random beam), for current experiments; parameters change freely.
   - `config_lattice.cfg`: `config.cfg` plus `beam_distribution polar_lattice` and `beam_lattice_spacing`; keep the
     other keys in step with `config.cfg`.
+  - `config_lattice_stack.cfg`: model lattice stack. Run A of the report (Gaussian pulse, `a0 = 0.1`) on a 16 x 8
+    screen with `beam_stack_sheets`/`beam_stack_spacing`; not kept in step with `config.cfg`.
   - `config_spectrum.cfg`: `dense_frequency_spectrum true` on one screen point (`plot_point_spectrum*.py`).
   - `config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`. Use it for every
     C++-vs-Python comparison; update it when `INPUTS` change.
@@ -89,6 +92,9 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   run and a config (`configs/`, frozen copies; `configs/runs_A-D/README.md` is the a0-scan's running and
   post-processing recipe, with `run_batch.sh`) and rebuilds figures/PDF. Its runs live in
   `~/output/progress_report_20261029/` (manifest, logs, `SHA256SUMS`). If a quoted result changes, update the report.
+- `theory/lattice_stack_tests/`: lattice-stack checkpoints (`phase1_*.py`, `q_formula_*.py`, results in
+  `phase1_results.txt`), on `base_run_A.cfg` variants; they reuse finished runs in `~/output_tests/lattice_stack/`, so
+  delete those after changing the solver.
 - `theory/future_dev/tests/`: test inputs for the future-dev plans, all writing to `~/output_tests/...`:
   `one_electron_on_axis{,_spectrum}.cfg` (seconds per run), `nt_scan.py` (`trajectory_NT` convergence, runs the
   binary itself, ~3 min), and `bunch_length/`, `ponderomotive_lens/` (each with configs and a `README.md`).
@@ -153,9 +159,11 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
   `radiation_field.dat` is lab-frame components on the detector's local grid (mirrored `(x, −y)` facing −Oz).
 - The beam axis follows the mean momentum; `beam_center_x/y/z` apply **before** that rotation.
 - `beam_distribution polar_lattice` (with `beam_lattice_spacing`) places deterministic equal-area rings, ignoring
-  `beam_particle_count`: no speckle, far fewer electrons for coherent tests. Flat disk only (throws unless
-  `beam_cylinder_height 0`); a 3D lattice with a modulated z-density is planned for the microbunching step
-  (`theory/future_dev/coherent_incoherent_decomposition.md`).
+  `beam_particle_count`: no speckle, far fewer electrons for coherent tests. Throws unless `beam_cylinder_height 0`
+  and `beam_sigma_z 0`. `beam_stack_sheets M` with `beam_stack_spacing d` repeats it on parallel sheets at
+  `(j-(M-1)/2) d`, each with charge weight `1/M`, so the total charge is the flat disk's. Weights scale the field once
+  per electron and the form factor, never the motion. Modulated stacks are planned:
+  `theory/CoherentThomson-lattice-stack-implementation.md`, `theory/lattice_stack-work.md`, `theory/lattice-stack-implemented.md`.
 - `beam_sigma_z` smooths the cylinder ends with a Gaussian z displacement (`theory/gaussian_smoothed_electron_cylinder.md`);
   `0` is byte-identical to the plain cylinder. A fixed `random_seed` with fewer electrons gives the first electrons
   of a larger beam: use different seeds for independent samples.
@@ -211,7 +219,8 @@ modes: `theory/long_distance_direct_simplified_coding_guide.md`; OAM: `theory/nu
 Flat `key value [unit]` lines; units via `IoUtils::convert_unit_to_number` (check it before adding one).
 - **An unrecognized unit only warns** (assumes `1.0`). **A blank value drops the key** (`std::out_of_range`).
   Unknown keys are ignored. To see what a run actually used, read its `run_log.txt` (it also gives SI values).
-- All keys are required except `require_clean_build` and `beam_distribution`. `w0` units need `laser_type=laguerre_gauss`.
+- All keys are required except `require_clean_build`, `beam_distribution`, `beam_lattice_spacing` (`polar_lattice`
+  only) and `beam_stack_sheets`/`beam_stack_spacing`. `w0` units need `laser_type=laguerre_gauss`.
 - `run_log.txt` re-reads keys the way the factories do (`read_scaled`), not via getters on the physics classes.
 
 ## Physics notes worth knowing before comparing results
