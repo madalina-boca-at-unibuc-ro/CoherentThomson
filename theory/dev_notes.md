@@ -236,6 +236,9 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
 - All electrons in the generated beam get `compute_trajectory` run on them (inside `run_simulation` via
   `compute_radiation`); `main.cpp` additionally runs it once more directly on the first `min(10,
   electron_beam.size())` electrons (indices `0..N-1`) purely to export their trajectories to `electron.dat`.
+  **Since 2026-11-06** storage is reserved inside `compute_trajectory` and `run_simulation` frees it after each
+  electron (`release_trajectory`), so memory scales with threads, not electrons. Nothing may read a trajectory after
+  `run_simulation`. Byte-identical output, peak memory 3.4 GB → 22 MB at 3 319 electrons.
   `Particle::plot_particle_trajectory` now takes `(electron_beam, electron_indices, filepath)` and writes every
   selected electron's rows into one file tagged with a leading `electron_id` column (blank-line-separated blocks;
   `pandas.read_csv` skips blank lines automatically). `particle/plot_trajectory.py` groups by `electron_id` and

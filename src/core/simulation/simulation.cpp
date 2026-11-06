@@ -200,6 +200,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       for (size_t p = begin; p < end; ++p) {
         Particle::Electron& electron = electron_beam[p];
         Radiation::compute_radiation(electron, laser, frequencies_list, detector, local_field, radiation_formula);
+        electron.release_trajectory();
         // Progress indicator: only thread 0 prints, both to avoid interleaved output from multiple
         // threads writing to std::cout concurrently and because thread 0's chunk is representative
         // enough of overall progress for a rough sense of how a long run is advancing.

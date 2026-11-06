@@ -25,8 +25,9 @@ public:
   // Constructs the electron from its initial 4-position and 4-velocity
   // (u^\mu). The current state is seeded from the same values; proper time
   // starts at initial_tau. The full trajectory (including this initial
-  // state) is recorded on every subsequent set_state() call, with storage
-  // reserved upfront for N_tau points.
+  // state) is recorded on every subsequent set_state() call. Storage for
+  // N_tau points is reserved only when compute_trajectory() runs, so an
+  // electron waiting its turn holds just its initial state.
   Electron(const Core::MathUtils::RealFourVector& initial_position,
            const Core::MathUtils::RealFourVector& initial_momentum, const double initial_tau, const double d_tau,
            const size_t N_tau);
@@ -54,6 +55,12 @@ public:
   // compute_derivative() call here (the only additional Faraday-tensor
   // evaluation this whole scheme costs).
   void compute_trajectory(const Core::Laser::LaserField& laser);
+
+  // Frees the recorded trajectory (~2 MB per electron at 20000 points), leaving it empty. run_simulation calls this
+  // once an electron's radiation has been accumulated, so memory stays ~2 MB per thread rather than per electron.
+  // The initial state stays available, but get_trajectory(), export_state() and compute_trajectory() must not be
+  // used afterwards.
+  void release_trajectory();
 
   // Initial state accessors
   const Core::MathUtils::RealFourVector& get_initial_position() const { return initial_position; }

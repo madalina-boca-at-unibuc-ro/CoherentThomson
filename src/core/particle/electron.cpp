@@ -19,7 +19,6 @@ Electron::Electron(const Core::MathUtils::RealFourVector& initial_position,
       current_position(initial_position),
       current_momentum(initial_momentum),
       proper_time(initial_tau) {
-  trajectory.reserve(N_tau);
   trajectory.push_back({initial_position, initial_momentum, initial_tau, Core::MathUtils::RealFourVector{}});
 }
 
@@ -65,6 +64,7 @@ void Electron::update_state(double d_tau, const Core::Laser::LaserField& laser) 
 }
 
 void Electron::compute_trajectory(const Core::Laser::LaserField& laser) {
+  trajectory.reserve(N_tau);
   for (size_t i = 0; i < N_tau - 1; ++i) {
     update_state(d_tau, laser);
   }
@@ -74,6 +74,8 @@ void Electron::compute_trajectory(const Core::Laser::LaserField& laser) {
   trajectory.back().acceleration =
       compute_derivative(current_position, current_momentum, laser).dmomentum / Core::PhysUtils::AtomicUnits::m_0;
 }
+
+void Electron::release_trajectory() { std::vector<State>().swap(trajectory); }
 
 void Electron::export_state(const size_t& index, std::ostream& stream) const {
   const MathUtils::RealFourVector& position = index == 0 ? initial_position : trajectory[index].position;
