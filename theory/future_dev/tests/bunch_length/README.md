@@ -17,8 +17,8 @@ with `q_N = N (k_1 + k_L)` (head-on, on axis; the screen spans ~1e-4 rad, so q i
 coherent field keeps its shape (waist, z0, `l`, radial phase), its amplitude falls by ρ̃, and the residual R is
 incoherent noise whose power relative to the coherent part grows as (1 − ρ̃²)/ρ̃². The exact dressed q
 (`q = k_s − (K_s·P/K_L·P) k_L`, measured in `theory/lattice_stack_tests/`) differs from this one by 3e-5 relative at
-`a0 = 0.2`, which this test can't resolve. Before 2026-11-06 this test used `N k_1 + k_L`, wrong by 7e-4 at N = 2; tables
-below may still carry those values.
+`a0 = 0.2`, which this test can't resolve. Before 2026-11-06 this test used `N k_1 + k_L`, wrong by 7e-4 at N = 2; the table
+below is recomputed with the corrected formula.
 
 ## Runs
 
@@ -70,17 +70,17 @@ Transverse positions are identical across the four runs.
 | run | N | qσ | ρ̃ | \|c\| | \|c\|/ρ̃ | arg c | mismatch | η |
 |---|---|---|---|---|---|---|---|---|
 | qs025 | 1 | 0.25 | 0.9692 | 0.9686 | 0.9994 | 2.6e-3 | 1.9e-4 | 2.9e-3 |
-| qs025 | 2 | 0.50 | 0.8827 | 0.8798 | 0.9968 | 8.0e-3 | 8.5e-3 | 3.0e-2 |
+| qs025 | 2 | 0.50 | 0.8825 | 0.8798 | 0.9969 | 8.0e-3 | 8.5e-3 | 3.0e-2 |
 | qs05 | 1 | 0.50 | 0.8825 | 0.8803 | 0.9975 | 5.2e-3 | 8.7e-4 | 3.1e-3 |
-| qs05 | 2 | 1.00 | 0.6070 | 0.6002 | 0.9889 | 1.4e-2 | 5.5e-2 | 3.3e-2 |
+| qs05 | 2 | 1.00 | 0.6065 | 0.6002 | 0.9896 | 1.4e-2 | 5.5e-2 | 3.3e-2 |
 | qs1 | 1 | 1.00 | 0.6065 | 0.5994 | 0.9882 | 9.4e-3 | 6.3e-3 | 3.6e-3 |
-| qs1 | 2 | 2.00 | 0.1357 | 0.1270 | 0.9355 | −4.0e-2 | 0.67 | 3.4e-2 |
+| qs1 | 2 | 2.00 | 0.1354 | 0.1270 | 0.9381 | −4.0e-2 | 0.67 | 3.4e-2 |
 
 - The coherent amplitude falls by `exp(−q²σ²/2)` to ≤ 1.2% at qσ = 1. The C++ `|b|` at N = 1 (0.9693, 0.8828,
   0.6074) also matches ρ̃.
 - η is constant across the runs (N = 1 ≈ 3e-3, N = 2 ≈ 3e-2), so the residual is the incoherent remainder
   ∝ (1 − ρ̃²). The mismatch follows (1 − ρ̃²)/ρ̃² · η.
-- The remaining deviation depends on qσ alone (the same at N = 1 and N = 2 for equal qσ): `1 − |c|/ρ̃ ≈ 0.012 (qσ)²`
+- The remaining deviation depends on qσ, nearly the same at N = 1 and N = 2 for equal qσ: `1 − |c|/ρ̃ ≈ 0.012 (qσ)²`
   and `arg c ≈ 0.010–0.015 qσ`. That is the expansion of `c = Σ_j w_j e^{iqσ g_j}` (w_j = electron j's share of
   F_ref, g_j its standard-normal z draw) with weighted moments Σ w g ≈ 0.01, Σ w g² ≈ 1.024. It's a property of the
   one z sample, well within the bound `|c − ρ̃| ≲ sqrt(η (1 − ρ̃²))`, not physics.

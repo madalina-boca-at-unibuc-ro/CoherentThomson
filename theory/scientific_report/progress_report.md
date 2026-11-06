@@ -561,10 +561,10 @@ a little later, so it follows the same trajectory shifted in time. Its emitted f
 field times a phase:
 
 $$
-e(z_0) = e(0)\,e^{iq_Nz_0},\qquad q_N = N k_1 + k_L ,
+e(z_0) = e(0)\,e^{iq_Nz_0},\qquad q_N = N\,(k_1 + k_L) ,
 $$
 
-where $k_1 = \omega_1/c$ and $k_L$ is the laser wave number (head-on, on axis; across the screen, which spans
+where $k_1 = \omega_1/c$ and $k_L$ is the laser wave number: harmonic $N$ takes up $N$ laser photons (head-on, on axis; across the screen, which spans
 $\sim 10^{-4}$ rad, $q_N$ is constant to $10^{-8}$). Averaging over $z_0$ gives the bunch form factor:
 
 $$
@@ -599,12 +599,12 @@ $\eta$, the incoherent power of the sample relative to its coherent power.
 | 0.25 | 1 | 0.25 | 0.969 | 0.9994 | 0.003 | 0.0029 |
 | | 2 | 0.50 | 0.883 | 0.997 | 0.008 | 0.030 |
 | 0.5 | 1 | 0.50 | 0.883 | 0.997 | 0.005 | 0.0031 |
-| | 2 | 1.00 | 0.607 | 0.989 | 0.014 | 0.033 |
+| | 2 | 1.00 | 0.607 | 0.990 | 0.014 | 0.033 |
 | 1 | 1 | 1.00 | 0.607 | 0.988 | 0.009 | 0.0036 |
-| | 2 | 2.00 | 0.136 | 0.935 | $-0.040$ | 0.034 |
+| | 2 | 2.00 | 0.135 | 0.938 | $-0.040$ | 0.034 |
 
 - **The coherent field falls as the form factor predicts**: $|c| = \tilde\rho$ to 1.2% up to $q\sigma = 1$. The
-  small remaining deviation depends only on $q\sigma$, the same at $N = 1$ and $N = 2$. It comes from the one random
+  small remaining deviation depends on $q\sigma$, nearly the same at $N = 1$ and $N = 2$. It comes from the one random
   draw of the $z$ positions, not from physics, and stays within the bound set by the incoherent part.
 - **The rest is the incoherent part**: $\eta$ is the same in all runs (0.3% at $N = 1$, 3% at $N = 2$), so the
   residual grows exactly as $1 - \tilde\rho^2$.
@@ -660,8 +660,8 @@ single LG beam that best matches the field:
 - An idealized electron beam: no energy or angular spread. Part I uses a zero-thickness disk, fully coherent; Part
   II adds only a Gaussian length, tested at nanometre lengths, far shorter than real bunches.
 - In Part II the incoherent part is that of the 65 536 simulated electrons, too large by the ratio of real to
-  simulated electrons (Sec. 6.4). The bunch-length test uses the undressed $q_N$; the dressed value differs by
-  $6\times10^{-5}$ relative, below what the test resolves.
+  simulated electrons (Sec. 6.4). The bunch-length test uses $q_N = N(k_1 + k_L)$; the phase slope measured in the solver differs by
+  $3\times10^{-5}$ relative at $a_0 = 0.2$, below what the test resolves.
 - With our LG normalization, the Gaussian mode's on-axis field is $\sqrt2$ times that of a plane wave with the same
   $a_0$, so "$a_0$" is not quite the peak field strength.
 - At $a_0 = 0.2$ the $\mathrm{LG}_2^2$, $N = 1$ beam is under-resolved on the $25\,w_0$ screen. A rerun on a smaller
