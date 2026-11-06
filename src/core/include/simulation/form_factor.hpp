@@ -11,7 +11,7 @@
 namespace Core::Simulation {
 
 // Single-wavevector form factor of the initial electron positions (theory/thomson_form_factor_diagnostic.md):
-// b(q) = (1/W) sum_j w_j exp(i q.r_j(0)), W = sum_j w_j, with one run-level q = k_s - k_L and w_j each electron's
+// b(q) = (1/W) sum_j w_j exp(i q.r_j(0)), W = sum_j w_j, with one run-level q (below) and w_j each electron's
 // charge weight (1 unless the beam is a lattice stack). A diagnostic only: it does not enter the radiation calculation.
 // All wavevectors are four-vectors in atomic units (1/bohr), K = (omega/c, k).
 struct FormFactor {
@@ -24,10 +24,12 @@ struct FormFactor {
   double omega_s;                 // scattered fundamental, non_linear_Thomson_formula(k_L, dressed, n_s, 1) * c
   MathUtils::RealFourVector k_L;  // incident laser, omega_L/c (1, n_L)
   MathUtils::RealFourVector k_s;  // scattered photon, omega_s/c (1, n_s), n_s = the detector's own normal direction
-  // q = k_s - k_L; only its spatial part enters b. The measured slope of the field carries the factor (K_s.P)/(K_L.P)
-  // on the k_L term, with the undressed P: a 7e-6 / 3e-5 relative difference head-on at a0 = 0.1 / 0.2, ~2% of the
-  // transverse q in tilted geometries (theory/dev_notes.md).
+  // q = k_s - (K_s.P / K_L.P) k_L with the undressed mean P; only its spatial part enters b. Translating an electron
+  // by r multiplies its field by exp(-i q.r), the conjugate of b's own phase (theory/dev_notes.md).
   MathUtils::RealFourVector q;
+  // k_s - k_L, for comparison: 7e-6 / 3e-5 relative from q head-on at a0 = 0.1 / 0.2, ~2% of the transverse q when
+  // tilted.
+  MathUtils::RealFourVector q_without_ratio;
   std::complex<double> b;
 };
 

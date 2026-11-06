@@ -74,6 +74,7 @@ integer; `M > 1` without a spacing; a stack with a random beam; non-zero `beam_c
 Run A's laser and lattice (`a0 = 0.1`, 1,076 sites per sheet, pure Gaussian pulse), 16 × 8 screen, harmonics N = 1, 2,
 `long_distance_direct_approx` unless stated. Full output: `theory/lattice_stack_tests/phase1_results.txt`.
 
+`b` in these tables used `q = k_s − k_L`, as the code did then; since the next commit it uses the exact `q` (below).
 `c` is the best complex factor in `F_M = c F_1`. `B` is the discrete `B_M` at the measured slope `2 N k_1/(1+β₀)`.
 
 **`M = 1` reproduces the flat lattice.** Against the pre-change binary, all `.dat` files are byte-identical for the six
@@ -127,6 +128,15 @@ N = 1 and 5e-8 at N = 2, the same at `M` = 14, 28 and 56.
 
 The endpoint and pulse-edge effect feared in the discussion does not appear at this level: the residual at the minimum
 is 2e-8 at N = 1 and 1e-7 at N = 2, about the output's rounding.
+
+### Exact `q` in the form factor (2026-11-06)
+
+`b` now uses `q = k_s − (K_s·P / K_L·P) k_L`, undressed mean `P`, and the log also lists `k_s − k_L`. No `.dat` output changes
+(checked on the lattice case). Checks, in `theory/lattice_stack_tests/form_factor_exact_q.py`:
+
+- At `H = 2π/|k_s−k_L|`, `b = 6.900e-6` against the field's `c = 6.909e-6`. The old `q` gave `|b|` about 6e-9.
+- At θ = 0.9π, `a0 = 0.2`, small plane-wave disk: `b`'s phase is the conjugate of the field's, to 2e-8 rad for an x shift and
+  7e-8 rad for a z shift of 1e-3 λ_L.
 
 ### Not tested
 

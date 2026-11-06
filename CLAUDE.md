@@ -19,9 +19,9 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
   `L_N = N(m+σ)−σ`, `σ = 2 Im(ζ₁*ζ₂)`. It was ~5% low at N = 2, likely the old centered-difference `∂φ` (replaced
   by an exact FFT derivative on 2026-10-29): re-run `plot_observables.py` on older runs before reading OAM numbers.
 - `b(q)` (`Simulation::compute_form_factor`, spec `theory/thomson_form_factor_diagnostic.md`): one scalar at
-  harmonic 1 along the detector normal, using the beam's actual mean momentum. It keeps `q = k_s − k_L`; the field's
-  measured phase is `e^{-i q·r}` with `q_N = N [k_1 − (K_1·P / K_L·P) k_L]`, undressed `P` (negligible head-on, ~2% of
-  the transverse `q` tilted; `theory/dev_notes.md`). Note `q_N ≠ N k_1 + k_L`.
+  harmonic 1 along the detector normal, using the beam's actual mean momentum. Uses the measured `q = k_s − (K_s·P / K_L·P) k_L`, undressed
+  `P`. A translated electron's field gets `e^{-i q·r}`, the conjugate of `b`'s phase, and `q_N = N q_1` (not
+  `N k_1 + k_L`). See `theory/dev_notes.md`.
 - `LaguerreGaussLaser` matches the standard LG mode at the waist and at `Z = 10 z_R` (to `1e-7`, after the
   2026-10-27 curvature-sign fix), but isn't physics-reviewed against the literature (Allen et al. 1992; Siegman
   ch. 17). `PhysUtils::non_linear_Thomson_formula` is flagged in-code as needing review.

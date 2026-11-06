@@ -263,7 +263,7 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
 
   // theory/thomson_form_factor_diagnostic.md. Wavevectors are listed in a.u. (1/bohr) and, in brackets, in units of
   // k_L = omega_L/c.
-  write_section(file, "Initial form factor b(q) = (1/N) sum_j exp(i q.r_j(0)),  q = k_s - k_L");
+  write_section(file, "Initial form factor b(q) = (1/N) sum_j exp(i q.r_j(0)),  q = k_s - (K_s.P / K_L.P) k_L");
   const double k_L_mag = laser.get_omega() / c;
   auto write_wavevector = [&file, k_L_mag](const std::string& name, const MathUtils::RealFourVector& v) {
     file << "  " << name << std::string(28 - name.size(), ' ') << "(" << v[1] << ", " << v[2] << ", " << v[3]
@@ -281,6 +281,7 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   write_wavevector("k_L", form_factor.k_L);
   write_wavevector("k_s", form_factor.k_s);
   write_wavevector("q", form_factor.q);
+  write_wavevector("k_s - k_L", form_factor.q_without_ratio);
   file << "  b (re, im)                  (" << form_factor.b.real() << ", " << form_factor.b.imag() << ")\n";
   file << "  |b|                         " << std::abs(form_factor.b) << "\n";
   file << "  |b|^2                       " << std::norm(form_factor.b) << "\n";

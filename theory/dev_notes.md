@@ -711,8 +711,8 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   tilted geometries. **Settled by measurement on 2026-11-06** (`theory/lattice_stack_tests/q_formula_*.py`): translating
   the beam gives the field the phase `e^{-i q·r}` with `q_N = N [k_1 − (K_1·P / K_L·P) k_L]`, undressed `P`, to ≤ 1e-7
   relative head-on (`a0` 0.1, 0.2; `N` 1, 2) and ≤ 4e-5 `k_L` per axis at `θ = 0.9π, 0.75π` (small plane-wave disk,
-  on axis, `N` = 1). `b` still uses `k_s − k_L`, off by 7e-6 / 3e-5 relative head-on at `a0` 0.1 / 0.2 and by the
-  ratio's ~2% in the transverse `q` when tilted. For harmonics, `N k_1 + k_L` is wrong: harmonic `N` takes `N` laser
+  on axis, `N` = 1). **`b` now uses this `q`** (the log also lists `k_s − k_L`, 7e-6 / 3e-5 relative off head-on at `a0` 0.1 / 0.2,
+  ~2% of the transverse `q` tilted). The field's phase is the conjugate of `b`'s. For harmonics, `N k_1 + k_L` is wrong: harmonic `N` takes `N` laser
   photons. A tilted **wide** disk (46.5 λ, `θ = 0.9π`) misses the transverse slope by ~2–4%; a small disk doesn't, so the
   likely cause is the fixed integration window: edge electrons meet the pulse many cycles early or late and are cut off.
 - **OPEN VALIDATION GAP: a single electron at rest at the origin, observed with a full-4*pi spherical detector,

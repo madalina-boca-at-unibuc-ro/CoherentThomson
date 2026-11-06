@@ -77,10 +77,9 @@ def fit_scale(reference, field):
 
 
 def laser_kL_units(run):
-    """Returns k_s/k_L and q_z/k_L at harmonic 1 from the run log (the analytic q = k_s - k_L)."""
+    """Returns k_s/k_L and (k_s - k_L)/k_L at harmonic 1, head-on: the run log's k_s, and k_s + 1."""
     k_s = float(read_log_value(run, r"k_s\s+\(.*?\[\(\S+, \S+, ([-0-9.e+]+)\) k_L\]"))
-    q = float(read_log_value(run, r"  q\s+\(.*?\[\(\S+, \S+, ([-0-9.e+]+)\) k_L\]"))
-    return k_s, q
+    return k_s, k_s + 1.0
 
 
 def form_factor_b(run):

@@ -1,5 +1,8 @@
 # Coding task: single-wavevector electron form-factor diagnostic
 
+*Note, 2026-11-06: the code uses `q = k_s − (K_s·P / K_L·P) k_L`, measured against the solver, rather than the `k_s − k_L`
+below. See `theory/dev_notes.md`.*
+
 Add a lightweight diagnostic to the existing C++ Thomson-scattering code. **Do not modify the radiation calculation or electron generator.** Run this diagnostic on the generated initial electron ensemble, before time integration.
 
 ## Define one momentum transfer per run

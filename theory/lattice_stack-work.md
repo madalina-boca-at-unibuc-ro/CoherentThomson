@@ -23,6 +23,8 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 | 2 | Sheet normalization | **`w = 1/M`** per sheet, so a stack carries the same total charge as the flat disk |
 | 3 | Memory fix first, as its own commit | **Yes**, done |
 | 4 | Which `q` sets the modulation period | **The analytic `q = k_s - k_L`**, see below |
+| 5 | `q` in the form factor `b` | **The exact `k_s − (K_s·P / K_L·P) k_L`** (2026-11-06) |
+| 6 | Correct report Sec. 6 | **Yes**, Markdown done; PDF still to rebuild, as this laptop has no pandoc |
 
 ### The analytic `q`
 
@@ -85,9 +87,8 @@ Consequences:
 
 ## Open items
 
-- **Report Sec. 6:** whether to correct the formula (line 564, and the note in Sec. 7 about the "undressed `q_N`" and
-  6e-5) and the N = 2 values above. Not done; the user decides.
-- **`b` in `form_factor.cpp`** still uses `k_s − k_L` by decision 4. Switching to the exact form would be a one-line change.
+- **Report PDF** must be rebuilt where pandoc exists (`theory/scientific_report/README.md`, section PDF). The Markdown is corrected.
+- **The period in Phase 3:** decision 4 predates decision 5. The log now lists both values, and they differ by 7e-6 at `a0 = 0.1`.
 - **CLAUDE.md edits proposed on 2026-11-06, not applied:** the lattice constraint should also name `beam_sigma_z 0`;
   `beam_lattice_spacing` should be listed as optional; the `plot_processed.py` usage needs correcting; and a pointer to
   the brief should be added.
