@@ -234,7 +234,8 @@ log; `false` does the opposite. Both sets can stay in a config. A `beam_modulati
 **Log.** `Λ₁`, `Λ_mod`, `q_transverse/|q_axial|`, `S`, `H/Λ_mod`, `d`, `H`, how far sheets leave `±H/2`, and for each harmonic the sheet sum
 against the map's phase integral. It warns on a non-whole `P` and on `S < 3 N_max r`.
 
-**Plot.** `plot_beam_density_z.py` draws a bunched stack's sheets against the drift map, with several sheets per bin, using `Λ_mod`, `H` and the phase from the log.
+**Plot.** `plot_beam_density_z.py` draws a bunched stack's sheets against the drift map, using `Λ_mod`, `H` and the phase from the log. Bins cover only the sheets and average about
+four of them, at least 5 bins, since finer ones hold 0, 1 or 2 discrete sheets and show gaps that aren't in the density. With few sheets the bars are coarse (14 sheets: 5, 1, 2, 1, 5 per bin).
 
 **Unchanged beams.** Against the pre-change binary, all `.dat` files are byte-identical for a flat lattice, an `M = 14` stack, and a random
 beam with `simplified`, `direct` and `long_distance_direct_approx`. Thirteen bad configs stop with an error: ten listed in
@@ -277,6 +278,21 @@ all 5 `.dat` files byte-identical to a run with only the keys in use.
 | 1 | 2 | +0.130781 | +0.130780 | 4e-7 |
 | 1.111 | 1 | +0.243302 | +0.243302 | 1e-7 |
 | 1.111 | 2 | +0.157086 | +0.157087 | 8e-7 |
+
+**The user's run on a 64 × 64 screen** (`~/output/lattice_stack/20261106_164759`, full 1,076-site lattice, `ζ = 1`, ratio 1, S = 14, P = 1, 15,064 trajectories, 1,705 s on 24 threads), against the
+flat run `20261106_140716`, whose config differs only in the stack keys:
+
+| | N = 1 | N = 2 |
+|---|---|---|
+| Predicted `c` | −0.440051 | +0.352834 |
+| `\|c−pred\|` | 2e-8 | 7e-8 |
+| Residual after fitting `c` | 4e-8 | 8e-8 |
+| `P_z` bunched / flat, from the logs | 0.19364 | 0.12449 |
+| Predicted, `J_N(N)²` | 0.19364 | 0.12449 |
+
+`w_eff` equals the flat run's at both harmonics (76.88 and 110.82 `λ_L`), and `Λ_zz/P_z` at N = 2 stays −0.1512612, against −0.1512611 in theory. Bunching only rescales the flat disk's field, as expected in this cold, equal-momentum
+model. These are ratios; absolute intensities still wait for the single-electron benchmark in `CLAUDE.md`. The starburst at the centre of the flux plots is probably the polar grid cells being drawn, which was not confirmed. It isn't caused by
+bunching, given the residual above.
 
 **On-axis N = 2 is not a useful test.** At one on-axis point, `|c−pred|` at N = 2 is 5e-4 to 1e-2, and the four formulas disagree by about 1e-3. There, the flat
 field is about 2.6e4 times below the screen's rms (8.6e-23 against 2.3e-18), so the deviation of about 1.6e-24 is about 7e-7 of that rms. It doesn't change with `S`. Its origin

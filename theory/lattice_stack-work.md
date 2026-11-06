@@ -10,6 +10,8 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 
 ## Resume here (written 2026-11-06, for continuing on another computer)
 
+**Latest result.** The user's run on a 64 × 64 screen confirms the 3a checkpoint (`lattice-stack-implemented.md`) and the user finds the output good.
+
 **Where things stand.** Everything is committed on `main` (the branch `lattice-stack` holds the same history up to Phase 3a). Preparation, Phase 1, Phase 2 and Phase 3a are
 implemented. Phase 3a's checkpoint passes and **waits for the user's review**. Phase 3b has not started and must not start until the user says so.
 

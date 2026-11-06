@@ -38,12 +38,16 @@ def read_modulation(run_dir, config_path):
     """
     The bunched stack's map, from the run's log: {zeta, phase, Lambda_mod, H}, in lambda and rad, or None for any other beam.
     """
+    # A few runs from before beam_stack_modulation existed have the beam_modulation_* keys alone, and are bunched.
     try:
         if read_config_value("beam_stack_modulation", config_path)[0] != "true":
             return None
     except ValueError:
+        pass
+    try:
+        zeta = float(read_config_value("beam_modulation_zeta", config_path)[0])
+    except ValueError:
         return None
-    zeta = float(read_config_value("beam_modulation_zeta", config_path)[0])
     with open(os.path.join(run_dir, "run_log.txt")) as log_file:
         log = log_file.read()
     def length(label):
@@ -97,8 +101,9 @@ def read_axial_positions(scatter_path, config_path):
 
 def plot_modulated_density(run_dir, config_path, modulation):
     """
-    A bunched stack: the sheets per bin against the drift map's density. Needs electron_beam_scatter.dat, and the bins
-    hold several sheets each, since single moved sheets say little about the density.
+    A bunched stack: the sheets per bin against the drift map's density, with the histogram from
+    electron_beam_scatter.dat when the run has it. The bins cover only the sheets and average about four of them, since
+    finer bins hold 0, 1 or 2 discrete sheets and show gaps that aren't in the density.
     """
     z_c = read_length("beam_center_z", config_path)
     H = modulation["H"]
@@ -108,12 +113,13 @@ def plot_modulated_density(run_dir, config_path, modulation):
     if os.path.exists(scatter_path):
         z = read_axial_positions(scatter_path, config_path)
         sheets = len(np.unique(np.round(z / H, 10)))
-        n_bins = max(20, sheets // 4)
+        n_bins = max(5, sheets // 4)
+        half_sheet = H / (2 * sheets)
+        bins = np.linspace(z.min() - half_sheet, z.max() + half_sheet, n_bins + 1)
     else:
         print(f"No '{scatter_path}' (needs plot_beam_scatter=true); plotting the analytic density only")
         z = None
-        n_bins = 200
-    bins = np.linspace(z_c - 1.05 * spread, z_c + 1.05 * spread, n_bins + 1)
+        bins = np.linspace(z_c - 1.05 * spread, z_c + 1.05 * spread, 201)
     if z is not None:
         ax.hist(z, bins=bins, density=True, histtype='stepfilled', color='lightsteelblue',
                 label=f"sheets ({sheets}, {len(z)} electrons)")
