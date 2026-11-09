@@ -9,7 +9,8 @@ questions are in [lattice_stack-work.md](lattice_stack-work.md).
 | Preparation: trajectory memory | Done, commit `3052872` |
 | Phase 1: uniform stack | Done, commits `2fd28d0`, `ec1517d`, `8ccd0e6`; run by the user on `M` = 1, 2, 4 |
 | Phase 2: density model | Done; the user chose moved sheets |
-| Phase 3a: `b₁` | Done and committed, awaiting the user's review |
+| Phase 3a: `b₁` | Done, reviewed by the user (2026-11-09) |
+| Beam distribution rework | Done (2026-11-09), awaiting the user's review; see the last section |
 | Phase 3b: `b₂₀` | Not started |
 
 ## Preparation: trajectory memory (2026-11-06)
@@ -313,3 +314,83 @@ is not established, and on the screen it has no visible effect.
 .venv/bin/python theory/lattice_stack_tests/phase3a_checkpoint.py     # about 20 min on 24 threads
 .venv/bin/python theory/lattice_stack_tests/phase3a_on_axis_n2.py
 ```
+
+## Beam distribution rework (2026-11-09)
+
+Plan and decisions: "Beam distribution rework" in [lattice_stack-work.md](lattice_stack-work.md). The Phase 1 and 3a
+sections above describe the keys as they were; this section supersedes them.
+
+**Layout.**
+
+| | Random (`beam_distribution random`) | Lattice stack (`polar_lattice`) |
+|---|---|---|
+| Along the axis | Uniform in `H` (`beam_cylinder_height`), plus Gaussian wings `beam_sigma_z` | `M` sheets (`beam_stack_sheets`) at `z_m = (m − (M−1)/2) H/M`, charge `1/M` each |
+| `H = 0` | Flat disk | One sheet; `M > 1` is reduced to 1, with a warning |
+| Wings | Allowed | Refused (`beam_sigma_z` must be 0) |
+| `M = 1`, `H > 0` | (no `M`) | Warning, `H` set to 0 |
+| Other type's keys | `beam_lattice_spacing`, `beam_stack_sheets` ignored | `beam_particle_count` ignored |
+
+**Modulation**, for either: `beam_modulation true` (optional, default false), `beam_modulation_zeta`,
+`beam_modulation_period` (a length, unit required), optional `beam_modulation_phase`. Each electron moves by its own
+position, `z → z + (ζ/K) sin(K z + phase)`, `K = 2π/Λ_mod`; for a random beam after the wings. The map draws no random
+numbers, so the RNG stream is the unmodulated beam's. A beam with no extent along its axis gets a warning that the
+modulation only translates it.
+
+**Unit `lambda_1`** `= 2π/|q_axial|`, the axial part of `b(q)`'s `q` (harmonic 1, detector normal, undressed `P`):
+accepted by `beam_cylinder_height`, `beam_sigma_z`, `beam_modulation_period`; refused elsewhere. Parsing keeps such a
+length in units of `Λ₁`; `Particle::resolve_beam_lengths` converts it in the beam factory and the run log, the two places
+with the laser and the detector. It throws when a config uses the unit and `q` is perpendicular to the beam axis.
+
+**Removed keys**, refused with the replacement named: `beam_stack_spacing`, `beam_stack_modulation`,
+`beam_modulation_sheets_per_period`, `beam_modulation_periods`, `beam_modulation_period_ratio`. The old `S`, `P`, ratio
+`r` are now `M = round(S P)`, `H = (M r / S) lambda_1`, `beam_modulation_period r lambda_1`.
+
+**Run log.** `Λ₁` always (or "undefined"); `H` and `sigma_z` resolved, with the `lambda_1` value given; `d = H/M`; the
+notes as `WARNING` lines. With the modulation: `Λ_mod`, the ratio, the periods `H/Λ_mod`, and per harmonic the sum
+`(1/count) Σ exp(i q_N z_j)` over the sheets (lattice) or every electron (random, with `1/√N_e` printed) against the
+cold-beam value. The cold value needs integer `n = N Λ_mod/Λ₁` and whole periods (each within a relative `1e-9`) and no
+wings. `write_run_log` now takes the beam, to read the electrons' axial positions.
+
+**Code.** `IoUtils::parse_cylinder_beam_params` and `CylinderBeamParams` (`io_utils.hpp`); `Particle::axial_translation`,
+`resolve_beam_lengths`, `modulated_z`, `sheet_positions`, `axial_positions`, and the reworked `modulation_geometry`,
+`modulation_harmonics`, `modulation_warnings` (`electron_factory.cpp`); `run_log.cpp`.
+`py_scripts/particle/plot_beam_density_z.py` reads `H` and `sigma_z` from `run_log.txt` and plots a modulated random
+beam too; runs from before the rework still plot. `config/config_lattice_stack.cfg` is migrated (same beam).
+`phase1_stack_scan.py`, `form_factor_exact_q.py`, `phase3a_checkpoint.py` use the new keys (not rerun);
+`phase3a_noop_and_rejects.py` and `phase3a_switch.py` are marked historical (old keys only).
+
+**Checks** (`lattice_stack_tests/rework_checks.py`, results in `rework_results.txt`; old and new solvers built on the
+same compute node):
+
+1. Old solver against new, same beam: all `.dat` files byte-identical for the flat lattice, a uniform 14-sheet stack
+   (`d = 1e-4 λ` against `H = 1.4e-3 λ`), bunched stacks `S = 14, P = 1` and `S = 14, P = 2, phase π, ζ = 1.111`
+   (against `H` and the period in `lambda_1`), and random beams under three formulas and with `sigma_z`.
+2. Modulated random beam (`ζ = 1`, `H = Λ_mod = Λ₁`): `|sum − cold|` at N = 1, 2 is 0.5 to 1.6 times `1/√N_e`
+   at `N_e` = 2000 and 8000, two seeds each: sampling noise only. The density plot follows the drift map.
+3. All 15 refused configs stop with the intended message, including `q ⊥` axis with `lambda_1`.
+4. The corrections and warnings fire as intended, with the electron counts they imply.
+
+### Sheets per period against aliasing (2026-11-09)
+
+**Rule.** A lattice stack needs at least
+
+  `S ≥ n (1 + ζ) + 5 n^(1/3)` sheets per modulation period, `n = N_max Λ_mod/Λ₁`
+
+for an error of `b_n` below about `1e-4` (relative, or `1e-7` absolute for harmonics below `1e-3` of full bunching).
+In sheets per `Λ₁` at ratio 1: `N_max (1 + ζ) + 5 N_max^(1/3)`. For `1e-6` the margin is about 7 instead of 5.
+`Particle::modulation_warnings` now warns below it, in the log and on the terminal. It replaces the earlier
+`S ≥ 3 N_max Λ_mod/Λ₁`, which allowed 3 sheets at `n = 1`, `ζ = 1` (error about 26%) and fell short at `ζ = 1.5` from
+`n ≈ 20` on.
+
+**Why.** One period of `S` sheets at equally spaced `φ₀`, moved to `φ₀ + ζ sin φ₀`, makes `b_n` an `S`-point sum of
+`exp(i n (φ₀ + ζ sin φ₀))` = `Σ_k J_k(nζ) exp(i (n + k) φ₀)`. The sum keeps every term with `n + k ≡ 0 (mod S)`: the
+exact `(−1)ⁿ Jₙ(nζ)` plus the aliases `J_{mS−n}(nζ)`, `m ≠ 0`, the largest being `J_{S−n}(nζ)`. `J_ν(x)` collapses
+once `ν` passes `x` by the transition width `~x^(1/3)`, hence `S − n > nζ + c n^(1/3)`. At `ζ = 0` this is the
+grating condition `d < Λ_N` (no Bragg lobe from the spacing). A random beam has no aliasing, only `1/√N_e` noise.
+
+**Check** (`lattice_stack_tests/sheets_per_period_aliasing.py`, `sheets_per_period_aliasing_results.txt`): exact
+minimum `S` (worst of phase 0, π/2, π) for `n` = 1 to 60 and `ζ` = 0.5, 1, 1.111, 1.5. The rule is within one sheet of
+the `1e-4` column everywhere, except `ζ = 1.5`, `n = 20` (`|b|` ≈ 5e-3): 64 against 68, an error about `1e-2` there.
+Examples at `1e-4`: `ζ = 1`, n = 1, 2, 5, 20, 40: 7, 10, 18, 52, 95 sheets. Phase 3b (`ratio` 20, `ζ` = 1.111):
+N = 1, 2, 3 need 55, 100, 146 per period.
+

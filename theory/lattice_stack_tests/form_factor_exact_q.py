@@ -12,7 +12,7 @@ POINT = {"circular_detector_N_R": 1, "circular_detector_N_phi": 1, "N_harmonics"
 flat = run_variant("form_factor_exact_q", "flat", POINT)
 k1, q1 = laser_kL_units(flat)
 d = 1 / q1 / 14
-run = run_variant("form_factor_exact_q", "M14", dict(POINT, beam_stack_sheets=14, beam_stack_spacing=f"{d:.12e} lambda"))
+run = run_variant("form_factor_exact_q", "M14", dict(POINT, beam_stack_sheets=14, beam_cylinder_height=f"{14 * d:.12e} lambda"))
 c, _ = fit_scale(read_field(flat)[1][0], read_field(run)[1][0])
 print(f"head-on, H = 2 pi / |k_s - k_L|: b = {form_factor_b(run):.3e}, field c = {c:.3e}")
 

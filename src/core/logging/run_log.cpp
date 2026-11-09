@@ -1,5 +1,6 @@
 #include "../include/logging/run_log.hpp"
 
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <stdexcept>
@@ -52,7 +53,7 @@ void write_section(std::ofstream& file, const std::string& title) {
 }  // namespace
 
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
-                   size_t num_electrons, const Simulation::simulation_parameters& sim_par,
+                   const std::vector<Particle::Electron>& beam, const Simulation::simulation_parameters& sim_par,
                    const Simulation::FormFactor& form_factor, size_t num_threads, double simulation_elapsed_seconds,
                    double total_cpu_seconds, const std::string& filepath) {
   std::ofstream file(filepath);
@@ -141,84 +142,106 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   }
 
   write_section(file, "Electron beam");
+  const size_t num_electrons = beam.size();
   file << "  particle count              " << num_electrons << "\n";
-  IoUtils::CylinderBeamParams beam = IoUtils::parse_cylinder_beam_params(config);
-  write_kv(file, "cylinder radius", beam.radius, lambda_au);
-  if (beam.radius_from_lg_table) {
+  IoUtils::CylinderBeamParams beam_params = IoUtils::parse_cylinder_beam_params(config);
+  Particle::resolve_beam_lengths(beam_params, laser, detector.get_normal_direction());
+  write_kv(file, "cylinder radius", beam_params.radius, lambda_au);
+  if (beam_params.radius_from_lg_table) {
     file << "  (cylinder radius from the LG (p, |l|) table: beam_cylinder_radius < 0)\n";
   }
-  if (beam.polar_lattice) {
-    auto [rings, spacing] = IoUtils::polar_lattice_geometry(beam.radius, beam.lattice_spacing);
+  if (beam_params.lambda_1 > 0.0) {
+    write_kv(file, "Lambda_1 = 2 pi / |q_axial|", beam_params.lambda_1, lambda_au);
+  } else {
+    file << "  Lambda_1 = 2 pi / |q_axial|  undefined: q is perpendicular to the beam axis\n";
+  }
+  if (beam_params.polar_lattice) {
+    auto [rings, spacing] = IoUtils::polar_lattice_geometry(beam_params.radius, beam_params.lattice_spacing);
     file << "  distribution                polar_lattice (equal-area rings; beam_particle_count ignored), " << rings
          << " rings\n";
     write_kv(file, "lattice spacing", spacing, lambda_au);
-    write_kv(file, "requested spacing", beam.lattice_spacing, lambda_au);
-    if (beam.modulation.active) {
-      const IoUtils::CylinderBeamParams::Modulation& modulation = beam.modulation;
-      const Particle::ModulationGeometry geometry =
-          Particle::modulation_geometry(beam, laser, detector.get_normal_direction());
-      const size_t N_min = IoUtils::get_number_of_harmonics_min(config);
-      const size_t N_harmonics = IoUtils::get_number_of_harmonics(config);
-      file << "  bunched stack               equal charges on moved sheets, phi = K z + phase, "
-              "K z -> K z + zeta sin(K z + phase)\n";
-      if (config.count("beam_stack_sheets") > 0 || config.count("beam_stack_spacing") > 0) {
-        file << "  (beam_stack_modulation true: beam_stack_sheets and beam_stack_spacing are ignored)\n";
-      }
-      file << "  zeta                        " << modulation.zeta << "\n";
-      file << "  phase                       " << modulation.phase / MathUtils::pi << " pi\n";
-      file << "  Lambda_mod / Lambda_1       " << modulation.period_ratio << "\n";
-      write_kv(file, "Lambda_1 = 2 pi / |q_axial|", geometry.lambda_1, lambda_au);
-      write_kv(file, "Lambda_mod", geometry.lambda_mod, lambda_au);
-      file << "  q_transverse / |q_axial|    " << geometry.q_transverse / std::abs(geometry.q_axial) << "\n";
-      file << "  sheets per period S         " << modulation.sheets_per_period << "\n";
-      file << "  periods H / Lambda_mod      " << geometry.length / geometry.lambda_mod << " (requested "
-           << modulation.periods << ")\n";
-      file << "  stack sheets                " << beam.stack_sheets << " (" << IoUtils::polar_lattice_site_count(rings)
-           << " sites each, charge weight 1/" << beam.stack_sheets << ")\n";
-      write_kv(file, "uniform spacing d", geometry.spacing, lambda_au);
-      write_kv(file, "stack length H = M d", geometry.length, lambda_au);
-      write_kv(file, "sheets beyond +-H/2, by", geometry.spill, lambda_au);
-      file << "  represented charge          " << form_factor.total_charge_weight << " electrons in " << num_electrons
-           << " trajectories\n";
-      file << "  N  n = N ratio   sheet sum (1/M) sum_j exp(i q_N z_j)           cold-beam value                   "
-              "|difference|/|cold|\n";
-      for (const Particle::ModulationHarmonic& harmonic :
-           Particle::modulation_harmonics(beam, geometry, N_min, N_harmonics)) {
-        file << "  " << harmonic.N << "  " << harmonic.n << "  (" << harmonic.sheet_sum.real() << ", "
-             << harmonic.sheet_sum.imag() << ")";
-        if (harmonic.cold) {
-          file << "  (" << harmonic.cold->real() << ", " << harmonic.cold->imag() << ")  "
-               << std::abs(harmonic.sheet_sum - *harmonic.cold) / std::max(std::abs(*harmonic.cold), 1e-300);
-        } else {
-          file << "  none: needs an integer n and whole periods";
-        }
-        file << "\n";
-      }
-      for (const std::string& warning : Particle::modulation_warnings(beam, N_min + N_harmonics - 1)) {
-        file << "  WARNING: " << warning << "\n";
-      }
-    } else if (beam.stack_sheets > 1) {
-      const double M = static_cast<double>(beam.stack_sheets);
-      file << "  stack sheets                " << beam.stack_sheets << " (" << IoUtils::polar_lattice_site_count(rings)
-           << " sites each, charge weight 1/" << beam.stack_sheets << ")\n";
-      write_kv(file, "stack spacing", beam.stack_spacing, lambda_au);
-      write_kv(file, "stack length H = M d", M * beam.stack_spacing, lambda_au);
-      write_kv(file, "first-to-last sheet span", (M - 1.0) * beam.stack_spacing, lambda_au);
-      file << "  represented charge          " << form_factor.total_charge_weight << " electrons in " << num_electrons
-           << " trajectories\n";
-    }
+    write_kv(file, "requested spacing", beam_params.lattice_spacing, lambda_au);
+    file << "  stack sheets M              " << beam_params.stack_sheets << " ("
+         << IoUtils::polar_lattice_site_count(rings) << " sites each, charge weight 1/" << beam_params.stack_sheets
+         << ")\n";
   } else {
     file << "  distribution                random\n";
   }
-  write_kv(file, "cylinder height", beam.height, lambda_au);
-  write_kv(file, "sigma_z", beam.sigma_z, lambda_au);
-  write_kv(file, "center_x", beam.center_x, lambda_au);
-  write_kv(file, "center_y", beam.center_y, lambda_au);
-  write_kv(file, "center_z", beam.center_z, lambda_au);
-  file << "  average_p (px,py,pz)        (" << beam.average_px / mc << ", " << beam.average_py / mc << ", "
-       << beam.average_pz / mc << ")  mc\n";
-  file << "  sigma_p (px,py,pz)          (" << beam.sigma_px / mc << ", " << beam.sigma_py / mc << ", "
-       << beam.sigma_pz / mc << ")  mc\n";
+  write_kv(file, "cylinder height", beam_params.height, lambda_au);
+  if (beam_params.height_in_lambda_1) {
+    file << "  (cylinder height given as " << beam_params.height / beam_params.lambda_1 << " lambda_1)\n";
+  }
+  write_kv(file, "sigma_z", beam_params.sigma_z, lambda_au);
+  if (beam_params.sigma_z_in_lambda_1) {
+    file << "  (sigma_z given as " << beam_params.sigma_z / beam_params.lambda_1 << " lambda_1)\n";
+  }
+  if (beam_params.polar_lattice && beam_params.stack_sheets > 1) {
+    write_kv(file, "sheet spacing d = H / M", beam_params.height / static_cast<double>(beam_params.stack_sheets),
+             lambda_au);
+  }
+  if (beam_params.polar_lattice || beam_params.modulation.active) {
+    file << "  represented charge          " << form_factor.total_charge_weight << " electrons in " << num_electrons
+         << " trajectories\n";
+  }
+  for (const std::string& note : beam_params.notes) {
+    file << "  WARNING: " << note << "\n";
+  }
+
+  if (beam_params.modulation.active) {
+    const IoUtils::CylinderBeamParams::Modulation& modulation = beam_params.modulation;
+    const Particle::ModulationGeometry geometry =
+        Particle::modulation_geometry(beam_params, laser, detector.get_normal_direction());
+    const size_t N_min = IoUtils::get_number_of_harmonics_min(config);
+    const size_t N_harmonics = IoUtils::get_number_of_harmonics(config);
+    file << "  modulation                  each electron moved by its own position, "
+            "K z -> K z + zeta sin(K z + phase)\n";
+    file << "  zeta                        " << modulation.zeta << "\n";
+    file << "  phase                       " << modulation.phase / MathUtils::pi << " pi\n";
+    write_kv(file, "Lambda_mod", geometry.lambda_mod, lambda_au);
+    if (modulation.period_in_lambda_1) {
+      file << "  (beam_modulation_period given as " << geometry.lambda_mod / beam_params.lambda_1 << " lambda_1)\n";
+    }
+    file << "  Lambda_mod / Lambda_1       " << geometry.ratio << "\n";
+    file << "  q_transverse / |q_axial|    " << geometry.q.q_transverse / std::abs(geometry.q.q_axial) << "\n";
+    file << "  periods H / Lambda_mod      " << geometry.periods << "\n";
+    if (beam_params.polar_lattice) {
+      file << "  sheets per period M / P     " << static_cast<double>(beam_params.stack_sheets) / geometry.periods
+           << "\n";
+      write_kv(file, "sheets beyond +-H/2, by", geometry.spill, lambda_au);
+    }
+    // A lattice stack: the sheets, all with equal charge. A random beam: every electron, whose sum differs from the
+    // cold value by sampling noise of order 1/sqrt(N_e).
+    const std::vector<double> axial_z = beam_params.polar_lattice ? Particle::sheet_positions(beam_params)
+                                                                  : Particle::axial_positions(beam, beam_params);
+    const char* sum_label = beam_params.polar_lattice ? "sheet sum (1/M) sum_j exp(i q_N z_j)        "
+                                                      : "electron sum (1/N_e) sum_j exp(i q_N z_j)   ";
+    if (!beam_params.polar_lattice) {
+      file << "  sampling noise 1/sqrt(N_e)  " << 1.0 / std::sqrt(static_cast<double>(axial_z.size())) << "\n";
+    }
+    file << "  N  n = N ratio   " << sum_label << "   cold-beam value                   |difference|/|cold|\n";
+    for (const Particle::ModulationHarmonic& harmonic :
+         Particle::modulation_harmonics(beam_params, geometry, axial_z, N_min, N_harmonics)) {
+      file << "  " << harmonic.N << "  " << harmonic.n << "  (" << harmonic.sum.real() << ", " << harmonic.sum.imag()
+           << ")";
+      if (harmonic.cold) {
+        file << "  (" << harmonic.cold->real() << ", " << harmonic.cold->imag() << ")  "
+             << std::abs(harmonic.sum - *harmonic.cold) / std::max(std::abs(*harmonic.cold), 1e-300);
+      } else {
+        file << "  none: needs an integer n, whole periods and sigma_z 0";
+      }
+      file << "\n";
+    }
+    for (const std::string& warning : Particle::modulation_warnings(beam_params, geometry, N_min + N_harmonics - 1)) {
+      file << "  WARNING: " << warning << "\n";
+    }
+  }
+  write_kv(file, "center_x", beam_params.center_x, lambda_au);
+  write_kv(file, "center_y", beam_params.center_y, lambda_au);
+  write_kv(file, "center_z", beam_params.center_z, lambda_au);
+  file << "  average_p (px,py,pz)        (" << beam_params.average_px / mc << ", " << beam_params.average_py / mc
+       << ", " << beam_params.average_pz / mc << ")  mc\n";
+  file << "  sigma_p (px,py,pz)          (" << beam_params.sigma_px / mc << ", " << beam_params.sigma_py / mc << ", "
+       << beam_params.sigma_pz / mc << ")  mc\n";
 
   write_section(file, "Detector");
   std::string detector_type = detector.get_type_name();

@@ -104,6 +104,12 @@ inline double convert_unit_to_number(std::string unit_name, const ConfigMap& con
     return std::stod(get_required(config, "laser_frequency"));
   } else if (to_lower(unit_name) == "a.u.") {
     return 1.0;
+  } else if (to_lower(unit_name) == "lambda_1") {
+    // lambda_1 = 2 pi / |q_axial| needs the laser and the detector normal, which a ConfigMap alone doesn't give;
+    // read_axial_length handles it for the keys that accept it. Anywhere else the fallback below would only warn
+    // and use 1.0.
+    throw std::invalid_argument(
+        "Unit lambda_1 is accepted only by beam_cylinder_height, beam_sigma_z and beam_modulation_period");
   } else if (to_lower(unit_name) == "w0") {
     // Read directly rather than via get_laser_lg_params (defined later in this file) to avoid a
     // forward reference -- same pattern the "omega_laser" branch above uses. w0 itself is still
@@ -240,11 +246,26 @@ inline size_t get_N_omega(const ConfigMap& config) { return std::stoul(get_requi
 // generation loop rather than any individual electron. Shared by Particle::generate_cylinder_beam
 // and Simulation::init_simulation_parameters (the latter only needs average_px/py/pz, for the
 // initial-motion Doppler scaling of d_tau).
+//
+// Lengths along the beam axis (height, sigma_z, modulation.period) may be given in the unit
+// lambda_1 = 2 pi / |q_axial|, which needs the laser and the detector normal. Parsing then stores them in units of
+// lambda_1 (the *_in_lambda_1 flags) and Particle::resolve_beam_lengths converts them to a.u.; lengths_resolved says
+// whether that has happened.
+// Callers that use only the radius and the momenta (main's heatmap, init_simulation_parameters) don't need it.
 struct CylinderBeamParams {
   double radius;
   bool radius_from_lg_table;  // true when beam_cylinder_radius < 0 selected the radius via lg_beam_radius_in_w0
+  // H: the random cylinder's height, or the width a lattice stack's sheets fill (theory/lattice_stack-work.md, "Beam
+  // distribution rework"). 0 = a flat disk.
   double height;
   double sigma_z;  // Gaussian smoothing of the longitudinal edges; 0 = the sharp-edged uniform cylinder
+  bool height_in_lambda_1 = false;
+  bool sigma_z_in_lambda_1 = false;
+  bool lengths_resolved = true;  // false while a length above or modulation.period is still in units of lambda_1
+  double lambda_1 = 0.0;         // set by resolve_beam_lengths when it is computed, 0 otherwise
+  // What parsing changed or found pointless (an ignored width, coinciding sheets, a modulation that only translates):
+  // printed by the beam factory and the run log, not by the parser, which runs several times per run.
+  std::vector<std::string> notes;
   double center_x, center_y, center_z;
   double average_px, average_py, average_pz;
   double sigma_px, sigma_py, sigma_pz;
@@ -254,23 +275,19 @@ struct CylinderBeamParams {
   // ignored.
   bool polar_lattice;
   double lattice_spacing;  // requested spacing (polar_lattice only); the rings use polar_lattice_geometry's
-  // Longitudinal stack (polar_lattice only, theory/CoherentThomson-lattice-stack-implementation.md): the same lattice
-  // repeated on stack_sheets parallel sheets, stack_spacing apart, centred on z = 0 before beam_center and the beam
-  // rotation. Each sheet gets 1/stack_sheets of the charge, so the total matches the flat disk. beam_stack_sheets is
-  // optional (default 1, the flat disk); beam_cylinder_height and beam_sigma_z stay 0, since they would smear the
-  // sheets.
+  // Longitudinal stack (polar_lattice only, beam_stack_sheets, default 1): the same lattice repeated on M parallel
+  // sheets filling the width H, cell-centred at z_m = (m - (M-1)/2) H/M, before beam_center and the beam rotation. Each
+  // sheet gets 1/M of the charge, so the total matches the flat disk. sigma_z must be 0.
   size_t stack_sheets;
-  double stack_spacing;
-  // Bunched stack (polar_lattice only, theory/lattice-stack-implemented.md): equal charges on sheets moved by the
-  // cold-beam drift map. stack_sheets is then round(S P), and the spacing comes from Particle::modulation_geometry,
-  // since the period depends on the laser and the detector; stack_spacing stays 0.
+  // Modulation (beam_modulation true, either distribution): each electron moves by its own position,
+  // z -> z + (zeta / K) sin(K z + phase), K = 2 pi / period; for a random beam z includes the Gaussian wings. Charges
+  // are unchanged.
   struct Modulation {
     bool active = false;
-    double zeta = 0.0;             // beam_modulation_zeta: drift ratio; 0 keeps the uniform positions
-    double period_ratio = 0.0;     // beam_modulation_period_ratio: Lambda_mod / Lambda_1, any real number
-    size_t sheets_per_period = 0;  // beam_modulation_sheets_per_period: S
-    double periods = 0.0;          // beam_modulation_periods: P
-    double phase = 0.0;            // beam_modulation_phase (optional, default 0): phi = K z + phase
+    double zeta = 0.0;    // beam_modulation_zeta: drift ratio; 0 keeps the positions
+    double period = 0.0;  // beam_modulation_period: Lambda_mod, a length (a.u. once resolved)
+    bool period_in_lambda_1 = false;
+    double phase = 0.0;  // beam_modulation_phase (optional, default 0): phi = K z + phase
   } modulation;
 };
 
@@ -311,6 +328,22 @@ inline double lg_beam_radius_in_w0(int p, int l) {
 // Picks the cylinder-beam keys (with unit conversion) out of the config into a CylinderBeamParams.
 // A negative beam_cylinder_radius (its unit then ignored) means lg_beam_radius_in_w0(p, l) * w0, for a
 // laguerre_gauss laser only.
+// A length along the beam axis. In the unit lambda_1 it is returned in units of lambda_1, with in_lambda_1 set, for
+// Particle::resolve_beam_lengths to convert; otherwise in a.u. unit_required rejects a bare number, which would be a.u.
+inline double read_axial_length(const ConfigMap& config, const char* key, bool& in_lambda_1,
+                                bool unit_required = false) {
+  auto [value, unit] = split_value_and_unit(get_required(config, key));
+  in_lambda_1 = to_lower(unit) == "lambda_1";
+  if (in_lambda_1) {
+    return value;
+  }
+  if (unit_required && unit.empty()) {
+    throw std::invalid_argument(std::string(key) + " needs a unit (e.g. 1 lambda_1 or 0.5 lambda): a bare number "
+                                "would be atomic units");
+  }
+  return value * convert_unit_to_number(unit, config);
+}
+
 inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   CylinderBeamParams params;
 
@@ -326,10 +359,11 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   } else {
     params.radius = radius_val * convert_unit_to_number(radius_unit, config);
   }
-  auto [height_val, height_unit] = split_value_and_unit(get_required(config, "beam_cylinder_height"));
-  params.height = height_val * convert_unit_to_number(height_unit, config);
-  auto [sigma_z_val, sigma_z_unit] = split_value_and_unit(get_required(config, "beam_sigma_z"));
-  params.sigma_z = sigma_z_val * convert_unit_to_number(sigma_z_unit, config);
+  params.height = read_axial_length(config, "beam_cylinder_height", params.height_in_lambda_1);
+  if (params.height < 0.0) {
+    throw std::invalid_argument("beam_cylinder_height must be >= 0");
+  }
+  params.sigma_z = read_axial_length(config, "beam_sigma_z", params.sigma_z_in_lambda_1);
   if (params.sigma_z < 0.0) {
     throw std::invalid_argument("beam_sigma_z must be >= 0");
   }
@@ -363,9 +397,8 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   params.polar_lattice = distribution_name == "polar_lattice";
   params.lattice_spacing = 0.0;
   if (params.polar_lattice) {
-    if (params.height != 0.0 || params.sigma_z != 0.0) {
-      throw std::invalid_argument("beam_distribution polar_lattice is a flat disk: it needs beam_cylinder_height 0 "
-                                  "and beam_sigma_z 0");
+    if (params.sigma_z != 0.0) {
+      throw std::invalid_argument("beam_distribution polar_lattice has no Gaussian wings: it needs beam_sigma_z 0");
     }
     auto [spacing_val, spacing_unit] = split_value_and_unit(get_required(config, "beam_lattice_spacing"));
     params.lattice_spacing = spacing_val * convert_unit_to_number(spacing_unit, config);
@@ -374,85 +407,81 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
     }
   }
 
-  // beam_stack_modulation picks the stack: true = the beam_modulation_* keys, false = the beam_stack_* keys. The other
-  // set is ignored, so both can stay in a config. Without the switch, a beam_modulation_* key is an error rather than
-  // silently unused.
-  auto modulation_switch = config.find("beam_stack_modulation");
+  // Keys of the earlier stack layout. Unknown keys are normally ignored, but dropping one of these silently would
+  // change the beam, so each names its replacement (theory/lattice_stack-work.md, "Beam distribution rework").
+  const std::pair<const char*, const char*> removed_keys[] = {
+      {"beam_stack_spacing", "beam_cylinder_height, the stack's width H = M d"},
+      {"beam_stack_modulation", "beam_modulation true|false"},
+      {"beam_modulation_sheets_per_period", "beam_stack_sheets (M) with beam_cylinder_height (H)"},
+      {"beam_modulation_periods", "beam_cylinder_height (H, e.g. in lambda_1)"},
+      {"beam_modulation_period_ratio", "beam_modulation_period, a length (e.g. 1 lambda_1)"}};
+  for (const auto& [key, replacement] : removed_keys) {
+    if (config.count(key) > 0) {
+      throw std::invalid_argument(std::string(key) + " no longer exists: use " + replacement);
+    }
+  }
+
+  // The type picks which keys count: a random beam ignores the lattice's (beam_lattice_spacing, beam_stack_sheets), as
+  // polar_lattice ignores beam_particle_count, so switching the type needs no other edit.
+  params.stack_sheets = 1;
+  auto stack_sheets = config.find("beam_stack_sheets");
+  if (params.polar_lattice && stack_sheets != config.end()) {
+    size_t parsed_length = 0;
+    const long sheets = std::stol(stack_sheets->second, &parsed_length);
+    if (parsed_length != stack_sheets->second.size() || sheets < 1) {
+      throw std::invalid_argument("beam_stack_sheets must be an integer >= 1 (got " + stack_sheets->second + ")");
+    }
+    params.stack_sheets = static_cast<size_t>(sheets);
+  }
+  // Whether H is zero doesn't depend on its unit, so both cases are settled here, before lambda_1 is known.
+  if (params.polar_lattice && params.stack_sheets == 1 && params.height > 0.0) {
+    params.notes.push_back("a single sheet (beam_stack_sheets 1) has no width: beam_cylinder_height set to 0");
+    params.height = 0.0;
+    params.height_in_lambda_1 = false;
+  } else if (params.polar_lattice && params.stack_sheets > 1 && params.height == 0.0) {
+    params.notes.push_back("beam_stack_sheets " + std::to_string(params.stack_sheets) +
+                           " with beam_cylinder_height 0: the sheets would coincide, so the stack is one sheet");
+    params.stack_sheets = 1;
+  }
+
+  // beam_modulation (optional, default false) switches the modulation on for either distribution. Without the switch,
+  // a beam_modulation_* key is an error rather than silently unused; with false, they are ignored.
+  auto modulation_switch = config.find("beam_modulation");
   if (modulation_switch == config.end()) {
-    for (const char* key : {"beam_modulation_zeta", "beam_modulation_period_ratio", "beam_modulation_sheets_per_period",
-                            "beam_modulation_periods", "beam_modulation_phase"}) {
+    for (const char* key : {"beam_modulation_zeta", "beam_modulation_period", "beam_modulation_phase"}) {
       if (config.count(key) > 0) {
-        throw std::invalid_argument(std::string(key) + " needs beam_stack_modulation true or false");
+        throw std::invalid_argument(std::string(key) + " needs beam_modulation true or false");
       }
     }
   } else if (modulation_switch->second != "true" && modulation_switch->second != "false") {
-    throw std::invalid_argument("beam_stack_modulation must be true or false (got " + modulation_switch->second + ")");
+    throw std::invalid_argument("beam_modulation must be true or false (got " + modulation_switch->second + ")");
   }
-  const bool modulated = modulation_switch != config.end() && modulation_switch->second == "true";
-
-  params.stack_sheets = 1;
-  params.stack_spacing = 0.0;
-  if (!modulated) {
-    auto stack_sheets = config.find("beam_stack_sheets");
-    auto stack_spacing = config.find("beam_stack_spacing");
-    if (stack_sheets == config.end() && stack_spacing != config.end()) {
-      throw std::invalid_argument("beam_stack_spacing needs beam_stack_sheets");
-    }
-    if (stack_sheets != config.end()) {
-      if (!params.polar_lattice) {
-        throw std::invalid_argument("beam_stack_sheets needs beam_distribution polar_lattice");
-      }
-      size_t parsed_length = 0;
-      const long sheets = std::stol(stack_sheets->second, &parsed_length);
-      if (parsed_length != stack_sheets->second.size() || sheets < 1) {
-        throw std::invalid_argument("beam_stack_sheets must be an integer >= 1 (got " + stack_sheets->second + ")");
-      }
-      params.stack_sheets = static_cast<size_t>(sheets);
-      if (params.stack_sheets > 1) {
-        auto [spacing_val, spacing_unit] = split_value_and_unit(get_required(config, "beam_stack_spacing"));
-        params.stack_spacing = spacing_val * convert_unit_to_number(spacing_unit, config);
-        if (!(params.stack_spacing > 0.0)) {
-          throw std::invalid_argument("beam_stack_spacing must be > 0");
-        }
-      }
-    }
-  }
-
-  if (modulated) {
-    if (!params.polar_lattice) {
-      throw std::invalid_argument("beam_stack_modulation true needs beam_distribution polar_lattice");
-    }
+  if (modulation_switch != config.end() && modulation_switch->second == "true") {
     CylinderBeamParams::Modulation& modulation = params.modulation;
     modulation.active = true;
     modulation.zeta = std::stod(get_required(config, "beam_modulation_zeta"));
-    modulation.period_ratio = std::stod(get_required(config, "beam_modulation_period_ratio"));
-    modulation.periods = std::stod(get_required(config, "beam_modulation_periods"));
-    const std::string sheets_text = get_required(config, "beam_modulation_sheets_per_period");
-    size_t parsed_length = 0;
-    const long sheets_per_period = std::stol(sheets_text, &parsed_length);
-    if (parsed_length != sheets_text.size() || sheets_per_period < 1) {
-      throw std::invalid_argument("beam_modulation_sheets_per_period must be an integer >= 1 (got " + sheets_text +
-                                  ")");
-    }
-    modulation.sheets_per_period = static_cast<size_t>(sheets_per_period);
     if (!(modulation.zeta >= 0.0)) {
       throw std::invalid_argument("beam_modulation_zeta must be >= 0");
     }
-    if (!(modulation.period_ratio > 0.0)) {
-      throw std::invalid_argument("beam_modulation_period_ratio must be > 0");
-    }
-    if (!(modulation.periods > 0.0)) {
-      throw std::invalid_argument("beam_modulation_periods must be > 0");
+    modulation.period = read_axial_length(config, "beam_modulation_period", modulation.period_in_lambda_1, true);
+    if (!(modulation.period > 0.0)) {
+      throw std::invalid_argument("beam_modulation_period must be > 0");
     }
     auto phase = config.find("beam_modulation_phase");
     if (phase != config.end()) {
       auto [phase_val, phase_unit] = split_value_and_unit(phase->second);
       modulation.phase = phase_val * convert_unit_to_number(phase_unit, config);
     }
-    params.stack_sheets = static_cast<size_t>(
-        std::max(1L, std::lround(static_cast<double>(modulation.sheets_per_period) * modulation.periods)));
+    const bool no_axial_extent =
+        params.polar_lattice ? params.stack_sheets == 1 : params.height == 0.0 && params.sigma_z == 0.0;
+    if (no_axial_extent) {
+      params.notes.push_back("the beam has no extent along its axis, so beam_modulation only translates it: "
+                             "nothing is bunched");
+    }
   }
 
+  params.lengths_resolved = !(params.height_in_lambda_1 || params.sigma_z_in_lambda_1 ||
+                              (params.modulation.active && params.modulation.period_in_lambda_1));
   return params;
 }
 

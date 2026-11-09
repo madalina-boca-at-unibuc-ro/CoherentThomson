@@ -1,0 +1,59 @@
+rework_checks.py, 2026-11-09, hpc-node10 (64 CPUs, GCC 13.3). Old solver: commit 35b3a1a. New solver: the rework
+(working tree on 35b3a1a). Both built on the same node, Release. Runs in ~/output_tests/lattice_stack/rework_checks/.
+
+=== 1. Old solver against new, same beam
+  flat_lattice                 5 of 5 .dat identical, field max rel. diff 0.0e+00
+  uniform_stack_M14            5 of 5 .dat identical, field max rel. diff 0.0e+00
+  bunched_M14_P1               5 of 5 .dat identical, field max rel. diff 0.0e+00
+  bunched_M28_P2_phase         5 of 5 .dat identical, field max rel. diff 0.0e+00
+  random_simplified            5 of 5 .dat identical, field max rel. diff 0.0e+00
+  random_direct                5 of 5 .dat identical, field max rel. diff 0.0e+00
+  random_long_distance_direct_approx 5 of 5 .dat identical, field max rel. diff 0.0e+00
+  random_sigma_z               5 of 5 .dat identical, field max rel. diff 0.0e+00
+
+=== 2. Modulated random beam: electron sum against the cold-beam value (zeta = 1, H = Lambda_mod = Lambda_1)
+  N_e    seed   N  |sum - cold|   1/sqrt(N_e)
+   2000  532   1  1.713e-02      2.236e-02
+   2000  532   2  1.176e-02      2.236e-02
+   2000  533   1  2.901e-02      2.236e-02
+   2000  533   2  6.011e-03      2.236e-02
+   8000  532   1  9.910e-03      1.118e-02
+   8000  532   2  6.407e-03      1.118e-02
+   8000  533   1  4.805e-03      1.118e-02
+   8000  533   2  1.819e-02      1.118e-02
+
+=== 3. Refused configs (new solver)
+  removed_stack_spacing        Error: beam_stack_spacing no longer exists: use beam_cylinder_height, the stack's width H = M d
+  removed_stack_modulation     Error: beam_stack_modulation no longer exists: use beam_modulation true|false
+  removed_sheets_per_period    Error: beam_modulation_sheets_per_period no longer exists: use beam_stack_sheets (M) with beam_cylinder_height (H)
+  removed_periods              Error: beam_modulation_periods no longer exists: use beam_cylinder_height (H, e.g. in lambda_1)
+  removed_period_ratio         Error: beam_modulation_period_ratio no longer exists: use beam_modulation_period, a length (e.g. 1 lambda_1)
+  sigma_z_on_lattice           Error: beam_distribution polar_lattice has no Gaussian wings: it needs beam_sigma_z 0
+  height_negative              Error: beam_cylinder_height must be >= 0
+  lambda_1_elsewhere           Error: Unit lambda_1 is accepted only by beam_cylinder_height, beam_sigma_z and beam_modulation_period
+  period_without_unit          Error: beam_modulation_period needs a unit (e.g. 1 lambda_1 or 0.5 lambda): a bare number would be atomic units
+  period_zero                  Error: beam_modulation_period must be > 0
+  zeta_negative                Error: beam_modulation_zeta must be >= 0
+  switch_not_bool              Error: beam_modulation must be true or false (got yes)
+  zeta_without_switch          Error: beam_modulation_zeta needs beam_modulation true or false
+  sheets_not_integer           Error: beam_stack_sheets must be an integer >= 1 (got 14.5)
+  lambda_1_q_perpendicular     Error: unit lambda_1: q is perpendicular to the beam axis, so lambda_1 = 2 pi / |q_axial| is undefined
+
+=== 4. Corrected or flagged configs (new solver): electrons, and the warning
+  one_sheet_with_width             64 electrons; a single sheet (beam_stack_sheets 1) has no width: beam_cylinder_height set to 0
+  sheets_without_width             64 electrons; beam_stack_sheets 14 with beam_cylinder_height 0: the sheets would coincide, so the stack is one sheet
+  modulated_single_sheet           64 electrons; the beam has no extent along its axis, so beam_modulation only translates it: nothing is bunched
+  modulated_flat_random            60 electrons; the beam has no extent along its axis, so beam_modulation only translates it: nothing is bunched
+  non_whole_periods               896 electrons; H / Lambda_mod = 1.5, not a whole number of periods: b doesn't reduce to the cold-beam value
+  too_few_sheets                  256 electrons; 4 sheets per period is below 3 N_max Lambda_mod / Lambda_1 = 6: moved sheets can give a wrong b at the highest harmonics; see the log's sum against the cold-beam value
+
+Changed after this run (user, 2026-11-09): a random beam now ignores beam_stack_sheets instead of refusing it (the
+refusal above, stack_on_random, was removed; rework_checks.py now runs it as stack_keys_on_random under section 4).
+Checked by hand: config/config_lattice_stack.cfg with beam_distribution random, 200 electrons, one screen point runs,
+and the log shows a random modulated beam (sum against cold value within 1/sqrt(N_e) = 0.07).
+
+Changed after this run (2026-11-09): the too_few_sheets warning now uses S >= n (1 + zeta) + 5 n^(1/3) (aliasing,
+lattice-stack-implemented.md, "Sheets per period"), not 3 N_max Lambda_mod / Lambda_1. Checked by hand on
+config_lattice_stack.cfg as a lattice, one screen point: M = 4, N_max = 2 warns (rule 10.3) and its N = 2 sheet sum is 0
+against the cold 0.353; M = 14, N_max = 2 doesn't warn (errors 4e-14, 5e-9); M = 6, N_max = 1 warns (rule 7.0;
+error 5.6e-4, which the old rule let through).

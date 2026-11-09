@@ -14,54 +14,78 @@ from plot_field import read_config_value, read_length
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
-def read_beam_geometry(config_path):
+def read_log_length(run_dir, label):
+    """A length from run_log.txt's "label  <a.u.> a.u.  <lambda> lambda" line, in lambda; None if absent."""
+    with open(os.path.join(run_dir, "run_log.txt")) as log_file:
+        match = re.search(r"^  " + re.escape(label) + r"\s+\S+ a\.u\.\s+(\S+) lambda", log_file.read(), re.M)
+    return float(match.group(1)) if match else None
+
+def read_beam_geometry(run_dir, config_path):
     """
-    Reads the longitudinal beam parameters (in lambda) from a run's own config.cfg snapshot:
-    the cylinder height H, the Gaussian edge smoothing sigma_z, and the center z_c. Runs made
+    Reads the longitudinal beam parameters (in lambda): the cylinder height H (a lattice stack's width), the Gaussian
+    edge smoothing sigma_z, and the center z_c. H and sigma_z come from run_log.txt, which has them resolved (they can
+    be given in lambda_1, which only the solver knows); runs without run_log.txt fall back to config.cfg. Runs made
     before beam_sigma_z existed are read as sigma_z = 0 (the sharp-edged cylinder they used).
     """
-    H = read_length("beam_cylinder_height", config_path)
     z_c = read_length("beam_center_z", config_path)
-    try:
-        sigma_z = read_length("beam_sigma_z", config_path)
-    except ValueError:
-        print("No 'beam_sigma_z' in this run's config (older run); using sigma_z = 0")
-        sigma_z = 0.0
-    # A lattice stack (M sheets, spacing d) is drawn as the uniform density it samples, over H = M d.
+    has_log = os.path.exists(os.path.join(run_dir, "run_log.txt"))
+    H = read_log_length(run_dir, "cylinder height") if has_log else read_length("beam_cylinder_height", config_path)
+    sigma_z = read_log_length(run_dir, "sigma_z") if has_log else None
+    if sigma_z is None:
+        try:
+            sigma_z = read_length("beam_sigma_z", config_path)
+        except ValueError:
+            print("No 'beam_sigma_z' in this run's config (older run); using sigma_z = 0")
+            sigma_z = 0.0
+    # Runs from before the 2026-11-09 rework: a stack of M sheets, spacing d, drawn over H = M d.
     with open(config_path) as config_file:
         sheets = [line.split()[1] for line in config_file if line.split()[:1] == ["beam_stack_sheets"]]
-    if sheets and int(sheets[0]) > 1:
+    if sheets and int(sheets[0]) > 1 and read_config_value_or_none("beam_stack_spacing", config_path) is not None:
         H = int(sheets[0]) * read_length("beam_stack_spacing", config_path)
     return H, sigma_z, z_c
 
+def read_config_value_or_none(key, config_path):
+    try:
+        return read_config_value(key, config_path)[0]
+    except ValueError:
+        return None
+
 def read_modulation(run_dir, config_path):
     """
-    The bunched stack's map, from the run's log: {zeta, phase, Lambda_mod, H}, in lambda and rad, or None for any other beam.
+    The modulation's map, from the run's log: {zeta, phase, Lambda_mod, H, sigma_z, lattice}, in lambda and rad, or
+    None for an unmodulated beam.
     """
-    # A few runs from before beam_stack_modulation existed have the beam_modulation_* keys alone, and are bunched.
-    try:
-        if read_config_value("beam_stack_modulation", config_path)[0] != "true":
+    switch = read_config_value_or_none("beam_modulation", config_path)
+    legacy = read_config_value_or_none("beam_stack_modulation", config_path)  # before the 2026-11-09 rework
+    if switch is not None:
+        if switch != "true":
             return None
-    except ValueError:
-        pass
-    try:
-        zeta = float(read_config_value("beam_modulation_zeta", config_path)[0])
-    except ValueError:
+    elif legacy is not None and legacy != "true":
+        return None
+    # A few runs from before beam_stack_modulation existed have the beam_modulation_* keys alone, and are bunched.
+    zeta = read_config_value_or_none("beam_modulation_zeta", config_path)
+    if zeta is None:
         return None
     with open(os.path.join(run_dir, "run_log.txt")) as log_file:
         log = log_file.read()
-    def length(label):
-        return float(re.search(re.escape(label) + r"\s+\S+ a\.u\.\s+(\S+) lambda", log).group(1))
     phase = math.pi * float(re.search(r"phase\s+(\S+) pi", log).group(1))
-    return {"zeta": zeta, "phase": phase, "Lambda_mod": length("Lambda_mod"), "H": length("stack length H = M d")}
+    H, sigma_z, _ = read_beam_geometry(run_dir, config_path)
+    if switch is None:
+        H = read_log_length(run_dir, "stack length H = M d")
+    lattice = read_config_value_or_none("beam_distribution", config_path) == "polar_lattice"
+    return {"zeta": float(zeta), "phase": phase, "Lambda_mod": read_log_length(run_dir, "Lambda_mod"), "H": H,
+            "sigma_z": sigma_z, "lattice": lattice}
 
 def modulated_density(bins, modulation, z_c):
     """
-    The bunched density averaged over each histogram bin, from a fine sample of the drift map on the uniform stack.
+    The modulated density averaged over each histogram bin, from a fine sample of the drift map on the uniform
+    density over H (plus the Gaussian wings of a random beam).
     """
     K = 2 * math.pi / modulation["Lambda_mod"]
     H = modulation["H"]
     uniform = (np.arange(4_000_000) + 0.5) / 4_000_000 * H - H / 2
+    if modulation["sigma_z"] > 0.0:
+        uniform = uniform + np.random.default_rng(0).normal(0.0, modulation["sigma_z"], uniform.size)
     moved = z_c + uniform + modulation["zeta"] / K * np.sin(K * uniform + modulation["phase"])
     return np.histogram(moved, bins=bins, density=True)[0]
 
@@ -101,32 +125,38 @@ def read_axial_positions(scatter_path, config_path):
 
 def plot_modulated_density(run_dir, config_path, modulation):
     """
-    A bunched stack: the sheets per bin against the drift map's density, with the histogram from
-    electron_beam_scatter.dat when the run has it. The bins cover only the sheets and average about four of them, since
-    finer bins hold 0, 1 or 2 discrete sheets and show gaps that aren't in the density.
+    A modulated beam: the electrons per bin against the drift map's density, with the histogram from
+    electron_beam_scatter.dat when the run has it. For a lattice stack the bins cover only the sheets and average about
+    four of them, since finer bins hold 0, 1 or 2 discrete sheets and show gaps that aren't in the density. For a random
+    beam there are ~sqrt(N) bins.
     """
     z_c = read_length("beam_center_z", config_path)
     H = modulation["H"]
-    spread = H / 2 + modulation["zeta"] * modulation["Lambda_mod"] / (2 * math.pi)
+    spread = H / 2 + 5 * modulation["sigma_z"] + modulation["zeta"] * modulation["Lambda_mod"] / (2 * math.pi)
     fig, ax = plt.subplots(figsize=(8, 5))
     scatter_path = os.path.join(run_dir, "electron_beam_scatter.dat")
     if os.path.exists(scatter_path):
         z = read_axial_positions(scatter_path, config_path)
-        sheets = len(np.unique(np.round(z / H, 10)))
-        n_bins = max(5, sheets // 4)
-        half_sheet = H / (2 * sheets)
-        bins = np.linspace(z.min() - half_sheet, z.max() + half_sheet, n_bins + 1)
+        if modulation["lattice"]:
+            sheets = len(np.unique(np.round(z / H, 10)))
+            n_bins = max(5, sheets // 4)
+            half_sheet = H / (2 * sheets)
+            bins = np.linspace(z.min() - half_sheet, z.max() + half_sheet, n_bins + 1)
+            label = f"sheets ({sheets}, {len(z)} electrons)"
+        else:
+            n_bins = int(np.clip(np.sqrt(len(z)), 20, 120))
+            bins = np.linspace(z.min(), z.max(), n_bins + 1)
+            label = f"sampled electrons (N = {len(z)})"
     else:
         print(f"No '{scatter_path}' (needs plot_beam_scatter=true); plotting the analytic density only")
         z = None
         bins = np.linspace(z_c - 1.05 * spread, z_c + 1.05 * spread, 201)
     if z is not None:
-        ax.hist(z, bins=bins, density=True, histtype='stepfilled', color='lightsteelblue',
-                label=f"sheets ({sheets}, {len(z)} electrons)")
+        ax.hist(z, bins=bins, density=True, histtype='stepfilled', color='lightsteelblue', label=label)
     ax.stairs(modulated_density(bins, modulation, z_c), bins, color='crimson', lw=1.5, label="drift map")
     for edge in (z_c - H / 2, z_c + H / 2):
         ax.axvline(edge, color='gray', ls='--', lw=1)
-    ax.set_title(f"Bunched stack along the beam axis   ($\\zeta$ = {modulation['zeta']:g}, "
+    ax.set_title(f"{'Bunched stack' if modulation['lattice'] else 'Modulated beam'} along the beam axis   ($\\zeta$ = {modulation['zeta']:g}, "
                  f"$H/\\Lambda_{{mod}}$ = {H / modulation['Lambda_mod']:g})", fontsize=12, fontweight='bold')
     ax.set_xlabel(r"z along beam axis [$\lambda$]", fontsize=11)
     ax.set_ylabel(r"normalized density [1/$\lambda$]", fontsize=11)
@@ -146,7 +176,7 @@ def plot_density(run_dir):
         plot_modulated_density(run_dir, config_path, modulation)
         return
 
-    H, sigma_z, z_c = read_beam_geometry(config_path)
+    H, sigma_z, z_c = read_beam_geometry(run_dir, config_path)
     if H == 0.0 and sigma_z == 0.0:
         print("beam_cylinder_height = 0 and beam_sigma_z = 0: every electron sits at z = beam_center_z, "
               "no density to plot")

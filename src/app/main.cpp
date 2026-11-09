@@ -199,7 +199,7 @@ int main(int argc, char* argv[]) {
                 << "' has no flat local (x, y) plane (only rectangular/circular are supported).\n";
     }
 
-    Logging::write_run_log(simulation_config, *laser, *detector, electron_beam.size(), sim_par, form_factor,
+    Logging::write_run_log(simulation_config, *laser, *detector, electron_beam, sim_par, form_factor,
                            num_threads, simulation_elapsed.count(), total_cpu_seconds, run_output_dir + "/run_log.txt");
     std::cout << "Successfully exported run log to " << run_output_dir << "/run_log.txt\n";
 

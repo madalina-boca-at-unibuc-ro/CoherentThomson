@@ -20,50 +20,74 @@ namespace Core::Particle {
 using CylinderBeamParams = Core::IoUtils::CylinderBeamParams;
 
 // Draws one electron: position uniform over the cylinder cross-section
-// (area-preserving in r) and uniform along the cylinder's height, momentum
-// Gaussian about params.average_p*. The cylinder's height axis is
+// (area-preserving in r) and uniform along the cylinder's height, plus the Gaussian wings, then moved by the
+// modulation if it is on; momentum Gaussian about params.average_p*. The cylinder's height axis is
 // reoriented via beam_axis_rotation to match the beam's own mean momentum
 // direction (so the finite-height extent lies along the direction the beam
 // actually moves in, rather than always along canonical Oz regardless of
 // where average_p* points). Advances gen's state, so a caller generating a
 // whole beam must share one generator across calls to get a single
-// reproducible sequence.
+// reproducible sequence. params must be resolved (resolve_beam_lengths).
 Electron generate_electron(const CylinderBeamParams& params,
                            const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation, double tau_0, double d_tau,
                            size_t N_tau, std::mt19937& gen);
 
-// Bunched stack, derived from the beam_modulation_* keys. Lengths are in a.u.; z is before beam_center and the beam
-// rotation. Sheets start at the uniform z_j = (j - (M-1)/2) d and move to z_j + (zeta / K) sin(K z_j + phase), each
-// keeping charge 1/M.
-struct ModulationGeometry {
-  double q_axial;       // the harmonic-1 translation wavevector along the beam axis, signed
-  double q_transverse;  // its size across the beam axis, which equal sheets can't match
-  double lambda_1;      // 2 pi / |q_axial|
-  double lambda_mod;    // period_ratio * lambda_1
-  double K;             // 2 pi / lambda_mod
-  double spacing;       // d = lambda_mod / S, before the sheets move
-  double length;        // H = M d, before the sheets move
-  double spill;         // how far the moved sheets leave +-H/2; 0 if none does
-  std::vector<double> sheet_z;
+// The harmonic-1 translation wavevector q along the detector normal (the q of Simulation::compute_form_factor, from
+// the configured average_p, undressed), split along and across the beam axis. Uses the configured average_p, as the
+// beam doesn't exist yet; it equals the generated mean at zero momentum spread.
+struct AxialTranslation {
+  double q_axial;       // signed, along the beam axis
+  double q_transverse;  // its size across the beam axis, which a modulation along the axis can't match
+  bool degenerate;      // q (numerically) perpendicular to the axis: lambda_1 is undefined
+  double lambda_1;      // 2 pi / |q_axial|; +infinity when degenerate
 };
+AxialTranslation axial_translation(const CylinderBeamParams& params, const Core::Laser::LaserField& laser,
+                                   const std::array<double, 3>& detector_normal);
 
-// Uses the configured average_p, as the beam doesn't exist yet; it equals the generated mean at zero momentum spread.
+// Converts the lengths given in lambda_1 to a.u. and sets params.lambda_1 (when q isn't perpendicular to the axis).
+// Throws if a length is in lambda_1 and lambda_1 is undefined. Does nothing to lengths already resolved.
+void resolve_beam_lengths(CylinderBeamParams& params, const Core::Laser::LaserField& laser,
+                          const std::array<double, 3>& detector_normal);
+
+// The modulation's map, z -> z + (zeta / K) sin(K z + phase), K = 2 pi / period. z is along the beam axis from the
+// beam centre, before beam_center and the beam rotation.
+double modulated_z(const CylinderBeamParams::Modulation& modulation, double z);
+
+// A lattice stack's sheet positions: cell-centred in H, z_m = (m - (M-1)/2) H/M, moved by the modulation if it is on.
+std::vector<double> sheet_positions(const CylinderBeamParams& params);
+
+// Each electron's initial position along the beam axis, from the beam centre: the z the generator drew (and the
+// modulation moved), recovered from the rotated position.
+std::vector<double> axial_positions(const std::vector<Electron>& beam, const CylinderBeamParams& params);
+
+// The modulation's derived numbers, from resolved params. Lengths are in a.u.
+struct ModulationGeometry {
+  AxialTranslation q;
+  double lambda_mod;  // beam_modulation_period
+  double ratio;       // lambda_mod / lambda_1; 0 when lambda_1 is undefined
+  double K;           // 2 pi / lambda_mod
+  double periods;     // H / lambda_mod
+  double spill;       // lattice: how far the moved sheets leave +-H/2 (0 if none does); random: 0
+};
 ModulationGeometry modulation_geometry(const CylinderBeamParams& params, const Core::Laser::LaserField& laser,
                                        const std::array<double, 3>& detector_normal);
 
 // One line of the log's check: b at harmonic N against the cold-beam value.
 struct ModulationHarmonic {
   size_t N;
-  double n;                                  // N * period_ratio
-  std::complex<double> sheet_sum;            // (1/M) sum_j exp(+i q_N.z_j), as the form factor sees it
-  std::optional<std::complex<double>> cold;  // the same from the map's phase integral; integer n, whole periods only
+  double n;                                  // N * ratio
+  std::complex<double> sum;                  // (1/count) sum_j exp(+i q_N z_j), as the form factor sees it
+  std::optional<std::complex<double>> cold;  // the map's phase integral: integer n, whole periods, no wings only
 };
+// axial_z: the sheets of a lattice stack (equal charges), or every electron of a random beam.
 std::vector<ModulationHarmonic> modulation_harmonics(const CylinderBeamParams& params,
-                                                     const ModulationGeometry& geometry, size_t N_min,
+                                                     const ModulationGeometry& geometry,
+                                                     const std::vector<double>& axial_z, size_t N_min,
                                                      size_t N_harmonics);
 
-// What the user should know before trusting the stack: a non-whole number of periods, too few sheets for N_max.
-std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, size_t N_max);
+// What the user should know before trusting the modulation: a non-whole number of periods, too few sheets for N_max.
+std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, const ModulationGeometry& geometry,
+                                             size_t N_max);
 
 std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const double tau_0, const double d_tau,
                                              const size_t N_tau, const Core::Laser::LaserField& laser,

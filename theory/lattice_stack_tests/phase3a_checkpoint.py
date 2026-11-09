@@ -19,8 +19,11 @@ POINT = dict(SCATTER, circular_detector_N_R=1, circular_detector_N_phi=1, beam_l
 
 
 def modulated(zeta, sheets, periods, ratio=1, phase=None):
-    keys = {"beam_stack_modulation": "true", "beam_modulation_zeta": zeta, "beam_modulation_period_ratio": ratio,
-            "beam_modulation_sheets_per_period": sheets, "beam_modulation_periods": periods}
+    # Since the 2026-11-09 rework, S sheets per period over P periods are M = round(S P) sheets in H = M Lambda_mod / S,
+    # the same positions as before (rework_checks.py).
+    total = max(1, round(sheets * periods))
+    keys = {"beam_modulation": "true", "beam_modulation_zeta": zeta, "beam_modulation_period": f"{ratio!r} lambda_1",
+            "beam_stack_sheets": total, "beam_cylinder_height": f"{total * ratio / sheets!r} lambda_1"}
     if phase is not None:
         keys["beam_modulation_phase"] = f"{phase / np.pi:.15f} pi"
     return keys

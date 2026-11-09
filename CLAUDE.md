@@ -33,6 +33,8 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
   radial phase that doesn't vanish as `Z → ∞`, so `N ≥ 2` isn't a single LG mode. `lg_decomposition.py`'s
   prediction with the dressing factor `d_N(r)` reaches fidelity 0.9999/0.998 (N = 1/2) at `a0 = 0.1`; tests 2–4
   open. `theory/future_dev/ponderomotive_lens.md`; its test configs write to `~/output_tests/ponderomotive_lens/`.
+- **Lattice stack:** Phases 1–3a are done and reviewed. The beam-distribution rework is implemented (2026-11-09) and
+  awaits the user's review; Phase 3b comes next. State and plan: `theory/lattice_stack-work.md`.
 
 ## Machines
 
@@ -83,9 +85,9 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   - `config.cfg`: default (random beam), for current experiments; parameters change freely.
   - `config_lattice.cfg`: `config.cfg` plus `beam_distribution polar_lattice` and `beam_lattice_spacing`; keep the
     other keys in step with `config.cfg`.
-  - `config_lattice_stack.cfg`: lattice stack on run A of the report (Gaussian pulse, `a0 = 0.1`), with both uniform
-    (`beam_stack_*`) and bunched (`beam_modulation_*`) keys, chosen by `beam_stack_modulation`. It holds current
-    experiments (screen and sheets change freely); not kept in step with `config.cfg`.
+  - `config_lattice_stack.cfg`: lattice stack on run A of the report (Gaussian pulse, `a0 = 0.1`): `M` sheets in
+    `H = 1 lambda_1`, bunched by `beam_modulation_*` when `beam_modulation true`. It holds current experiments (screen
+    and sheets change freely); not kept in step with `config.cfg`.
   - `config_spectrum.cfg`: `dense_frequency_spectrum true` on one screen point (`plot_point_spectrum*.py`).
   - `config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`. Use it for every
     C++-vs-Python comparison; update it when `INPUTS` change.
@@ -93,11 +95,14 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   run and a config (`configs/`, frozen copies; `configs/runs_A-D/README.md` is the a0-scan's running and
   post-processing recipe, with `run_batch.sh`) and rebuilds figures/PDF. Its runs live in
   `~/output/progress_report_20261029/` (manifest, logs, `SHA256SUMS`). If a quoted result changes, update the report.
-- `theory/lattice_stack_tests/` (current state and next step: "Resume here" in `theory/lattice_stack-work.md`): lattice-stack checkpoints (`phase1_*.py`, `q_formula_*.py`, results in
-  `phase1_results.txt`), on `base_run_A.cfg` variants; they reuse finished runs in `~/output_tests/lattice_stack/`, so
+- `theory/lattice_stack_tests/` (current state and next step: "Resume here" in `theory/lattice_stack-work.md`):
+  lattice-stack checkpoints (`phase1_*.py`, `q_formula_*.py`, results in `phase1_results.txt`), on `base_run_A.cfg`
+  variants; they reuse finished runs in `~/output_tests/lattice_stack/`, so
   delete those after changing the solver. `phase2_density_model.py` is the standalone density model (`b` at any `q`,
   `N`, `ζ`; results in `phase2_results.txt`); it doesn't run the solver. `phase3a_*.py` check bunched stacks (results in
-  `phase3a_results.txt`).
+  `phase3a_results.txt`; `phase3a_noop_and_rejects.py`/`phase3a_switch.py` use pre-rework keys and old binaries only).
+  `rework_checks.py <old_solver> <new_solver>` checks the 2026-11-09 beam rework (`rework_results.txt`).
+  `sheets_per_period_aliasing.py` (no solver) backs the sheets-per-period rule.
 - `theory/future_dev/tests/`: test inputs for the future-dev plans, all writing to `~/output_tests/...`:
   `one_electron_on_axis{,_spectrum}.cfg` (seconds per run), `nt_scan.py` (`trajectory_NT` convergence, runs the
   binary itself, ~3 min), and `bunch_length/`, `ponderomotive_lens/` (each with configs and a `README.md`).
@@ -161,17 +166,20 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
   the run writes `incident_config.cfg` for the scripts. Pre-2026-10-27 runs differ (dev notes).
   `radiation_field.dat` is lab-frame components on the detector's local grid (mirrored `(x, −y)` facing −Oz).
 - The beam axis follows the mean momentum; `beam_center_x/y/z` apply **before** that rotation.
-- `beam_distribution polar_lattice` (with `beam_lattice_spacing`) places deterministic equal-area rings, ignoring
-  `beam_particle_count`: no speckle, far fewer electrons for coherent tests. Throws unless `beam_cylinder_height 0`
-  and `beam_sigma_z 0`. `beam_stack_sheets M` with `beam_stack_spacing d` repeats it on parallel sheets at
-  `(j-(M-1)/2) d`, each with charge weight `1/M`, so the total charge is the flat disk's. Weights scale the field once
-  per electron and the form factor, never the motion. `beam_stack_modulation true` (with `beam_modulation_zeta`, `_period_ratio`,
-  `_sheets_per_period`, `_periods`, optional `_phase`) ignores those two keys and builds a bunched stack (`false` ignores the
-  `beam_modulation_*` keys; any of them without the switch is an error): equal charges on
-  sheets moved by `K z → K z + ζ sin(K z + phase)`, `Λ_mod = ratio · Λ₁`, `Λ₁` computed from the laser, `average_p` and
-  the detector normal (so the detector is created before the beam). Sheets can leave `±H/2`; the log says how far. Plan and
-  results: `theory/CoherentThomson-lattice-stack-implementation.md`, `theory/lattice_stack-work.md`, `theory/lattice-stack-implemented.md`.
-  Don't judge an `N = 2` stack at one on-axis point: the flat field there is about 2.6e4 times below the screen's.
+- **Beam along its axis** (`theory/lattice-stack-implemented.md`, last section): `random` is uniform in
+  `H = beam_cylinder_height` plus Gaussian wings `beam_sigma_z`; `polar_lattice` (with `beam_lattice_spacing`, no
+  speckle) puts `M = beam_stack_sheets` sheets at `(m−(M−1)/2) H/M`, charge `1/M` each, and refuses `beam_sigma_z ≠ 0`.
+  Each type ignores the other's keys (`random`: lattice spacing and sheets; `polar_lattice`: `beam_particle_count`), so
+  switching needs one edit. `M = 1` with `H > 0` sets `H = 0`; `H = 0` with `M > 1` sets `M = 1` (warnings).
+  Weights scale the field once per electron and the form factor, never the motion. `beam_modulation true` (`_zeta`,
+  `_period`, optional `_phase`) moves every electron of either type, `K z → K z + ζ sin(K z + phase)`, using no random
+  numbers. A stack needs `S ≥ n(1+ζ) + 5 n^(1/3)` sheets per period (`n = N_max Λ_mod/Λ₁`) against aliasing; the
+  solver warns below it. Unit `lambda_1 = 2π/|q_axial|` (axial part of `b(q)`'s `q`) is accepted only by
+  `beam_cylinder_height`, `beam_sigma_z`, `beam_modulation_period`; parsing defers it and
+  `Particle::resolve_beam_lengths` converts it (needs the laser and detector normal, so the detector is created before
+  the beam). Old keys (`beam_stack_spacing`, `beam_stack_modulation`, `beam_modulation_period_ratio/_sheets_per_period
+  /_periods`) are refused. Don't judge an `N = 2` stack at one on-axis point: the flat field there is about 2.6e4 times
+  below the screen's.
 - `beam_sigma_z` smooths the cylinder ends with a Gaussian z displacement (`theory/gaussian_smoothed_electron_cylinder.md`);
   `0` is byte-identical to the plain cylinder. A fixed `random_seed` with fewer electrons gives the first electrons
   of a larger beam: use different seeds for independent samples.
@@ -202,6 +210,9 @@ modes: `theory/long_distance_direct_simplified_coding_guide.md`; OAM: `theory/nu
 - **Threading:** contiguous electron chunks, one `std::thread` each, per-thread `PackedRadiationField` reduced after
   `join`; `compute_radiation` must not write shared state. `num_threads 0` = affinity mask, capped at that and the
   electron count (check "Using N threads"). "Time per electron" is CPU time, not wall-clock.
+- **Trajectories are freed per electron:** `run_simulation` calls `Electron::release_trajectory()` after each
+  `compute_radiation` (memory scales with threads, not electrons; needed for large stacks). Nothing may read a
+  trajectory after `run_simulation`; `electron.dat` is written before it.
 
 ### Frequencies
 
@@ -228,7 +239,8 @@ Flat `key value [unit]` lines; units via `IoUtils::convert_unit_to_number` (chec
 - **An unrecognized unit only warns** (assumes `1.0`). **A blank value drops the key** (`std::out_of_range`).
   Unknown keys are ignored. To see what a run actually used, read its `run_log.txt` (it also gives SI values).
 - All keys are required except `require_clean_build`, `beam_distribution`, `beam_lattice_spacing` (`polar_lattice`
-  only), `beam_stack_sheets`/`beam_stack_spacing`, `beam_stack_modulation` and `beam_modulation_*`. `w0` units need `laser_type=laguerre_gauss`.
+  only), `beam_stack_sheets`, `beam_modulation` and `beam_modulation_*`. `w0` units need `laser_type=laguerre_gauss`;
+  `lambda_1` works only on the three beam lengths above (elsewhere it throws).
 - `run_log.txt` re-reads keys the way the factories do (`read_scaled`), not via getters on the physics classes.
 
 ## Physics notes worth knowing before comparing results

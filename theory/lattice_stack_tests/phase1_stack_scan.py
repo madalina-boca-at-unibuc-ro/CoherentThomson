@@ -15,7 +15,8 @@ TAU = 2 * np.pi
 
 
 def stack(group, name, sheets, spacing, extra=None):
-    overrides = {"beam_stack_sheets": sheets, "beam_stack_spacing": f"{spacing:.12e} lambda"}
+    # Since the 2026-11-09 rework a stack is given by its width H = M d (beam_cylinder_height).
+    overrides = {"beam_stack_sheets": sheets, "beam_cylinder_height": f"{sheets * spacing:.12e} lambda"}
     overrides.update(extra or {})
     return run_variant(group, name, overrides)
 

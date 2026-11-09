@@ -13,7 +13,8 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 **Latest result.** The user's run on a 64 × 64 screen confirms the 3a checkpoint (`lattice-stack-implemented.md`) and the user finds the output good.
 
 **Where things stand.** Everything is committed on `main` (the branch `lattice-stack` holds the same history up to Phase 3a). Preparation, Phase 1, Phase 2 and Phase 3a are
-implemented. Phase 3a's checkpoint passes and **waits for the user's review**. Phase 3b has not started and must not start until the user says so.
+implemented. **The user reviewed and accepted Phase 3a (2026-11-09).** The beam distribution rework (below) is implemented and checked
+(2026-11-09, `lattice-stack-implemented.md`, last section) and **waits for the user's review**; Phase 3b follows it.
 
 **How the user works on this** (Claude's memory files stay on the old computer, so this is the record):
 
@@ -47,20 +48,83 @@ Then read this section, the Phase 3a part of `lattice-stack-implemented.md`, and
 | Charge | Fixed total: `1/M` per sheet |
 | Modulation | **Equal charges on moved sheets**, not the brief's charges on equidistant sheets (the table below) |
 | `ζ` | Any `ζ ≥ 0`, including 1 and above: moved sheets never evaluate the singular density |
-| Selecting the stack | `beam_stack_modulation true/false`; both key sets can stay in a config; a `beam_modulation_*` key without the switch is an error |
-| Keys | `beam_modulation_zeta`, `_period_ratio`, `_sheets_per_period`, `_periods`, optional `_phase` |
+| Selecting the stack | Superseded 2026-11-09 by `beam_modulation true/false` (the rework, below). Was `beam_stack_modulation true/false` |
+| Keys | Superseded 2026-11-09: `beam_stack_sheets`, `beam_cylinder_height`, `beam_modulation_zeta`, `_period`, optional `_phase`. Were `_period_ratio`, `_sheets_per_period`, `_periods` |
 | Period | Ratio `r = Λ_mod/Λ₁`, not a length. `Λ₁ = 2π/\|q·axis\|` with the exact `q` at harmonic 1, computed from the laser, `average_p` and detector normal. This replaces decision 4 below for the period |
-| Length | `H = M d` before the sheets move, `d = Λ_mod/S`. Any `P`, with a warning unless whole |
+| Length | `H = M d` before the sheets move. Since the rework `H` is given (`beam_cylinder_height`, e.g. in `lambda_1`) and `d = H/M`; any `H/Λ_mod`, with a warning unless whole |
 | Folding sheets back into `H` | Not implemented. Same `b` on the peak; only needed for off-peak scans on a strictly flat envelope. A small optional key if wanted later |
 
-**Next step: Phase 3b, to discuss once the user has reviewed 3a.** The brief's plan is the same target frequency with `Λ_mod = 20 Λ₁`. What to settle:
+**After the rework: Phase 3b.** (Sheet counts below are in the old S, P terms; with the rework, one period is `M = S`, `H = beam_modulation_period`.) The brief's plan is the same target frequency with `Λ_mod = 20 Λ₁`. What to settle:
 
-- **Sheets:** S = 120 is enough for N = 1, 2 at `ζ` up to about 1.1. N = 3 needs S = 180. `S` follows from the highest harmonic wanted.
+- **Sheets:** S = 120 is enough for N = 1, 2 at `ζ` up to about 1.1. N = 3 needs S = 180 (by the earlier estimate; the aliasing rule of 2026-11-09, `lattice-stack-implemented.md`, "Sheets per period", gives 147 at `ζ` = 1.111). `S` follows from the highest harmonic wanted.
 - **`ζ`:** the brief says start at the 3a value, then near the maximum of `|J₂₀(20ζ)|`, at `ζ = 1.111` (`|b₂₀|` = 0.243, against 0.165 at `ζ = 1`).
 - **Cost, one period, S = 120, 1,076 sites per sheet (129,120 trajectories):** about 9 min on 24 threads on the 16 × 8 screen, from 0.10 CPU-s per trajectory (confirmed by the 3a runs).
   On a full 128 × 64 screen, about 1.2 h on 256 cores, from the earlier estimate of 8.7 CPU-s per trajectory.
 - **Already seen:** with 64 sites per sheet on the 16 × 8 screen, `c` matches to 4e-7 at N = 2 and 8e-7 at `ζ = 1.111`. The full lattice and the mode decomposition are untested.
 - **Phase:** with `phase 0`, a one-period stack has its density peaks at the two ends, not the middle. `phase 1.0 pi` centres them, changing only the sign of `c` at odd `n`.
+
+## Beam distribution rework (before Phase 3b; planned and implemented 2026-11-09)
+
+**Why.** Phase 3b needs stacks of 100+ sheets. The user wants the random beam and the lattice stack under one scheme,
+with the modulation acting on either.
+
+**Decided with the user:**
+
+| Topic | Decision |
+|---|---|
+| Random beam | Cylinder of radius `R` and height `H` (`H = 0`: flat disk), optional Gaussian wings `sigma_z` (`0`: none). Unchanged from today |
+| Lattice stack | `M` sheets inside a width `H`, cell-centred: `d = H/M`, `z_m = (m − (M−1)/2) d`, charge `1/M` each (today's `H = M d`) |
+| Wings on a stack | None: `sigma_z` must be 0 with `polar_lattice` (throws, as today) |
+| `M = 1` with `H > 0` | Warning, and `H` is set to 0 |
+| Modulation | Independent of the distribution. Each electron moves by its own position: `z → z + (ζ/K) sin(K z + phase)`, `K = 2π/Λ_mod`, `Λ_mod` = `beam_modulation_period` (a length). `z` is measured from the beam centre in the beam's canonical frame (before `beam_center` and the rotation); for a random beam, after the wings. Charges unchanged |
+| Unit `lambda_1` | `Λ₁ = 2π/\|q_axial\|`, `q_axial` = the component along the beam axis of the `q` that `b(q)` uses (harmonic 1, detector normal, undressed `P`). For beam lengths along the axis: `beam_cylinder_height`, `beam_sigma_z`, `beam_modulation_period`. Throws if a config uses it and `q` is perpendicular to the axis |
+| Period key | `beam_modulation_period`, a length in any unit (user, 2026-11-09), replacing the ratio `_period_ratio`. A unit is required: a bare number would be a.u., and an old-style `1` meaning one `Λ₁` would silently become 1 bohr. Internally `r = Λ_mod/Λ₁` still sets `n = N r` and the cold value (integer `n` only, checked with a tolerance) |
+
+**Accepted proposals** (user, 2026-11-09):
+
+- `H = 0` with `M > 1`: the sheets coincide; warn and collapse to `M = 1` (same physics, M times cheaper).
+- Modulation that is only a translation (a single sheet; a random beam with `H = 0` and `sigma_z = 0`): warn that it
+  does nothing.
+- Keys: `beam_cylinder_height` (H, both distributions), `beam_stack_sheets` (M, lattice only, default 1),
+  `beam_modulation true|false` (optional, default false), `beam_modulation_zeta`, `_period`, optional `_phase`.
+  Removed: `beam_stack_spacing`, `beam_stack_modulation`, `beam_modulation_sheets_per_period`,
+  `beam_modulation_periods`, `beam_modulation_period_ratio`. A config holding one throws, naming the replacement: unknown keys are normally ignored,
+  and a silently dropped key would change the beam.
+- `lambda_1` is rejected outside the beam's lengthwise keys (the generic converter would only warn and use 1.0).
+- Warnings: `H/Λ_mod` not a whole number (no cold-beam value); for a stack, `S = M Λ_mod / H` below
+  `3 N_max Λ_mod/Λ₁`. For a modulated random beam, the log gives the electron sum `b_N` next to the cold value, and the
+  expected shot noise `~1/√N_e`.
+- The log prints `Λ₁`, and `H` and `sigma_z` as resolved (a.u., λ, SI).
+
+**Code impact:**
+
+- `parse_cylinder_beam_params` has four callers: `main.cpp` (heatmap, radius only), `simulation.cpp` (momenta only),
+  `run_log.cpp` and the beam factory. `Λ₁` needs the laser and the detector normal, which only the last two have. So
+  parsing keeps the lengthwise values with their unit, and a resolve step (sharing `modulation_geometry`'s `q`) runs in
+  the factory and the log.
+- `modulation_geometry`, `modulation_harmonics` and `modulation_warnings` are rewritten in `H`, `M`; the random
+  generator applies the map after its draws, so the RNG stream is unchanged.
+- `py_scripts/particle/plot_beam_density_z.py` reads `H` with `read_length` (raises on `lambda_1`) and the old stack
+  keys: switch it to the resolved `H` in `run_log.txt`. `lambda_1` is not added to the Python converters (it can't be
+  computed from the config alone).
+- Configs to migrate: `config/config_lattice_stack.cfg`, `theory/lattice_stack_tests/` (`base_run_A.cfg` variants,
+  `phase1_stack_scan.py`, `phase3a_*.py`, `form_factor_exact_q.py`); delete their cached runs in
+  `~/output_tests/lattice_stack/` afterwards. The report's frozen configs use no stacks.
+- Docs: `lattice-stack-implemented.md`, CLAUDE.md.
+
+Done as planned. Deviations: the cached runs in `~/output_tests/lattice_stack/` were kept, since the migrated configs
+differ in text and are never matched to them, and the unchanged ones give byte-identical output (check 1).
+`phase3a_noop_and_rejects.py` and `phase3a_switch.py` test the old keys against old binaries, so they are marked
+historical instead of migrated; `rework_checks.py` replaces them.
+
+**Checks** (`lattice_stack_tests/rework_checks.py`; all pass, `rework_results.txt`):
+
+1. Random beam, modulation off: `.dat` byte-identical to the current solver.
+2. Uniform stack: old `M`, `d` against new `M`, `H = M d`: identical up to the rounding of `H/M` against `d`.
+3. Bunched stack: old `S = 14`, `P = 1`, ratio 1 against new `M = 14`, `H = 1 lambda_1`, `beam_modulation_period 1 lambda_1`: same, up to rounding.
+4. Modulated random beam: electron sum `b_N` against the cold value, residual falling as `1/√N_e` (two sizes, two seeds).
+5. Rejects and warnings: removed keys, `sigma_z` on a lattice, `lambda_1` elsewhere, `q ⊥` axis, `M = 1` with `H > 0`,
+   `H = 0` with `M > 1`.
 
 ## Phase 2 decision: why moved sheets
 

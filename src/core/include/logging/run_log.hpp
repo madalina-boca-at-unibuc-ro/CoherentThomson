@@ -1,10 +1,12 @@
 #pragma once
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "../detector/detector.hpp"
 #include "../io_utils/config_map.hpp"
 #include "../laser/laser_field.hpp"
+#include "../particle/electron.hpp"
 #include "../simulation/form_factor.hpp"
 #include "../simulation/simulation.hpp"
 
@@ -28,7 +30,7 @@ namespace Core::Logging {
 // num_threads, since electrons are processed in parallel, not sequentially. `form_factor` is
 // Simulation::compute_form_factor's result for this run's beam, written as its own section.
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
-                   size_t num_electrons, const Simulation::simulation_parameters& sim_par,
+                   const std::vector<Particle::Electron>& beam, const Simulation::simulation_parameters& sim_par,
                    const Simulation::FormFactor& form_factor, size_t num_threads, double simulation_elapsed_seconds,
                    double total_cpu_seconds, const std::string& filepath);
 

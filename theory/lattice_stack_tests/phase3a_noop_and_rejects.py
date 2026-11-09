@@ -3,6 +3,11 @@
 
 Run from the repository root: .venv/bin/python theory/lattice_stack_tests/phase3a_noop_and_rejects.py <baseline_solver>
 <baseline_solver> is a binary built before the change.
+
+Historical: written for the stack keys before the 2026-11-09 beam distribution rework (beam_stack_spacing,
+beam_stack_modulation, beam_modulation_period_ratio/_sheets_per_period/_periods), which the solver now refuses. It runs
+only with solvers built at commit 35b3a1a or earlier; its result stays in lattice-stack-implemented.md. The rework's
+own checks are in rework_checks.py.
 """
 import filecmp
 import subprocess
