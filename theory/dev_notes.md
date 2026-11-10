@@ -728,6 +728,18 @@ Entries are historical: where one disagrees with the code, the code (and `CLAUDE
   formula in this weak-field/single-electron/large-`R` limit). Flagging this here since it's a fundamental
   correctness check that should hold before trusting the solver's absolute intensities/angular patterns for
   anything more complex (a coherent beam, higher `a0`, etc.) — revisit before relying on those.
+  **Reproduced 2026-11-09** (commit `c5c90ee`, the gap above is closed): `theory/future_dev/tests/thomson_dipole.cfg`
+  (one electron at rest at the origin, LG(0,0) with `w0 = 100 λ`, `a0 = 0.01`, Gaussian pulse σ = 10 cycles, full-4π
+  spherical screen at `R = 25000 λ`, 33 × 17 points), checked by `thomson_dipole_check.py <run>`. N = 1, `simplified`:
+  `|E|²` fits `|A|² − |n·A|²` (`A = ζ₁ε₁ + ζ₂ε₂`, i.e. `(1+cos²θ)/2` for circular) to 7e-5 of the peak, φ spread
+  ~1e-7; `c|B| = |E|` to 3e-7; `E·n`, `B·n` below 5e-5, 5e-8 of `|E|`. Absolute: `|E|` matches the textbook far field
+  `−n×(n×a)e^{ikR}/(c²R)`, `a(t)` from the run's own `electron.dat` under the theory doc's `(1/2π)∫dt e^{iωt}`, to
+  6e-5 at every point (constant phase offset 7e-3 rad: rounded `ω` in `kR ≈ 1.6e5`). The same with linear polarization
+  (φ-dependent, pattern 7e-5, amplitude 3.5e-4 next to the nodes) and with `direct`. N = 2 is `~a0²` (1e-4) below N = 1.
+  This validates the radiation step and its normalization for a given trajectory; the trajectory itself is not
+  checked against an analytic orbit. Why the earlier attempt failed is unknown (it predates the boundary term and
+  the direct `F_s` `c²` fix, which may explain it). Runs in `~/output_tests/thomson_dipole/`:
+  `20261109_211330` (circular), `_211510` (linear, `zeta_2_im 0`), `_211512` (`direct`).
 - **`compute_radiation`'s per-`(tau, screen point, frequency)` integrand is factored into isolated
   `long_range_prefactor`/`short_range_prefactor`/`radiation_phase_argument` functions** (`radiation.cpp`, anonymous
   namespace), in preparation for the above gap: the current PREFACT formulas (multiplying the shared geometric
