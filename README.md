@@ -77,6 +77,10 @@ formula and spectrum settings, and thread count. Provided configs:
 
 - `config/config.cfg`: the default, for current experiments (random electron positions).
 - `config/config_lattice.cfg`: the same with a polar-lattice beam (`beam_distribution polar_lattice`).
+- `config/config_lattice_stack.cfg`: a longitudinal stack of lattice sheets (`beam_stack_sheets`), uniform or bunched
+  (`beam_modulation`), on run A of the progress report (Gaussian pulse, `a0 = 0.1`).
+- `config/config_modulation_stack.cfg`: a Gaussian stack (`beam_stack_sigma_z`) with long modulation periods. Runs
+  can reach millions of trajectories: estimate the cost (sheets × lattice sites) before starting one.
 - `config/config_spectrum.cfg`: a dense frequency scan at a single screen point.
 - `config/config_cross_check.cfg`: parameter-matched to the independent Python reference implementation.
 
