@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,14 @@
 
 namespace Core::Logging {
 
+// What only the finished simulation knows. num_threads is the value Simulation::run_simulation resolved,
+// simulation_elapsed_seconds its wall-clock time, total_cpu_seconds its summed per-thread time (its out-param).
+struct RunTiming {
+  size_t num_threads;
+  double simulation_elapsed_seconds;
+  double total_cpu_seconds;
+};
+
 // Writes a human-readable summary of this run's full parameter set -- both the raw config values and
 // everything derived/computed from them (dressed momentum q, the actual numeric frequencies_list,
 // detector geometry re-expressed in lambda/w0 units, ...) -- to `filepath`. Meant as a richer,
@@ -20,18 +29,17 @@ namespace Core::Logging {
 // this has everything needed to *understand what was actually computed* without re-deriving it by
 // hand. Re-reads geometry/beam keys straight from `config` (the same way detector_factory.cpp/
 // electron_factory.cpp already do) rather than adding new getters to Detector/Electron, so this stays
-// purely additive and does not touch the physics classes themselves. `num_threads` should be the
-// value Simulation::run_simulation resolved (not the raw, possibly-zero-meaning-"all" config value),
-// `simulation_elapsed_seconds` the wall-clock time that run took, and `total_cpu_seconds` the same
-// summed-across-threads CPU-seconds figure Simulation::run_simulation resolved (its own out-param) --
-// used here (not simulation_elapsed_seconds) to derive the per-electron/per-screen-point/per-cycle
-// timing figure, for the same reason run_simulation itself prefers it over wall-clock time: dividing
-// wall-clock time by electron/screen-point count would understate the true per-unit cost by roughly
-// num_threads, since electrons are processed in parallel, not sequentially. `form_factor` is
+// purely additive and does not touch the physics classes themselves. `form_factor` is
 // Simulation::compute_form_factor's result for this run's beam, written as its own section.
+//
+// Written twice: before the simulation without `timing`, marked IN PROGRESS, so a run that is stopped still has its
+// beam, laser and detector sections for the plotting scripts; and again when it ends, with `timing`, replacing it.
+// The per-electron/per-screen-point/per-cycle figure uses timing->total_cpu_seconds, not the wall-clock time: dividing
+// wall-clock time by electron/screen-point count would understate the true per-unit cost by roughly num_threads, since
+// electrons are processed in parallel, not sequentially.
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
                    const std::vector<Particle::Electron>& beam, const Simulation::simulation_parameters& sim_par,
-                   const Simulation::FormFactor& form_factor, size_t num_threads, double simulation_elapsed_seconds,
-                   double total_cpu_seconds, const std::string& filepath);
+                   const Simulation::FormFactor& form_factor, const std::optional<RunTiming>& timing,
+                   const std::string& filepath);
 
 }  // namespace Core::Logging

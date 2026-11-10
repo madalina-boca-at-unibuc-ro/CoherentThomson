@@ -394,3 +394,58 @@ the `1e-4` column everywhere, except `ζ = 1.5`, `n = 20` (`|b|` ≈ 5e-3): 64 a
 Examples at `1e-4`: `ζ = 1`, n = 1, 2, 5, 20, 40: 7, 10, 18, 52, 95 sheets. Phase 3b (`ratio` 20, `ζ` = 1.111):
 N = 1, 2, 3 need 55, 100, 146 per period.
 
+
+## Gaussian stack (2026-11-10)
+
+Plan: "Gaussian stack" in [lattice_stack-work.md](lattice_stack-work.md). Supersedes the rework table's lattice rows
+for `H = 0` and wings.
+
+**Layout.** A lattice stack takes the Gaussian width from its own key, `beam_stack_sigma_z` (optional, default 0,
+accepts `lambda_1`), with `beam_stack_sigma_z_cut` (optional, default 6, in units of `σ_z`). With `σ_z > 0` the `M`
+sheets are equally spaced and cell-centred over the span `L = H + 2·cut·σ_z`, `z_m = (m − (M−1)/2) L/M`, and sheet `m`
+carries the charge `w_m ∝ ρ(z_m)`, `Σ w_m = 1`, where `ρ` is the top-hat of width `H` convolved with `N(0, σ_z²)` (the
+Gaussian alone at `H = 0`): the same density as a random beam's `beam_sigma_z`. The modulation then moves the sheets,
+each keeping its charge. The sheets carry the Gaussian in their charges, not in random shifts: a random shift per sheet
+would give `b` a noise floor `~1/√M`, far above a random beam's `1/√N_e` (2026-11-10 discussion).
+
+| Lattice stack | Before | Now |
+|---|---|---|
+| `σ_z` | Refused (`beam_sigma_z` must be 0) | `beam_stack_sigma_z`; `beam_sigma_z` ignored with a note |
+| `H = 0`, `M > 1` | Reduced to one sheet | Kept when `σ_z > 0` (a Gaussian bunch over `±cut σ_z`); reduced when `σ_z = 0` |
+| `M = 1`, `σ_z > 0` | (refused) | Note, `σ_z` set to 0 |
+| `σ_z = 0` | `1/M` per sheet over `H` | Unchanged, byte-identical |
+
+A random beam ignores both new keys.
+
+**Accuracy.** Equally spaced samples of a smooth density converge fast (unlike charges on the modulated density, the
+Phase 2 decision): `Σ w_m e^{iq z_m}` differs from the continuous `sinc(qH/2) e^{−q²σ_z²/2}` by the replica at
+`q − 2π/d`, about `e^{−((2π/d − q_N)σ_z)²/2}`, and by the tail cut, about `e^{−cut²/2}` (`1.5e-8` at 6).
+`Particle::stack_warnings` warns when `(2π/d − q_Nmax) σ_z < 6` (giving the `M` that reaches 6), roughly `d > 0.5 σ_z`,
+and when `cut < 5`. With the modulation the sheets-per-period rule above applies too, counted over `L`
+(`M Λ_mod / L`). Cost: `L/H = 1 + 2·cut·σ_z/H` times the sheets of the same spacing without tails.
+
+**Run log.** For a Gaussian stack: the tail cut and the density left there, `L`, `d = L/M`, the smallest and largest
+sheet charge, and (unmodulated) per harmonic the weighted sheet sum against `sinc(q_N H/2) e^{−q_N²σ_z²/2}`; with the
+modulation the sheet sum is weighted, and "sheets per period" and "sheets beyond ±L/2" use `L`. The `sigma_z` line keeps
+its name for either type.
+
+**Code.** `CylinderBeamParams::sigma_z_cut` and the parsing (`io_utils.hpp`); `Particle::stack_span`, `sheet_weights`,
+`stack_harmonics`, `stack_warnings`, a `weights` argument to `modulation_harmonics`, `ModulationGeometry::span`
+(`electron_factory.cpp`); `run_log.cpp`. `electron_beam_scatter.dat` gains a `w` column only when the charges differ.
+`plot_beam_density_z.py` weights the histogram by `w`, bins lattices by their own sheet count (it divided by `H`), and
+prints the weighted mean and variance. The radiation code and `compute_form_factor` already used per-electron weights.
+
+**Checks** (`lattice_stack_tests/gaussian_stack_checks.py`, `gaussian_stack_results.txt`, old and new solvers built on
+the same node):
+
+1. `σ_z = 0`: every `.dat` byte-identical to the old solver (flat lattice, uniform and bunched stacks, random beams with
+   and without `beam_sigma_z` and modulation); a random beam with the new keys is identical to one without.
+2. Unmodulated, `(H, σ_z, M)` = `(0, 0.2, 30)`, `(0, 0.5, 60)`, `(1.3, 0.1, 30)`, `(1, 0.3, 60)` in `Λ₁`: sheet charges
+   and positions in the scatter file match an independent Python formula (to its 6 printed digits); the log's sum
+   matches the continuous value to `1e-9` or better.
+3. Field: the stack's field over the flat disk's, fitted on a 2 × 2 screen, equals the conjugate of the log's sum to
+   `1e-7`–`1e-9` absolute, the same level as a uniform-stack control.
+4. Modulated (`ζ` = 0.7, 1, phase 0 and π/2, `H` = 0, 1, 2): the log's sum matches a fine quadrature of the moved
+   continuous density to `~5e-8` at 60–120 sheets.
+5. The notes, both warnings and three refusals fire as intended; `plot_beam_density_z.py` runs at `H = 0` and `H > 0`,
+   weighted mean and variance equal to `H²/12 + σ_z²`.

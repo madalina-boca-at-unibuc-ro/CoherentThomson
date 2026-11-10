@@ -1,5 +1,6 @@
 #include "../include/logging/run_log.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -54,8 +55,8 @@ void write_section(std::ofstream& file, const std::string& title) {
 
 void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, const Detector::Detector_2D& detector,
                    const std::vector<Particle::Electron>& beam, const Simulation::simulation_parameters& sim_par,
-                   const Simulation::FormFactor& form_factor, size_t num_threads, double simulation_elapsed_seconds,
-                   double total_cpu_seconds, const std::string& filepath) {
+                   const Simulation::FormFactor& form_factor, const std::optional<RunTiming>& timing,
+                   const std::string& filepath) {
   std::ofstream file(filepath);
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file for run log export: " + filepath);
@@ -76,6 +77,13 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
        << "Everything here is derived from config.cfg (also copied verbatim into this run directory) plus what "
           "the solver actually computed from it -- meant for identifying at a glance what a given run's "
           "output actually corresponds to, without re-deriving units/derived quantities by hand.\n";
+  if (timing) {
+    file << "STATUS: finished\n";
+  } else {
+    file << "STATUS: IN PROGRESS -- written before the simulation started; rewritten when the run ends. If the run "
+            "was stopped, the beam, laser, detector and form factor sections are valid, the timing isn't there and "
+            "there is no radiation_field.dat.\n";
+  }
 
   // Captured at build time (cmake/build_info.cmake). To reproduce: check out git commit, `git apply source.patch`
   // if the build was dirty, build on a machine like build host, and run with config.cfg.
@@ -162,8 +170,12 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     write_kv(file, "lattice spacing", spacing, lambda_au);
     write_kv(file, "requested spacing", beam_params.lattice_spacing, lambda_au);
     file << "  stack sheets M              " << beam_params.stack_sheets << " ("
-         << IoUtils::polar_lattice_site_count(rings) << " sites each, charge weight 1/" << beam_params.stack_sheets
-         << ")\n";
+         << IoUtils::polar_lattice_site_count(rings) << " sites each, ";
+    if (beam_params.sigma_z > 0.0) {
+      file << "charge weights from the Gaussian profile)\n";
+    } else {
+      file << "charge weight 1/" << beam_params.stack_sheets << ")\n";
+    }
   } else {
     file << "  distribution                random\n";
   }
@@ -171,13 +183,26 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   if (beam_params.height_in_lambda_1) {
     file << "  (cylinder height given as " << beam_params.height / beam_params.lambda_1 << " lambda_1)\n";
   }
+  // The line's name stays "sigma_z" for either type (py_scripts read it); a lattice's comes from beam_stack_sigma_z.
   write_kv(file, "sigma_z", beam_params.sigma_z, lambda_au);
   if (beam_params.sigma_z_in_lambda_1) {
     file << "  (sigma_z given as " << beam_params.sigma_z / beam_params.lambda_1 << " lambda_1)\n";
   }
   if (beam_params.polar_lattice && beam_params.stack_sheets > 1) {
-    write_kv(file, "sheet spacing d = H / M", beam_params.height / static_cast<double>(beam_params.stack_sheets),
-             lambda_au);
+    const double span = Particle::stack_span(beam_params);
+    if (beam_params.sigma_z > 0.0) {
+      file << "  sigma_z from                beam_stack_sigma_z, carried by the sheets' charges\n";
+      file << "  tail cut                    " << beam_params.sigma_z_cut << " sigma_z beyond H/2 (density there "
+           << std::exp(-beam_params.sigma_z_cut * beam_params.sigma_z_cut / 2.0) << " of the peak)\n";
+      write_kv(file, "span L = H + 2 cut sigma_z", span, lambda_au);
+      write_kv(file, "sheet spacing d = L / M", span / static_cast<double>(beam_params.stack_sheets), lambda_au);
+      const std::vector<double> weights = Particle::sheet_weights(beam_params);
+      const auto [w_min, w_max] = std::minmax_element(weights.begin(), weights.end());
+      file << "  sheet charges               " << *w_min << " to " << *w_max << " (1/M = "
+           << 1.0 / static_cast<double>(beam_params.stack_sheets) << ")\n";
+    } else {
+      write_kv(file, "sheet spacing d = H / M", span / static_cast<double>(beam_params.stack_sheets), lambda_au);
+    }
   }
   if (beam_params.polar_lattice || beam_params.modulation.active) {
     file << "  represented charge          " << form_factor.total_charge_weight << " electrons in " << num_electrons
@@ -185,6 +210,25 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   }
   for (const std::string& note : beam_params.notes) {
     file << "  WARNING: " << note << "\n";
+  }
+  if (beam_params.polar_lattice && beam_params.stack_sheets > 1 && beam_params.sigma_z > 0.0) {
+    const Particle::AxialTranslation q =
+        Particle::axial_translation(beam_params, laser, detector.get_normal_direction());
+    const size_t N_min = IoUtils::get_number_of_harmonics_min(config);
+    const size_t N_harmonics = IoUtils::get_number_of_harmonics(config);
+    if (!beam_params.modulation.active && !q.degenerate) {
+      // Without the modulation the continuous density has a closed form; the sheets match it up to the tail cut and
+      // the replica the spacing allows (stack_warnings).
+      file << "  N  sheet sum sum_m w_m exp(i q_N z_m), q_N = N q_axial   smooth sinc(q_N H/2) exp(-q_N^2 sigma_z^2/2)"
+              "   |difference|\n";
+      for (const Particle::StackHarmonic& harmonic : Particle::stack_harmonics(beam_params, q, N_min, N_harmonics)) {
+        file << "  " << harmonic.N << "  (" << harmonic.sum.real() << ", " << harmonic.sum.imag() << ")  "
+             << harmonic.smooth << "  " << std::abs(harmonic.sum - harmonic.smooth) << "\n";
+      }
+    }
+    for (const std::string& warning : Particle::stack_warnings(beam_params, q, N_min + N_harmonics - 1)) {
+      file << "  WARNING: " << warning << "\n";
+    }
   }
 
   if (beam_params.modulation.active) {
@@ -205,22 +249,25 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     file << "  q_transverse / |q_axial|    " << geometry.q.q_transverse / std::abs(geometry.q.q_axial) << "\n";
     file << "  periods H / Lambda_mod      " << geometry.periods << "\n";
     if (beam_params.polar_lattice) {
-      file << "  sheets per period M / P     " << static_cast<double>(beam_params.stack_sheets) / geometry.periods
-           << "\n";
-      write_kv(file, "sheets beyond +-H/2, by", geometry.spill, lambda_au);
+      file << "  sheets per period M Lambda_mod / L  "
+           << static_cast<double>(beam_params.stack_sheets) * geometry.lambda_mod / geometry.span << "\n";
+      write_kv(file, "sheets beyond +-L/2, by", geometry.spill, lambda_au);
     }
-    // A lattice stack: the sheets, all with equal charge. A random beam: every electron, whose sum differs from the
-    // cold value by sampling noise of order 1/sqrt(N_e).
+    // A lattice stack: the sheets, with their charges (1/M each unless sigma_z > 0). A random beam: every electron,
+    // whose sum differs from the cold value by sampling noise of order 1/sqrt(N_e).
     const std::vector<double> axial_z = beam_params.polar_lattice ? Particle::sheet_positions(beam_params)
                                                                   : Particle::axial_positions(beam, beam_params);
-    const char* sum_label = beam_params.polar_lattice ? "sheet sum (1/M) sum_j exp(i q_N z_j)        "
-                                                      : "electron sum (1/N_e) sum_j exp(i q_N z_j)   ";
+    const bool weighted = beam_params.polar_lattice && beam_params.sigma_z > 0.0;
+    const std::vector<double> weights = weighted ? Particle::sheet_weights(beam_params) : std::vector<double>();
+    const char* sum_label = !beam_params.polar_lattice ? "electron sum (1/N_e) sum_j exp(i q_N z_j)   "
+                            : weighted                 ? "sheet sum sum_j w_j exp(i q_N z_j)          "
+                                                       : "sheet sum (1/M) sum_j exp(i q_N z_j)        ";
     if (!beam_params.polar_lattice) {
       file << "  sampling noise 1/sqrt(N_e)  " << 1.0 / std::sqrt(static_cast<double>(axial_z.size())) << "\n";
     }
     file << "  N  n = N ratio   " << sum_label << "   cold-beam value                   |difference|/|cold|\n";
     for (const Particle::ModulationHarmonic& harmonic :
-         Particle::modulation_harmonics(beam_params, geometry, axial_z, N_min, N_harmonics)) {
+         Particle::modulation_harmonics(beam_params, geometry, axial_z, weights, N_min, N_harmonics)) {
       file << "  " << harmonic.N << "  " << harmonic.n << "  (" << harmonic.sum.real() << ", " << harmonic.sum.imag()
            << ")";
       if (harmonic.cold) {
@@ -355,10 +402,20 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  |b|^2                       " << std::norm(form_factor.b) << "\n";
 
   write_section(file, "Run");
+  if (!timing) {
+    file << "  status                      in progress (no timing until the run ends)\n";
+    file << "  num_threads (config)        " << IoUtils::get_required(config, "num_threads") << "\n";
+    file << "  random_seed                 " << IoUtils::get_required(config, "random_seed") << "\n";
+    file << "  screen points               " << detector.get_total_points() << "\n";
+    file << "  number of frequencies                " << sim_par.frequencies.size() << "\n";
+    return;
+  }
+  const size_t num_threads = timing->num_threads;
+  const double total_cpu_seconds = timing->total_cpu_seconds;
   file << "  num_threads (resolved)      " << num_threads << "\n";
   file << "  random_seed                 " << IoUtils::get_required(config, "random_seed") << "\n";
   file << "  screen points               " << detector.get_total_points() << "\n";
-  file << "  simulation wall time (s)    " << simulation_elapsed_seconds << "\n";
+  file << "  simulation wall time (s)    " << timing->simulation_elapsed_seconds << "\n";
 
   // Per-unit-of-work CPU cost, further normalized by the pulse's own total duration in laser cycles
   // (sim_par.total_cycles) on top of the electron/screen-point normalization run_simulation already

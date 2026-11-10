@@ -105,7 +105,8 @@ def analytic_density(z, H, sigma_z, z_c):
 
 def read_axial_positions(scatter_path, config_path):
     """
-    Returns each electron's position along the beam axis, in lambda, from electron_beam_scatter.dat.
+    Returns each electron's position along the beam axis, in lambda, from electron_beam_scatter.dat, and its charge
+    weight (the file's w column, written only when the weights differ: a Gaussian lattice stack), or None.
     The stored positions are after the rotation that aligns the cylinder axis with the mean momentum
     (MathUtils::rotation_matrix_from_direction), so they are projected back onto that axis (Oz when the
     mean momentum is zero); the projection is exactly the sampled z (plus beam_center_z).
@@ -121,28 +122,44 @@ def read_axial_positions(scatter_path, config_path):
     p_mean = np.array([float(read_config_value(k, config_path)[0]) for k in ("average_px", "average_py", "average_pz")])
     norm = np.linalg.norm(p_mean)
     axis = p_mean / norm if norm >= 1e-12 else np.array([0.0, 0.0, 1.0])
-    return data[['x', 'y', 'z']].to_numpy() @ axis
+    weights = data['w'].to_numpy() if 'w' in data.columns else None
+    return data[['x', 'y', 'z']].to_numpy() @ axis, weights
+
+def lattice_bins(z):
+    """
+    Bins for a lattice stack's sheets, about four sheets each, since finer bins hold 0, 1 or 2 discrete sheets and show
+    gaps that aren't in the density. Sheets are counted from the distinct positions, so this works at H = 0 too.
+    Returns (bins, sheet count).
+    """
+    scale = max(np.ptp(z), 1e-300)
+    sheets = len(np.unique(np.round((z - z.min()) / scale, 10)))
+    half_sheet = scale / (2 * max(sheets - 1, 1))
+    return np.linspace(z.min() - half_sheet, z.max() + half_sheet, max(5, sheets // 4) + 1), sheets
+
+def read_tail_cut(run_dir):
+    """A Gaussian lattice stack's beam_stack_sigma_z_cut, from run_log.txt; None for any other beam."""
+    with open(os.path.join(run_dir, "run_log.txt")) as log_file:
+        match = re.search(r"^  tail cut\s+(\S+) sigma_z", log_file.read(), re.M)
+    return float(match.group(1)) if match else None
 
 def plot_modulated_density(run_dir, config_path, modulation):
     """
-    A modulated beam: the electrons per bin against the drift map's density, with the histogram from
+    A modulated beam: the charge per bin against the drift map's density, with the histogram from
     electron_beam_scatter.dat when the run has it. For a lattice stack the bins cover only the sheets and average about
-    four of them, since finer bins hold 0, 1 or 2 discrete sheets and show gaps that aren't in the density. For a random
-    beam there are ~sqrt(N) bins.
+    four of them (lattice_bins), weighted by the sheets' charges; for a random beam there are ~sqrt(N) bins.
     """
     z_c = read_length("beam_center_z", config_path)
     H = modulation["H"]
-    spread = H / 2 + 5 * modulation["sigma_z"] + modulation["zeta"] * modulation["Lambda_mod"] / (2 * math.pi)
+    cut = read_tail_cut(run_dir) or 5.0
+    spread = H / 2 + cut * modulation["sigma_z"] + modulation["zeta"] * modulation["Lambda_mod"] / (2 * math.pi)
     fig, ax = plt.subplots(figsize=(8, 5))
     scatter_path = os.path.join(run_dir, "electron_beam_scatter.dat")
+    weights = None
     if os.path.exists(scatter_path):
-        z = read_axial_positions(scatter_path, config_path)
+        z, weights = read_axial_positions(scatter_path, config_path)
         if modulation["lattice"]:
-            sheets = len(np.unique(np.round(z / H, 10)))
-            n_bins = max(5, sheets // 4)
-            half_sheet = H / (2 * sheets)
-            bins = np.linspace(z.min() - half_sheet, z.max() + half_sheet, n_bins + 1)
-            label = f"sheets ({sheets}, {len(z)} electrons)"
+            bins, sheets = lattice_bins(z)
+            label = f"sheets ({sheets}, {len(z)} electrons{', weighted' if weights is not None else ''})"
         else:
             n_bins = int(np.clip(np.sqrt(len(z)), 20, 120))
             bins = np.linspace(z.min(), z.max(), n_bins + 1)
@@ -152,7 +169,8 @@ def plot_modulated_density(run_dir, config_path, modulation):
         z = None
         bins = np.linspace(z_c - 1.05 * spread, z_c + 1.05 * spread, 201)
     if z is not None:
-        ax.hist(z, bins=bins, density=True, histtype='stepfilled', color='lightsteelblue', label=label)
+        ax.hist(z, bins=bins, weights=weights, density=True, histtype='stepfilled', color='lightsteelblue',
+                label=label)
     ax.stairs(modulated_density(bins, modulation, z_c), bins, color='crimson', lw=1.5, label="drift map")
     for edge in (z_c - H / 2, z_c + H / 2):
         ax.axvline(edge, color='gray', ls='--', lw=1)
@@ -182,22 +200,36 @@ def plot_density(run_dir):
               "no density to plot")
         sys.exit(0)
 
-    half_extent = H / 2 + 5 * sigma_z
+    lattice = read_config_value_or_none("beam_distribution", config_path) == "polar_lattice"
+    cut = read_tail_cut(run_dir)
+    half_extent = H / 2 + (cut or 5.0) * sigma_z
     z_grid = np.linspace(z_c - 1.2 * half_extent, z_c + 1.2 * half_extent, 2001)
 
     fig, ax = plt.subplots(figsize=(8, 5))
 
     scatter_path = os.path.join(run_dir, "electron_beam_scatter.dat")
     if os.path.exists(scatter_path):
-        z = read_axial_positions(scatter_path, config_path)
-        n_bins = int(np.clip(np.sqrt(len(z)), 20, 120))  # ~sqrt(N) bins, so small test beams aren't all noise
-        bins = np.linspace(z_grid[0], z_grid[-1], n_bins + 1)
-        ax.hist(z, bins=bins, density=True, histtype='stepfilled', color='lightsteelblue',
-                label=f"sampled electrons (N = {len(z)})")
-        print(f"N = {len(z)}")
-        print(f"mean z:   sampled {z.mean():+.5f}   expected {z_c:+.5f}  lambda")
-        print(f"var z:    sampled {z.var():.5f}    expected {H**2 / 12 + sigma_z**2:.5f}  lambda^2")
-        print(f"fraction outside [z_c - H/2, z_c + H/2]: {np.mean(np.abs(z - z_c) > H / 2):.4f}")
+        z, weights = read_axial_positions(scatter_path, config_path)
+        if lattice:
+            # A lattice stack's sheets (charges from the Gaussian profile when sigma_z > 0): about four per bin.
+            bins, sheets = lattice_bins(z)
+            label = f"sheets ({sheets}, {len(z)} electrons{', weighted' if weights is not None else ''})"
+        else:
+            n_bins = int(np.clip(np.sqrt(len(z)), 20, 120))  # ~sqrt(N) bins, so small test beams aren't all noise
+            bins = np.linspace(z_grid[0], z_grid[-1], n_bins + 1)
+            label = f"sampled electrons (N = {len(z)})"
+        ax.hist(z, bins=bins, weights=weights, density=True, histtype='stepfilled', color='lightsteelblue',
+                label=label)
+        w = np.ones_like(z) if weights is None else weights
+        mean = np.average(z, weights=w)
+        var = np.average((z - mean) ** 2, weights=w)
+        # A cut Gaussian (a lattice stack's tails stop at cut sigma_z) has a slightly smaller variance than H^2/12 +
+        # sigma_z^2; at the default cut of 6 the difference is ~1e-7 relative.
+        print(f"N = {len(z)}" + (f" in {sheets} sheets" if lattice else ""))
+        print(f"mean z:   {'weighted' if weights is not None else 'sampled'} {mean:+.5e}   expected {z_c:+.5e}  lambda")
+        print(f"var z:    {'weighted' if weights is not None else 'sampled'} {var:.5e}    expected "
+              f"{H**2 / 12 + sigma_z**2:.5e}  lambda^2")
+        print(f"fraction outside [z_c - H/2, z_c + H/2]: {np.sum(w[np.abs(z - z_c) > H / 2]) / np.sum(w):.4f}")
     else:
         print(f"No '{scatter_path}' (needs plot_beam_scatter=true); plotting the analytic density only")
 

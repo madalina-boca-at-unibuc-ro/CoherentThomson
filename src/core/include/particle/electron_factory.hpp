@@ -53,8 +53,17 @@ void resolve_beam_lengths(CylinderBeamParams& params, const Core::Laser::LaserFi
 // beam centre, before beam_center and the beam rotation.
 double modulated_z(const CylinderBeamParams::Modulation& modulation, double z);
 
-// A lattice stack's sheet positions: cell-centred in H, z_m = (m - (M-1)/2) H/M, moved by the modulation if it is on.
+// The width a lattice stack's sheets fill: H, plus sigma_z_cut sigma_z on each side when sigma_z > 0.
+double stack_span(const CylinderBeamParams& params);
+
+// A lattice stack's sheet positions: cell-centred in the span L, z_m = (m - (M-1)/2) L/M, moved by the modulation if it
+// is on.
 std::vector<double> sheet_positions(const CylinderBeamParams& params);
+
+// A lattice stack's sheet charges, summing to 1: exactly 1/M each when sigma_z = 0; otherwise the smoothed density
+// (top-hat of width H convolved with N(0, sigma_z^2)) at each unmodulated z_m, normalized. The modulation moves a sheet
+// with its charge.
+std::vector<double> sheet_weights(const CylinderBeamParams& params);
 
 // Each electron's initial position along the beam axis, from the beam centre: the z the generator drew (and the
 // modulation moved), recovered from the rotated position.
@@ -67,7 +76,8 @@ struct ModulationGeometry {
   double ratio;       // lambda_mod / lambda_1; 0 when lambda_1 is undefined
   double K;           // 2 pi / lambda_mod
   double periods;     // H / lambda_mod
-  double spill;       // lattice: how far the moved sheets leave +-H/2 (0 if none does); random: 0
+  double span;        // lattice: stack_span, L; random: H
+  double spill;       // lattice: how far the moved sheets leave +-L/2 (0 if none does); random: 0
 };
 ModulationGeometry modulation_geometry(const CylinderBeamParams& params, const Core::Laser::LaserField& laser,
                                        const std::array<double, 3>& detector_normal);
@@ -79,13 +89,30 @@ struct ModulationHarmonic {
   std::complex<double> sum;                  // (1/count) sum_j exp(+i q_N z_j), as the form factor sees it
   std::optional<std::complex<double>> cold;  // the map's phase integral: integer n, whole periods, no wings only
 };
-// axial_z: the sheets of a lattice stack (equal charges), or every electron of a random beam.
+// axial_z: the sheets of a lattice stack, or every electron of a random beam. weights: their charges, summing to 1
+// (sheet_weights); empty for equal charges, the sum then being divided by the count.
 std::vector<ModulationHarmonic> modulation_harmonics(const CylinderBeamParams& params,
                                                      const ModulationGeometry& geometry,
-                                                     const std::vector<double>& axial_z, size_t N_min,
+                                                     const std::vector<double>& axial_z,
+                                                     const std::vector<double>& weights, size_t N_min,
                                                      size_t N_harmonics);
 
-// What the user should know before trusting the modulation: a non-whole number of periods, too few sheets for N_max.
+// One line of the log's check for an unmodulated Gaussian stack: the weighted sheet sum at harmonic N against the
+// continuous density's sinc(q_N H / 2) exp(-q_N^2 sigma_z^2 / 2), q_N = N |q_axial|.
+struct StackHarmonic {
+  size_t N;
+  std::complex<double> sum;  // sum_m w_m exp(+i q_N z_m), signed q_axial as the form factor sees it
+  double smooth;             // the continuous density's value (real: the density is even)
+};
+std::vector<StackHarmonic> stack_harmonics(const CylinderBeamParams& params, const AxialTranslation& q, size_t N_min,
+                                           size_t N_harmonics);
+
+// What the user should know about a Gaussian stack's sampling (lattice, M > 1, sigma_z > 0): sheets too far apart for
+// the Gaussian edges at N_max, and a tail cut that leaves much density at the span's ends.
+std::vector<std::string> stack_warnings(const CylinderBeamParams& params, const AxialTranslation& q, size_t N_max);
+
+// What the user should know before trusting the modulation: a non-whole number of periods, too few sheets per period
+// (counted over the span L) for N_max.
 std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, const ModulationGeometry& geometry,
                                              size_t N_max);
 

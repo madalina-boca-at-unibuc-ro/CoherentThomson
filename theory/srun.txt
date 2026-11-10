@@ -52,12 +52,24 @@ independent of the connection, so a drop only takes the view away.
      tmux attach -t r40
    Scroll inside tmux: Ctrl-b [ , arrows/PgUp, q to leave scroll mode.
 
+RELEASE THE NODE WHEN THE RUN ENDS (unattended runs, e.g. overnight)
+--------------------------------------------------------------------
+With `srun ... --pty bash` the job is the shell, not the solver: when the run finishes the node stays allocated
+(and accounted) until the shell ends or the time limit. Instead, make the run itself the job, inside tmux:
+     srun --partition=cpu-wide --time=12:00:00 --exclusive --exclude=hpc-db01,hpc-ctrl01 \
+          bash -c "cd ~/work/c++/CoherentThomson && python3 py_scripts/compile_and_run.py config/config_modulation_stack.cfg"
+It builds on the node (-march=native), runs, and the job ends as soon as the command does (success or error),
+after radiation_field.dat and run_log.txt are written. The output stays visible in the tmux window.
+Alternatives in an interactive srun shell: end the command with `; exit`, or, while the solver runs, type `exit` +
+Enter (bash runs it when the solver returns).
+
 Checking from the head node without attaching:
   tmux ls                     # "r40: 1 windows ..." (no "(attached)"): alive and detached
   squeue -u $USER             # the job is listed while it is alive (TIME_LEFT column: -o "%.8i %.10M %.10L %R")
   srun --jobid=<jobid> --overlap -n1 ps -u $USER -o etime,%cpu,args | grep [c]oherent
                               # solver on the compute node: elapsed time, ~25000 %CPU while computing
-  ls ~/output/<run>           # radiation_field.dat and run_log.txt appear only when the run ends
+  ls ~/output/<run>           # radiation_field.dat appears only when the run ends; run_log.txt at the start,
+                              # marked "STATUS: IN PROGRESS", rewritten with the timing at the end
 
 Still ends the run: the job's time limit, or a reboot of hpc-ctrl01.
 After reconnecting, check squeue -u $USER for forgotten jobs (an orphaned interactive job keeps its whole node

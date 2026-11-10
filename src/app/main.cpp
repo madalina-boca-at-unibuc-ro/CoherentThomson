@@ -166,6 +166,13 @@ int main(int argc, char* argv[]) {
       detector->restrict_to_first_point();
     }
 
+    // A first run log before the long part, marked in progress, so a stopped run can still be plotted (beam, laser,
+    // detector). Rewritten in full below when the run ends.
+    const std::string run_log_path = run_output_dir + "/run_log.txt";
+    Logging::write_run_log(simulation_config, *laser, *detector, electron_beam, sim_par, form_factor, std::nullopt,
+                           run_log_path);
+    std::cout << "Run log (in progress) written to " << run_log_path << "\n";
+
     size_t num_threads = IoUtils::get_num_threads(simulation_config);
     double total_cpu_seconds = 0.0;
     auto simulation_start = std::chrono::steady_clock::now();
@@ -200,8 +207,8 @@ int main(int argc, char* argv[]) {
     }
 
     Logging::write_run_log(simulation_config, *laser, *detector, electron_beam, sim_par, form_factor,
-                           num_threads, simulation_elapsed.count(), total_cpu_seconds, run_output_dir + "/run_log.txt");
-    std::cout << "Successfully exported run log to " << run_output_dir << "/run_log.txt\n";
+                           Logging::RunTiming{num_threads, simulation_elapsed.count(), total_cpu_seconds}, run_log_path);
+    std::cout << "Successfully exported run log to " << run_log_path << "\n";
 
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << "\n";

@@ -14,7 +14,9 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 
 **Where things stand.** Everything is committed on `main` (the branch `lattice-stack` holds the same history up to Phase 3a). Preparation, Phase 1, Phase 2 and Phase 3a are
 implemented. **The user reviewed and accepted Phase 3a (2026-11-09).** The beam distribution rework (below) is implemented and checked
-(2026-11-09, `lattice-stack-implemented.md`, last section) and **waits for the user's review**; Phase 3b follows it.
+(2026-11-09, `lattice-stack-implemented.md`, "Beam distribution rework") and **waits for the user's review**. On top of it, the
+**Gaussian stack** (below; `lattice-stack-implemented.md`, "Gaussian stack") is implemented and checked (2026-11-10) and also **waits for review**;
+Phase 3b follows both.
 
 **How the user works on this** (Claude's memory files stay on the old computer, so this is the record):
 
@@ -45,7 +47,8 @@ Then read this section, the Phase 3a part of `lattice-stack-implemented.md`, and
 | Topic | Decision |
 |---|---|
 | Validation | At `a0 = 0.1` |
-| Charge | Fixed total: `1/M` per sheet |
+| Charge | Fixed total: `1/M` per sheet; with `beam_stack_sigma_z > 0`, charges from the Gaussian-smoothed profile, summing to 1 (2026-11-10) |
+| Gaussian width (2026-11-10) | **In the charges of equally spaced sheets**, not random shifts per sheet (noise `~1/√M`) or quantile positions. Keys `beam_stack_sigma_z`, `beam_stack_sigma_z_cut` (default 6); `M` counts the sheets over the whole span `L = H + 2·cut·σ_z` |
 | Modulation | **Equal charges on moved sheets**, not the brief's charges on equidistant sheets (the table below) |
 | `ζ` | Any `ζ ≥ 0`, including 1 and above: moved sheets never evaluate the singular density |
 | Selecting the stack | Superseded 2026-11-09 by `beam_modulation true/false` (the rework, below). Was `beam_stack_modulation true/false` |
@@ -62,6 +65,22 @@ Then read this section, the Phase 3a part of `lattice-stack-implemented.md`, and
   On a full 128 × 64 screen, about 1.2 h on 256 cores, from the earlier estimate of 8.7 CPU-s per trajectory.
 - **Already seen:** with 64 sites per sheet on the 16 × 8 screen, `c` matches to 4e-7 at N = 2 and 8e-7 at `ζ = 1.111`. The full lattice and the mode decomposition are untested.
 - **Phase:** with `phase 0`, a one-period stack has its density peaks at the two ends, not the middle. `phase 1.0 pi` centres them, changing only the sign of `c` at odd `n`.
+
+## Gaussian stack (before Phase 3b; discussed and implemented 2026-11-10)
+
+The user wanted a Gaussian width along the axis for lattice stacks, including at `H = 0`, where `M > 1` used to collapse
+to one sheet. Options discussed:
+
+| | Random shift per sheet (the user's first proposal) | Quantile positions | **Charges on equidistant sheets (chosen)** |
+|---|---|---|---|
+| `b` | Noise floor `~1/√M`: 0.27 at `M = 14`; a random beam's is `1/√N_e` | Deterministic | Deterministic; the replica `e^{−((2π/d − q)σ_z)²/2}` and the tail cut `e^{−cut²/2}` |
+| Modulation rule | Lost (random spacing) | Spacing no longer even | Kept (even spacing, counted over `L`) |
+| Solver change | Positions, an RNG | Positions | Charges only |
+
+Unlike the Phase 2 comparison, where charges sampled the modulated density's cusp, the Gaussian-smoothed density is
+smooth, so equally spaced samples converge fast (scratch check before implementing: `~1e-9` to `1e-11` once
+`d ≲ 0.5–0.8 σ_z` and the sheets-per-period rule hold). The random beam keeps its unclipped random shifts. What was done
+and checked: `lattice-stack-implemented.md`, "Gaussian stack".
 
 ## Beam distribution rework (before Phase 3b; planned and implemented 2026-11-09)
 
@@ -215,8 +234,8 @@ Consequences:
 - **Phase 3b plan, updated for moved sheets:** one modulation period (about 275 nm; S = 120 gives 129,120 trajectories), at S and 2S on the small screen;
   a full screen once if the mode decomposition is wanted; more periods only for an explicit finite-train test.
 - **On-axis N = 2:** the small deviation at one on-axis point (`lattice-stack-implemented.md`, Phase 3a) is unexplained, though about 7e-7 of the screen's rms field.
-- **`plot_beam_density_z.py` on uniform stacks:** the histogram's automatic bins don't line up with the sheets, so the bars form misleading blocks. The red analytic line is right. A
-  one-bar-per-sheet histogram would fix it; offered, not requested. Bunched stacks have their own plot and are fine.
+- **`plot_beam_density_z.py` on uniform stacks:** fixed 2026-11-10 with the Gaussian stack: lattices of either kind now use bins over the sheets, about four per bin,
+  weighted by the charges.
 - **Config header:** `config/config_lattice_stack.cfg` is described as a 16 × 8 uniform stack in its first lines and holds the user's experiment now. Decide whether to keep a separate model config.
 - **The `/import` offer** for Codex or Gemini configs from the `/init` step was never taken up.
 - **Phase 2 tool:** `theory/lattice_stack_tests/phase2_density_model.py` gives `b` at any `q`, `N` and ζ. So far it is checked against

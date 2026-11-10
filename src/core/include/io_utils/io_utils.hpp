@@ -109,7 +109,8 @@ inline double convert_unit_to_number(std::string unit_name, const ConfigMap& con
     // read_axial_length handles it for the keys that accept it. Anywhere else the fallback below would only warn
     // and use 1.0.
     throw std::invalid_argument(
-        "Unit lambda_1 is accepted only by beam_cylinder_height, beam_sigma_z and beam_modulation_period");
+        "Unit lambda_1 is accepted only by beam_cylinder_height, beam_sigma_z, beam_stack_sigma_z and "
+        "beam_modulation_period");
   } else if (to_lower(unit_name) == "w0") {
     // Read directly rather than via get_laser_lg_params (defined later in this file) to avoid a
     // forward reference -- same pattern the "omega_laser" branch above uses. w0 itself is still
@@ -258,7 +259,10 @@ struct CylinderBeamParams {
   // H: the random cylinder's height, or the width a lattice stack's sheets fill (theory/lattice_stack-work.md, "Beam
   // distribution rework"). 0 = a flat disk.
   double height;
-  double sigma_z;  // Gaussian smoothing of the longitudinal edges; 0 = the sharp-edged uniform cylinder
+  // Gaussian width along the axis; 0 = sharp edges. random: beam_sigma_z, each electron displaced by N(0, sigma_z^2).
+  // polar_lattice: beam_stack_sigma_z, carried by the sheets' charges (see stack_sheets). Either way the density is
+  // the top-hat of width H convolved with the Gaussian.
+  double sigma_z;
   bool height_in_lambda_1 = false;
   bool sigma_z_in_lambda_1 = false;
   bool lengths_resolved = true;  // false while a length above or modulation.period is still in units of lambda_1
@@ -276,9 +280,12 @@ struct CylinderBeamParams {
   bool polar_lattice;
   double lattice_spacing;  // requested spacing (polar_lattice only); the rings use polar_lattice_geometry's
   // Longitudinal stack (polar_lattice only, beam_stack_sheets, default 1): the same lattice repeated on M parallel
-  // sheets filling the width H, cell-centred at z_m = (m - (M-1)/2) H/M, before beam_center and the beam rotation. Each
-  // sheet gets 1/M of the charge, so the total matches the flat disk. sigma_z must be 0.
+  // sheets filling the span L, cell-centred at z_m = (m - (M-1)/2) L/M, before beam_center and the beam rotation.
+  // sigma_z = 0: L = H and each sheet gets 1/M of the charge. sigma_z > 0: L = H + 2 sigma_z_cut sigma_z, and each
+  // sheet's charge is the smoothed density at its unmodulated z_m, normalized to a total of 1
+  // (Particle::sheet_weights). Either way the total matches the flat disk.
   size_t stack_sheets;
+  double sigma_z_cut = 6.0;  // beam_stack_sigma_z_cut (optional): the span's half-width beyond H/2, in sigma_z
   // Modulation (beam_modulation true, either distribution): each electron moves by its own position,
   // z -> z + (zeta / K) sin(K z + phase), K = 2 pi / period; for a random beam z includes the Gaussian wings. Charges
   // are unchanged.
@@ -397,8 +404,26 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   params.polar_lattice = distribution_name == "polar_lattice";
   params.lattice_spacing = 0.0;
   if (params.polar_lattice) {
+    // The lattice's Gaussian width is its own key (the type picks which keys count, below): beam_sigma_z displaces
+    // electrons at random, which a lattice doesn't do.
     if (params.sigma_z != 0.0) {
-      throw std::invalid_argument("beam_distribution polar_lattice has no Gaussian wings: it needs beam_sigma_z 0");
+      params.notes.push_back("beam_sigma_z is for random beams and is ignored by polar_lattice: use "
+                             "beam_stack_sigma_z");
+    }
+    params.sigma_z = 0.0;
+    params.sigma_z_in_lambda_1 = false;
+    if (config.count("beam_stack_sigma_z") > 0) {
+      params.sigma_z = read_axial_length(config, "beam_stack_sigma_z", params.sigma_z_in_lambda_1);
+      if (!(params.sigma_z >= 0.0)) {
+        throw std::invalid_argument("beam_stack_sigma_z must be >= 0");
+      }
+    }
+    auto cut = config.find("beam_stack_sigma_z_cut");
+    if (cut != config.end()) {
+      params.sigma_z_cut = std::stod(cut->second);
+      if (!(params.sigma_z_cut > 0.0)) {
+        throw std::invalid_argument("beam_stack_sigma_z_cut must be > 0 (a half-width in units of sigma_z)");
+      }
     }
     auto [spacing_val, spacing_unit] = split_value_and_unit(get_required(config, "beam_lattice_spacing"));
     params.lattice_spacing = spacing_val * convert_unit_to_number(spacing_unit, config);
@@ -421,8 +446,9 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
     }
   }
 
-  // The type picks which keys count: a random beam ignores the lattice's (beam_lattice_spacing, beam_stack_sheets), as
-  // polar_lattice ignores beam_particle_count, so switching the type needs no other edit.
+  // The type picks which keys count: a random beam ignores the lattice's (beam_lattice_spacing, beam_stack_sheets,
+  // beam_stack_sigma_z, beam_stack_sigma_z_cut), as polar_lattice ignores beam_particle_count and beam_sigma_z, so
+  // switching the type needs no other edit.
   params.stack_sheets = 1;
   auto stack_sheets = config.find("beam_stack_sheets");
   if (params.polar_lattice && stack_sheets != config.end()) {
@@ -433,14 +459,24 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
     }
     params.stack_sheets = static_cast<size_t>(sheets);
   }
-  // Whether H is zero doesn't depend on its unit, so both cases are settled here, before lambda_1 is known.
-  if (params.polar_lattice && params.stack_sheets == 1 && params.height > 0.0) {
-    params.notes.push_back("a single sheet (beam_stack_sheets 1) has no width: beam_cylinder_height set to 0");
-    params.height = 0.0;
-    params.height_in_lambda_1 = false;
-  } else if (params.polar_lattice && params.stack_sheets > 1 && params.height == 0.0) {
+  // Whether H or sigma_z is zero doesn't depend on its unit, so these cases are settled here, before lambda_1 is known.
+  // With sigma_z > 0 the sheets span 2 cut sigma_z even at H = 0, so only H = 0 and sigma_z = 0 together coincide them.
+  if (params.polar_lattice && params.stack_sheets == 1) {
+    if (params.height > 0.0) {
+      params.notes.push_back("a single sheet (beam_stack_sheets 1) has no width: beam_cylinder_height set to 0");
+      params.height = 0.0;
+      params.height_in_lambda_1 = false;
+    }
+    if (params.sigma_z > 0.0) {
+      params.notes.push_back("a single sheet (beam_stack_sheets 1) can't carry a Gaussian profile: "
+                             "beam_stack_sigma_z set to 0");
+      params.sigma_z = 0.0;
+      params.sigma_z_in_lambda_1 = false;
+    }
+  } else if (params.polar_lattice && params.height == 0.0 && params.sigma_z == 0.0) {
     params.notes.push_back("beam_stack_sheets " + std::to_string(params.stack_sheets) +
-                           " with beam_cylinder_height 0: the sheets would coincide, so the stack is one sheet");
+                           " with beam_cylinder_height 0 and beam_stack_sigma_z 0: the sheets would coincide, so the "
+                           "stack is one sheet");
     params.stack_sheets = 1;
   }
 

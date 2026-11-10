@@ -124,16 +124,62 @@ double modulated_z(const CylinderBeamParams::Modulation& modulation, double z) {
   return z + modulation.zeta / K * std::sin(K * z + modulation.phase);
 }
 
-std::vector<double> sheet_positions(const CylinderBeamParams& params) {
+double stack_span(const CylinderBeamParams& params) {
+  return params.sigma_z > 0.0 ? params.height + 2.0 * params.sigma_z_cut * params.sigma_z : params.height;
+}
+
+namespace {
+
+std::vector<double> unmodulated_sheet_positions(const CylinderBeamParams& params) {
   const size_t sheets = params.stack_sheets;
-  const double spacing = params.height / static_cast<double>(sheets);
+  const double spacing = stack_span(params) / static_cast<double>(sheets);
   std::vector<double> sheet_z;
   sheet_z.reserve(sheets);
   for (size_t m = 0; m < sheets; ++m) {
-    const double z = (static_cast<double>(m) - 0.5 * static_cast<double>(sheets - 1)) * spacing;
-    sheet_z.push_back(params.modulation.active ? modulated_z(params.modulation, z) : z);
+    sheet_z.push_back((static_cast<double>(m) - 0.5 * static_cast<double>(sheets - 1)) * spacing);
   }
   return sheet_z;
+}
+
+// The top-hat of width H convolved with N(0, sigma^2), up to a constant factor: a Gaussian at H = 0. Written with
+// erfc of |z| so the tails don't come from the difference of two erf values near 1.
+double smoothed_density(double z, double height, double sigma) {
+  const double a = std::abs(z);
+  if (height == 0.0) {
+    return std::exp(-a * a / (2.0 * sigma * sigma));
+  }
+  const double s = std::sqrt(2.0) * sigma;
+  return 0.5 * (std::erfc((a - height / 2.0) / s) - std::erfc((a + height / 2.0) / s));
+}
+
+}  // namespace
+
+std::vector<double> sheet_positions(const CylinderBeamParams& params) {
+  std::vector<double> sheet_z = unmodulated_sheet_positions(params);
+  if (params.modulation.active) {
+    for (double& z : sheet_z) {
+      z = modulated_z(params.modulation, z);
+    }
+  }
+  return sheet_z;
+}
+
+std::vector<double> sheet_weights(const CylinderBeamParams& params) {
+  const size_t sheets = params.stack_sheets;
+  if (params.sigma_z == 0.0) {
+    return std::vector<double>(sheets, 1.0 / static_cast<double>(sheets));
+  }
+  std::vector<double> weights;
+  weights.reserve(sheets);
+  double total = 0.0;
+  for (double z : unmodulated_sheet_positions(params)) {
+    weights.push_back(smoothed_density(z, params.height, params.sigma_z));
+    total += weights.back();
+  }
+  for (double& w : weights) {
+    w /= total;
+  }
+  return weights;
 }
 
 std::vector<double> axial_positions(const std::vector<Electron>& beam, const CylinderBeamParams& params) {
@@ -160,10 +206,11 @@ ModulationGeometry modulation_geometry(const CylinderBeamParams& params, const C
   geometry.ratio = geometry.q.degenerate ? 0.0 : geometry.lambda_mod / geometry.q.lambda_1;
   geometry.K = 2.0 * MathUtils::pi / geometry.lambda_mod;
   geometry.periods = params.height / geometry.lambda_mod;
+  geometry.span = params.polar_lattice ? stack_span(params) : params.height;
   geometry.spill = 0.0;
   if (params.polar_lattice) {
     for (double z : sheet_positions(params)) {
-      geometry.spill = std::max(geometry.spill, std::abs(z) - params.height / 2.0);
+      geometry.spill = std::max(geometry.spill, std::abs(z) - geometry.span / 2.0);
     }
   }
   return geometry;
@@ -184,8 +231,12 @@ std::optional<double> nearly_whole(double x, bool positive_only) {
 
 std::vector<ModulationHarmonic> modulation_harmonics(const CylinderBeamParams& params,
                                                      const ModulationGeometry& geometry,
-                                                     const std::vector<double>& axial_z, size_t N_min,
+                                                     const std::vector<double>& axial_z,
+                                                     const std::vector<double>& weights, size_t N_min,
                                                      size_t N_harmonics) {
+  if (!weights.empty() && weights.size() != axial_z.size()) {
+    throw std::logic_error("modulation_harmonics: one weight per position, or none");
+  }
   const CylinderBeamParams::Modulation& modulation = params.modulation;
   const double two_pi = 2.0 * MathUtils::pi;
   const double sign = geometry.q.q_axial > 0.0 ? 1.0 : -1.0;
@@ -195,10 +246,13 @@ std::vector<ModulationHarmonic> modulation_harmonics(const CylinderBeamParams& p
   for (size_t N = N_min; N < N_min + N_harmonics; ++N) {
     const double n = static_cast<double>(N) * geometry.ratio;
     std::complex<double> sum(0.0, 0.0);
-    for (double z : axial_z) {
-      sum += std::polar(1.0, sign * n * geometry.K * z);
+    for (size_t j = 0; j < axial_z.size(); ++j) {
+      sum += std::polar(weights.empty() ? 1.0 : weights[j], sign * n * geometry.K * axial_z[j]);
     }
-    ModulationHarmonic harmonic{N, n, sum / static_cast<double>(axial_z.size()), std::nullopt};
+    if (weights.empty()) {
+      sum /= static_cast<double>(axial_z.size());
+    }
+    ModulationHarmonic harmonic{N, n, sum, std::nullopt};
     // The midpoint rule on this periodic integrand converges fast once it has more points than n (1 + zeta), so it
     // stands in for (-1)^n J_n(n zeta) without needing a Bessel function from the standard library.
     const std::optional<double> whole_n = nearly_whole(n, true);
@@ -236,8 +290,8 @@ std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, c
     // Aliasing of the sheet sum (theory/lattice-stack-implemented.md, "Sheets per period"): S equally spaced moved
     // sheets add the aliases J_{mS-n}(n zeta) to (-1)^n J_n(n zeta), negligible once S - n clears n zeta by the Bessel
     // transition width ~n^(1/3). S >= n (1 + zeta) + 5 n^(1/3) keeps the relative error of b_n below ~1e-4
-    // (sheets_per_period_aliasing.py).
-    const double sheets_per_period = static_cast<double>(params.stack_sheets) / geometry.periods;
+    // (sheets_per_period_aliasing.py). The sheets are equally spaced over the span L, Gaussian tails included.
+    const double sheets_per_period = static_cast<double>(params.stack_sheets) * geometry.lambda_mod / geometry.span;
     const double n_max = static_cast<double>(N_max) * geometry.ratio;
     const double recommended = n_max * (1.0 + params.modulation.zeta) + 5.0 * std::cbrt(n_max);
     if (sheets_per_period < recommended) {
@@ -251,6 +305,54 @@ std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, c
   return warnings;
 }
 
+std::vector<StackHarmonic> stack_harmonics(const CylinderBeamParams& params, const AxialTranslation& q, size_t N_min,
+                                           size_t N_harmonics) {
+  const std::vector<double> sheet_z = sheet_positions(params);
+  const std::vector<double> weights = sheet_weights(params);
+  std::vector<StackHarmonic> harmonics;
+  for (size_t N = N_min; N < N_min + N_harmonics; ++N) {
+    const double q_N = static_cast<double>(N) * q.q_axial;
+    std::complex<double> sum(0.0, 0.0);
+    for (size_t m = 0; m < sheet_z.size(); ++m) {
+      sum += std::polar(weights[m], q_N * sheet_z[m]);
+    }
+    const double x = q_N * params.height / 2.0;
+    const double sinc = x == 0.0 ? 1.0 : std::sin(x) / x;
+    harmonics.push_back({N, sum, sinc * std::exp(-q_N * q_N * params.sigma_z * params.sigma_z / 2.0)});
+  }
+  return harmonics;
+}
+
+std::vector<std::string> stack_warnings(const CylinderBeamParams& params, const AxialTranslation& q, size_t N_max) {
+  std::vector<std::string> warnings;
+  if (!params.polar_lattice || params.stack_sheets < 2 || params.sigma_z == 0.0 || q.degenerate) {
+    return warnings;
+  }
+  // Equally spaced samples of the smoothed density add replicas of its transform shifted by 2 pi / d. The nearest one
+  // to q_N falls off as exp(-((2 pi / d - q_N) sigma_z)^2 / 2), so (2 pi / d - q_N) sigma_z >= 6 keeps it near e^-18
+  // (theory/lattice-stack-implemented.md, "Gaussian stack"). The sinc of a wide H only lowers it further.
+  const double span = stack_span(params);
+  const double spacing = span / static_cast<double>(params.stack_sheets);
+  const double q_max = static_cast<double>(N_max) * std::abs(q.q_axial);
+  const double margin = (2.0 * MathUtils::pi / spacing - q_max) * params.sigma_z;
+  if (margin < 6.0) {
+    const double needed = std::ceil(span * (q_max + 6.0 / params.sigma_z) / (2.0 * MathUtils::pi));
+    std::ostringstream text;
+    text << "sheet spacing L/M = " << spacing / params.sigma_z
+         << " sigma_z is too coarse for the Gaussian edges at N = " << N_max << ": (2 pi / d - q_N) sigma_z = " << margin << " < 6; beam_stack_sheets >= " << needed
+         << " keeps the replica below ~1e-8";
+    warnings.push_back(text.str());
+  }
+  if (params.sigma_z_cut < 5.0) {
+    std::ostringstream text;
+    text << "beam_stack_sigma_z_cut " << params.sigma_z_cut << " cuts the Gaussian where its density is still "
+         << std::exp(-params.sigma_z_cut * params.sigma_z_cut / 2.0)
+         << " of the peak: the span's ends add their own ripple to b at about that level";
+    warnings.push_back(text.str());
+  }
+  return warnings;
+}
+
 std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const double tau_0, const double d_tau,
                                              const size_t N_tau, const Core::Laser::LaserField& laser,
                                              const std::array<double, 3>& detector_normal) {
@@ -259,12 +361,16 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const doub
   for (const std::string& note : params.notes) {
     std::cerr << "Warning: " << note << "\n";
   }
+  const size_t N_max = IoUtils::get_number_of_harmonics_min(config) + IoUtils::get_number_of_harmonics(config) - 1;
   if (params.modulation.active) {
-    const size_t N_max = IoUtils::get_number_of_harmonics_min(config) + IoUtils::get_number_of_harmonics(config) - 1;
     for (const std::string& warning :
          modulation_warnings(params, modulation_geometry(params, laser, detector_normal), N_max)) {
       std::cerr << "Warning: " << warning << "\n";
     }
+  }
+  for (const std::string& warning :
+       stack_warnings(params, axial_translation(params, laser, detector_normal), N_max)) {
+    std::cerr << "Warning: " << warning << "\n";
   }
 
   // Aligns the cylinder's height axis with the beam's own mean momentum direction (average_px/py/pz), so the
@@ -278,16 +384,17 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const doub
 
   if (params.polar_lattice) {
     // Deterministic equal-area rings (IoUtils::polar_lattice_geometry); the generator only draws momenta. Sheets sit
-    // at z_m = (m - (M-1)/2) H/M, moved by the modulation if it is on, each carrying 1/M of the charge; M = 1 is the
-    // flat disk at z = 0 with unit weights.
+    // at z_m = (m - (M-1)/2) L/M, moved by the modulation if it is on, each carrying sheet_weights' charge (1/M, or
+    // the Gaussian profile's share when sigma_z > 0); M = 1 is the flat disk at z = 0 with unit weights.
     auto [rings, spacing] = IoUtils::polar_lattice_geometry(params.radius, params.lattice_spacing);
     const size_t sheets = params.stack_sheets;
-    const double charge_weight = 1.0 / static_cast<double>(sheets);
     const std::vector<double> sheet_z = sheet_positions(params);
+    const std::vector<double> sheet_w = sheet_weights(params);
     beam.reserve(sheets * IoUtils::polar_lattice_site_count(rings));
     std::mt19937 gen(random_seed);
     for (size_t m = 0; m < sheets; ++m) {
       const double z = sheet_z[m];
+      const double charge_weight = sheet_w[m];
       beam.push_back(place_electron(params, beam_axis_rotation, 0.0, 0.0, z, tau_0, d_tau, N_tau, gen, charge_weight));
       for (int j = 1; j <= rings; ++j) {
         const double r = j * spacing;

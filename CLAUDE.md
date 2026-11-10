@@ -12,16 +12,13 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
 `~/<output_folder>/YYYYMMDD_HHMMSS/` (`output_folder` is relative to `$HOME`). `py_scripts/` plots the outputs.
 
 **Open issues** (detail in `theory/dev_notes.md` unless noted):
-- The single-electron Thomson-dipole benchmark (electron at rest, full-4π spherical detector, weak field →
-  `1+cos²θ` for circular polarization) is **not** reproduced yet. Don't trust absolute intensities/angular patterns
-  for complex setups until it is.
 - `plot_observables.py`'s `Lambda_zz/P_z` sign is fixed (`lz_sign`); theory column `L_N/omega_N`,
   `L_N = N(m+σ)−σ`, `σ = 2 Im(ζ₁*ζ₂)`. It was ~5% low at N = 2, likely the old centered-difference `∂φ` (replaced
   by an exact FFT derivative on 2026-10-29): re-run `plot_observables.py` on older runs before reading OAM numbers.
 - `b(q)` (`Simulation::compute_form_factor`, spec `theory/thomson_form_factor_diagnostic.md`): one scalar at
-  harmonic 1 along the detector normal, using the beam's actual mean momentum. Uses the measured `q = k_s − (K_s·P / K_L·P) k_L`, undressed
-  `P`. A translated electron's field gets `e^{-i q·r}`, the conjugate of `b`'s phase, and `q_N = N q_1` (not
-  `N k_1 + k_L`). See `theory/dev_notes.md`.
+  harmonic 1 along the detector normal, using the beam's actual mean momentum. Uses the measured
+  `q = k_s − (K_s·P / K_L·P) k_L`, undressed `P`. A translated electron's field gets `e^{-i q·r}`, the conjugate of
+  `b`'s phase, and `q_N = N q_1` (not `N k_1 + k_L`). See `theory/dev_notes.md`.
 - `LaguerreGaussLaser` matches the standard LG mode at the waist and at `Z = 10 z_R` (to `1e-7`, after the
   2026-10-27 curvature-sign fix), but isn't physics-reviewed against the literature (Allen et al. 1992; Siegman
   ch. 17). `PhysUtils::non_linear_Thomson_formula` is flagged in-code as needing review.
@@ -33,8 +30,9 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
   radial phase that doesn't vanish as `Z → ∞`, so `N ≥ 2` isn't a single LG mode. `lg_decomposition.py`'s
   prediction with the dressing factor `d_N(r)` reaches fidelity 0.9999/0.998 (N = 1/2) at `a0 = 0.1`; tests 2–4
   open. `theory/future_dev/ponderomotive_lens.md`; its test configs write to `~/output_tests/ponderomotive_lens/`.
-- **Lattice stack:** Phases 1–3a are done and reviewed. The beam-distribution rework is implemented (2026-11-09) and
-  awaits the user's review; Phase 3b comes next. State and plan: `theory/lattice_stack-work.md`.
+- **Lattice stack:** Phases 1–3a are done and reviewed. The beam-distribution rework (2026-11-09) and the Gaussian
+  stack on top of it (2026-11-10) are implemented and await the user's review; Phase 3b comes next. State and plan:
+  `theory/lattice_stack-work.md`.
 
 ## Machines
 
@@ -50,14 +48,19 @@ Commands, partition limits and the long-run recipe: `theory/srun.txt`.
   user's terminal is in a job: check `hostname` before building.
 - `num_threads 0` follows the job's allocation, not the node's 256 CPUs.
 - Long runs: `srun ... --pty bash` inside `tmux` on the head node; never `exit` in that tmux (it ends the job).
-  `radiation_field.dat` and `run_log.txt` appear only when the run ends.
+  Unattended runs: `srun ... bash -c "cd ... && <build> && <run>"` in tmux, so the job (and node) ends with the run;
+  a `--pty bash` job keeps the node until the shell ends or the time limit (`theory/srun.txt`).
+  `radiation_field.dat` appears only when the run ends. `run_log.txt` is written before the simulation, marked
+  `STATUS: IN PROGRESS` (no timing), and rewritten when it ends (`STATUS: finished`): a stopped run still has its beam,
+  laser and detector sections, enough for `plot_beam_density_z.py` and the other non-radiation scripts.
 
 ## Commands
 
 ```
 cmake -B build/ && cmake --build build/                    # build (out-of-source enforced)
 cmake --preset release && cmake --build --preset release  # same via preset; `debug` preset opts out of Release
-python3 py_scripts/compile_and_run.py <config_file>        # configure + build + run
+python3 py_scripts/compile_and_run.py <config_file>        # configure + build + run (argparse says optional;
+                                                           # the solver isn't: without it the run fails)
 ./bin/coherent_thomson_solver config/config.cfg            # run (config argument required)
 ```
 
@@ -88,6 +91,9 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   - `config_lattice_stack.cfg`: lattice stack on run A of the report (Gaussian pulse, `a0 = 0.1`): `M` sheets in
     `H = 1 lambda_1`, bunched by `beam_modulation_*` when `beam_modulation true`. It holds current experiments (screen
     and sheets change freely); not kept in step with `config.cfg`.
+  - `config_modulation_stack.cfg`: started from `config_lattice_stack.cfg` (its header is that file's); holds the
+    current Gaussian-stack experiment (`beam_stack_sigma_z`, long modulation periods, 64 × 64 screen). Runs of
+    millions of trajectories: estimate the cost (sheets × sites) before starting one.
   - `config_spectrum.cfg`: `dense_frequency_spectrum true` on one screen point (`plot_point_spectrum*.py`).
   - `config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`. Use it for every
     C++-vs-Python comparison; update it when `INPUTS` change.
@@ -101,17 +107,23 @@ commit). `require_clean_build true` refuses to run a dirty build. Git state is r
   delete those after changing the solver. `phase2_density_model.py` is the standalone density model (`b` at any `q`,
   `N`, `ζ`; results in `phase2_results.txt`); it doesn't run the solver. `phase3a_*.py` check bunched stacks (results in
   `phase3a_results.txt`; `phase3a_noop_and_rejects.py`/`phase3a_switch.py` use pre-rework keys and old binaries only).
-  `rework_checks.py <old_solver> <new_solver>` checks the 2026-11-09 beam rework (`rework_results.txt`).
+  `rework_checks.py <old_solver> <new_solver>` checks the 2026-11-09 beam rework (`rework_results.txt`);
+  `gaussian_stack_checks.py <old_solver> <new_solver>` the Gaussian stack (`gaussian_stack_results.txt`, ~2 min).
   `sheets_per_period_aliasing.py` (no solver) backs the sheets-per-period rule.
 - `theory/future_dev/tests/`: test inputs for the future-dev plans, all writing to `~/output_tests/...`:
-  `one_electron_on_axis{,_spectrum}.cfg` (seconds per run), `nt_scan.py` (`trajectory_NT` convergence, runs the
-  binary itself, ~3 min), and `bunch_length/`, `ponderomotive_lens/` (each with configs and a `README.md`).
+  `one_electron_on_axis{,_spectrum}.cfg` (seconds per run), `thomson_dipole.cfg` + `thomson_dipole_check.py <run>`
+  (Thomson-dipole benchmark; see Verification), `nt_scan.py` (`trajectory_NT` convergence, runs the binary itself,
+  ~3 min), and `bunch_length/`, `ponderomotive_lens/` (each with configs and a `README.md`).
 
-Formatting: `clang-format -i` on touched files (Google style, 120 cols). **No test suite**, no lint command.
+Formatting: `clang-format -i` on touched files (Google style, 120 cols). It isn't installed on the servers: say so
+in the commit message and format on a laptop. **No test suite**, no lint command.
 
 **Verification** (stands in for tests; use a small copied config):
 - **`simplified` vs `direct`** (`radiation_formula`), comparing totals: the main check. They agree to `O(dτ²)`
   (4x per doubling of `trajectory_NT`) down to a 1 λ screen; a `1/(kR)` mismatch means a short-range bug.
+- **Thomson dipole** (the only absolute check: pattern and amplitude, under a second): run
+  `theory/future_dev/tests/thomson_dipole.cfg`, then `python3 theory/future_dev/tests/thomson_dipole_check.py <run>`;
+  agrees to ~1e-4 (passed 2026-11-09, dev notes).
 - **Rotation covariance:** rotating laser, beam momentum and forward detector by `R` gives `F → Λ F Λᵀ` (6 digits).
 - **Spherical screen:** `B` exactly ⊥ `n0`, `E` not (`|E_r|/|E_θ|` ~ 0.1), via `plot_spherical_components.py`.
 - **Byte-identity** for changes that should be no-ops: diff the `.dat` outputs with the same config and `random_seed`.
@@ -166,23 +178,29 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
   the run writes `incident_config.cfg` for the scripts. Pre-2026-10-27 runs differ (dev notes).
   `radiation_field.dat` is lab-frame components on the detector's local grid (mirrored `(x, −y)` facing −Oz).
 - The beam axis follows the mean momentum; `beam_center_x/y/z` apply **before** that rotation.
-- **Beam along its axis** (`theory/lattice-stack-implemented.md`, last section): `random` is uniform in
-  `H = beam_cylinder_height` plus Gaussian wings `beam_sigma_z`; `polar_lattice` (with `beam_lattice_spacing`, no
-  speckle) puts `M = beam_stack_sheets` sheets at `(m−(M−1)/2) H/M`, charge `1/M` each, and refuses `beam_sigma_z ≠ 0`.
-  Each type ignores the other's keys (`random`: lattice spacing and sheets; `polar_lattice`: `beam_particle_count`), so
-  switching needs one edit. `M = 1` with `H > 0` sets `H = 0`; `H = 0` with `M > 1` sets `M = 1` (warnings).
-  Weights scale the field once per electron and the form factor, never the motion. `beam_modulation true` (`_zeta`,
-  `_period`, optional `_phase`) moves every electron of either type, `K z → K z + ζ sin(K z + phase)`, using no random
-  numbers. A stack needs `S ≥ n(1+ζ) + 5 n^(1/3)` sheets per period (`n = N_max Λ_mod/Λ₁`) against aliasing; the
-  solver warns below it. Unit `lambda_1 = 2π/|q_axial|` (axial part of `b(q)`'s `q`) is accepted only by
-  `beam_cylinder_height`, `beam_sigma_z`, `beam_modulation_period`; parsing defers it and
+- **Beam along its axis** (`theory/lattice-stack-implemented.md`, last two sections): `random` is uniform in
+  `H = beam_cylinder_height` plus random Gaussian shifts `beam_sigma_z`; `polar_lattice` (with `beam_lattice_spacing`,
+  no speckle) puts `M = beam_stack_sheets` sheets at `(m−(M−1)/2) L/M`. With `beam_stack_sigma_z = 0`, `L = H` and the
+  charge is `1/M` each. With `σ_z > 0` (the Gaussian stack), `L = H + 2·cut·σ_z` (`beam_stack_sigma_z_cut`, default 6)
+  and each sheet's charge is the smoothed density at its position, summing to 1: the Gaussian is in the charges, not the
+  positions, so `b` has no `1/√M` noise. Each type ignores the other's keys (`random`: lattice spacing, sheets,
+  `beam_stack_sigma_z*`; `polar_lattice`: `beam_particle_count`, `beam_sigma_z`, with a note), so switching needs one
+  edit. `M = 1` with `H > 0` sets `H = 0`, and with `σ_z > 0` sets `σ_z = 0`; `H = 0` and `σ_z = 0` with `M > 1` sets
+  `M = 1` (warnings). The solver warns when the spacing is too coarse for the Gaussian edges
+  (`(2π/d − q_Nmax) σ_z < 6`, roughly `d > 0.5 σ_z`). Weights scale the field once per electron and the form factor,
+  never the motion. `beam_modulation true` (`_zeta`, `_period`, optional `_phase`) moves every electron of either
+  type, `K z → K z + ζ sin(K z + phase)`, using no random numbers; sheets keep their charges. A stack needs
+  `S ≥ n(1+ζ) + 5 n^(1/3)` sheets per period (`n = N_max Λ_mod/Λ₁`, counted over `L`) against aliasing; the solver
+  warns below it. Unit `lambda_1 = 2π/|q_axial|` (axial part of `b(q)`'s `q`) is accepted only by
+  `beam_cylinder_height`, `beam_sigma_z`, `beam_stack_sigma_z`, `beam_modulation_period`; parsing defers it and
   `Particle::resolve_beam_lengths` converts it (needs the laser and detector normal, so the detector is created before
   the beam). Old keys (`beam_stack_spacing`, `beam_stack_modulation`, `beam_modulation_period_ratio/_sheets_per_period
   /_periods`) are refused. Don't judge an `N = 2` stack at one on-axis point: the flat field there is about 2.6e4 times
   below the screen's.
-- `beam_sigma_z` smooths the cylinder ends with a Gaussian z displacement (`theory/gaussian_smoothed_electron_cylinder.md`);
-  `0` is byte-identical to the plain cylinder. A fixed `random_seed` with fewer electrons gives the first electrons
-  of a larger beam: use different seeds for independent samples.
+- `beam_sigma_z` smooths the cylinder ends with a Gaussian z displacement
+  (`theory/gaussian_smoothed_electron_cylinder.md`); `0` is byte-identical to the plain cylinder. A fixed
+  `random_seed` with fewer electrons gives the first electrons of a larger beam: use different seeds for independent
+  samples.
 - Negative `beam_cylinder_radius` = `IoUtils::lg_beam_radius_in_w0(p, l) · w0` (LG only, `p ≤ 4`, `|l| ≤ 6`); the
   table is copied from `theory/table of beam electron radius in units of w_0 for different p,l.md`; keep in sync.
 - `CircularDetector`'s radial grid is **equal-area**: `r_i = sqrt(R_min² + i*(R_max²-R_min²)/(N_R-1))`.
@@ -192,7 +210,8 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
 
 Modes, formulas, optimizations, precision and timings: `theory/implementation_details.md`. **Keep it in sync when
 changing `radiation.cpp`.** Formulas: `theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md`; long-distance
-modes: `theory/long_distance_direct_simplified_coding_guide.md`; OAM: `theory/numerical_calculation_of_angular_momentum.md`.
+modes: `theory/long_distance_direct_simplified_coding_guide.md`; OAM:
+`theory/numerical_calculation_of_angular_momentum.md`.
 
 - **Three terms** (`LR_`/`SR_`/`BR_` columns): long-range, short-range, boundary. **Only the sum is physical** (e.g.
   on-axis `F_l^{03}` and `F_b^{03}` cancel). In the LD modes the split differs, so compare only totals.
@@ -239,8 +258,9 @@ Flat `key value [unit]` lines; units via `IoUtils::convert_unit_to_number` (chec
 - **An unrecognized unit only warns** (assumes `1.0`). **A blank value drops the key** (`std::out_of_range`).
   Unknown keys are ignored. To see what a run actually used, read its `run_log.txt` (it also gives SI values).
 - All keys are required except `require_clean_build`, `beam_distribution`, `beam_lattice_spacing` (`polar_lattice`
-  only), `beam_stack_sheets`, `beam_modulation` and `beam_modulation_*`. `w0` units need `laser_type=laguerre_gauss`;
-  `lambda_1` works only on the three beam lengths above (elsewhere it throws).
+  only), `beam_stack_sheets`, `beam_stack_sigma_z`, `beam_stack_sigma_z_cut`, `beam_modulation` and
+  `beam_modulation_*`. `w0` units need `laser_type=laguerre_gauss`; `lambda_1` works only on the four beam lengths
+  above (elsewhere it throws).
 - `run_log.txt` re-reads keys the way the factories do (`read_scaled`), not via getters on the physics classes.
 
 ## Physics notes worth knowing before comparing results

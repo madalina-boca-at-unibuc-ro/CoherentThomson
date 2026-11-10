@@ -1,5 +1,6 @@
 #include "../include/particle/electron_plotter.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -48,11 +49,20 @@ void plot_electron_beam_scatter(const std::vector<Electron>& electron_beam, cons
 
   file << std::scientific << std::setprecision(6);
   file << "# length units: " << axes_scale_string << "\n";
-  file << "x y z\n";
+  // The charge weights only when they differ (a Gaussian lattice stack): equal weights don't change a normalized
+  // density, and leaving the column out keeps every other beam's file as before.
+  const bool weighted = std::any_of(electron_beam.begin(), electron_beam.end(), [&](const Electron& electron) {
+    return electron.get_charge_weight() != electron_beam.front().get_charge_weight();
+  });
+  file << (weighted ? "x y z w\n" : "x y z\n");
 
   for (const Electron& electron : electron_beam) {
     const Core::MathUtils::RealFourVector& pos = electron.get_initial_position();
-    file << pos[1] / axes_scale << " " << pos[2] / axes_scale << " " << pos[3] / axes_scale << "\n";
+    file << pos[1] / axes_scale << " " << pos[2] / axes_scale << " " << pos[3] / axes_scale;
+    if (weighted) {
+      file << " " << electron.get_charge_weight();
+    }
+    file << "\n";
   }
 
   std::cout << "Successfully exported electron beam scatter positions to " << filepath << "\n";
