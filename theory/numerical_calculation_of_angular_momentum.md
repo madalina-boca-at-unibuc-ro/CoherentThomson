@@ -13,11 +13,13 @@ We express the time-integrated average of the bilinear form $C_{ij}(t) = A_i(t)B
 $$\langle C_{ij}\rangle = \int\limits_{-\infty}^{\infty}dt\, A_i(t) B_j(t) = \int\limits_{-\infty}^{\infty}dt\int\limits_{-\infty}^{\infty}d\omega\int\limits_{-\infty}^{\infty}d\omega' e^{-it(\omega-\omega')}\tilde A_i(\omega)\tilde B_j^*(\omega')$$
 
 Evaluating the temporal integral gives $2\pi\delta(\omega-\omega')$, yielding:
-$$\langle C_{ij}\rangle = \int\limits_{-\infty}^{\infty}d\omega\, \tilde A_i(\omega)\tilde B_j^*(\omega) = 2\int\limits_{0}^{\infty}d\omega\, \operatorname{Re}\left[\tilde A_i(\omega)\tilde B_j^*(\omega)\right]$$
+$$\langle C_{ij}\rangle = 2\pi\int\limits_{-\infty}^{\infty}d\omega\, \tilde A_i(\omega)\tilde B_j^*(\omega) = 4\pi\int\limits_{0}^{\infty}d\omega\, \operatorname{Re}\left[\tilde A_i(\omega)\tilde B_j^*(\omega)\right]$$
+
+*(Corrected 2026-11-21: the factor $2\pi$ from the $\delta$ function was dropped here, so every spectral density below was $2\pi$ too small. The forward transform implied by the inverse transform above is $\tilde{\bf A}(\omega)=\frac1{2\pi}\int dt\,e^{i\omega t}{\bf A}(t)$, the solver's convention. See `spectral_density_2pi_fix.md`.)*
 
 The one-sided Fourier spectral density for $\omega \in (0,\infty)$ is therefore:
 <a id="eq-bilinear-spectral-density"></a>
-$$\frac{d\langle C_{ij}\rangle}{d\omega} = 2\operatorname{Re}\left[\tilde A_i(\omega)\tilde B_j^*(\omega)\right] = \tilde A_i(\omega)\tilde B_j^*(\omega) + \tilde A_i^*(\omega)\tilde B_j(\omega) \tag{bilinear-spectral-density}$$
+$$\frac{d\langle C_{ij}\rangle}{d\omega} = 4\pi\operatorname{Re}\left[\tilde A_i(\omega)\tilde B_j^*(\omega)\right] = 2\pi\left[\tilde A_i(\omega)\tilde B_j^*(\omega) + \tilde A_i^*(\omega)\tilde B_j(\omega)\right] \tag{bilinear-spectral-density}$$
 
 ---
 
@@ -53,14 +55,14 @@ The fundamental definition of the spin angular momentum density vector in the ti
 $${\boldsymbol{\cal S}} = \epsilon_0{\bf E}\times{\bf A}$$
 
 Its $z$-component is ${\cal S}_z = \epsilon_0(E_x A_y - E_y A_x)$. Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) gives:
-$$\frac{d {\cal S}_z}{d\omega} = 2\epsilon_0\operatorname{Re}\left[\tilde E_x \tilde A_y^* - \tilde E_y \tilde A_x^*\right]$$
+$$\frac{d {\cal S}_z}{d\omega} = 4\pi\epsilon_0\operatorname{Re}\left[\tilde E_x \tilde A_y^* - \tilde E_y \tilde A_x^*\right]$$
 
 Substituting $\tilde A_i^* = \frac{i}{\omega}\tilde E_i^*$:
 $$\tilde E_x \tilde A_y^* - \tilde E_y \tilde A_x^* = \frac{i}{\omega}\left(\tilde E_x \tilde E_y^* - \tilde E_y \tilde E_x^*\right) = -\frac{2}{\omega}\operatorname{Im}\left[\tilde E_x \tilde E_y^*\right] = \frac{2}{\omega}\operatorname{Im}\left[\tilde E_x^* \tilde E_y\right]$$
 
 Thus, the SAM spectral density is:
 <a id="eq-primary-definition-of-Sz"></a>
-$$\frac{d {\cal S}_z}{d\omega} = \frac{4\epsilon_0}{\omega}\operatorname{Im}\left[\tilde E_x^* \tilde E_y\right] = -\frac{4\epsilon_0}{\omega}\operatorname{Im}\left[\tilde E_x \tilde E_y^*\right] \tag{primary-definition-of-Sz}$$
+$$\frac{d {\cal S}_z}{d\omega} = \frac{8\pi\epsilon_0}{\omega}\operatorname{Im}\left[\tilde E_x^* \tilde E_y\right] = -\frac{8\pi\epsilon_0}{\omega}\operatorname{Im}\left[\tilde E_x \tilde E_y^*\right] \tag{primary-definition-of-Sz}$$
 
 ---
 
@@ -73,7 +75,7 @@ Its $z$-component involves the transverse differential operator $\hat{L}_z = ({\
 $${\cal L}_z = \epsilon_0 \sum_{i=x,y,z} E_i\, (x\partial_y - y\partial_x) A_i$$
 
 Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density):
-$$\frac{d {\cal L}_z}{d\omega} = 2\epsilon_0 \sum_{i=x,y,z} \operatorname{Re}\left[\tilde E_i\, \Big(\hat{L}_z \tilde A_i\Big)^*\right]$$
+$$\frac{d {\cal L}_z}{d\omega} = 4\pi\epsilon_0 \sum_{i=x,y,z} \operatorname{Re}\left[\tilde E_i\, \Big(\hat{L}_z \tilde A_i\Big)^*\right]$$
 
 Using $\tilde A_i^* = \frac{i}{\omega}\tilde E_i^*$ and noting that coordinates and spatial derivative operators are real:
 $$\Big(\hat{L}_z \tilde A_i\Big)^* = \frac{i}{\omega}\hat{L}_z \tilde E_i^*$$
@@ -82,12 +84,12 @@ $$\operatorname{Re}\left[\tilde E_i \left(\frac{i}{\omega}\hat{L}_z \tilde E_i^*
 #### A. Rectangular Screen (Cartesian Grid)
 On a Cartesian grid $(x, y)$, the operator is $\hat{L}_z = x \partial_y - y \partial_x$:
 <a id="eq-primary-definition-of-Lz-rectangular"></a>
-$$\frac{d {\cal L}_z}{d\omega} = \frac{2\epsilon_0}{\omega}\sum_{i=x,y,z}\operatorname{Im}\left[\tilde E_i^* \left(x \frac{\partial \tilde E_i}{\partial y} - y \frac{\partial \tilde E_i}{\partial x}\right)\right] \tag{primary-definition-of-Lz-rectangular}$$
+$$\frac{d {\cal L}_z}{d\omega} = \frac{4\pi\epsilon_0}{\omega}\sum_{i=x,y,z}\operatorname{Im}\left[\tilde E_i^* \left(x \frac{\partial \tilde E_i}{\partial y} - y \frac{\partial \tilde E_i}{\partial x}\right)\right] \tag{primary-definition-of-Lz-rectangular}$$
 
 #### B. Circular Screen (Polar Grid)
 On a polar grid $(\rho, \phi)$ where $x = \rho\cos\phi$, $y = \rho\sin\phi$, we use the identity $x\partial_y - y\partial_x = \partial_\phi$:
 <a id="eq-primary-definition-of-Lz-circular"></a>
-$$\frac{d {\cal L}_z}{d\omega} = \frac{2\epsilon_0}{\omega}\sum_{i=x,y,z}\operatorname{Im}\left[\tilde E_i^* \frac{\partial \tilde E_i}{\partial \phi}\right] \tag{primary-definition-of-Lz-circular}$$
+$$\frac{d {\cal L}_z}{d\omega} = \frac{4\pi\epsilon_0}{\omega}\sum_{i=x,y,z}\operatorname{Im}\left[\tilde E_i^* \frac{\partial \tilde E_i}{\partial \phi}\right] \tag{primary-definition-of-Lz-circular}$$
 
 ---
 
@@ -121,7 +123,7 @@ $$\Sigma_{zz} = \epsilon_0 c^2 \Big[ (\mathbf{B}\cdot\mathbf{A}) - 2 B_z A_z \Bi
 
 Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) and substituting $\tilde{A}_k^* = \frac{i}{\omega}\tilde{E}_k^*$:
 <a id="eq-primary-definition-of-Sigma-zz"></a>
-$$\frac{d\Sigma_{zz}}{d\omega} = -\frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[\tilde B_x \tilde E_x^* + \tilde B_y \tilde E_y^* - \tilde B_z \tilde E_z^*\right] = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[\tilde B_x^* \tilde E_x + \tilde B_y^* \tilde E_y - \tilde B_z^* \tilde E_z\right] \tag{primary-definition-of-Sigma-zz}$$
+$$\frac{d\Sigma_{zz}}{d\omega} = -\frac{4\pi\epsilon_0 c^2}{\omega}\operatorname{Im}\left[\tilde B_x \tilde E_x^* + \tilde B_y \tilde E_y^* - \tilde B_z \tilde E_z^*\right] = \frac{4\pi\epsilon_0 c^2}{\omega}\operatorname{Im}\left[\tilde B_x^* \tilde E_x + \tilde B_y^* \tilde E_y - \tilde B_z^* \tilde E_z\right] \tag{primary-definition-of-Sigma-zz}$$
 
 
 ### 4. Orbital Angular Momentum Flux and Continuity Equation
@@ -144,12 +146,12 @@ Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) and su
 ##### A. Rectangular Screen (Cartesian Grid)
 Using $\hat{L}_z = x\partial_y - y\partial_x$:
 <a id="eq-primary-definition-of-Lambda-zz-rectangular"></a>
-$$\frac{d\Lambda_{zz}}{d\omega} = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \left(x\frac{\partial \tilde E_x}{\partial y} - y\frac{\partial \tilde E_x}{\partial x}\right) - \tilde{B}_x^* \left(x\frac{\partial \tilde E_y}{\partial y} - y\frac{\partial \tilde E_y}{\partial x}\right) + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-rectangular}$$
+$$\frac{d\Lambda_{zz}}{d\omega} = \frac{4\pi\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \left(x\frac{\partial \tilde E_x}{\partial y} - y\frac{\partial \tilde E_x}{\partial x}\right) - \tilde{B}_x^* \left(x\frac{\partial \tilde E_y}{\partial y} - y\frac{\partial \tilde E_y}{\partial x}\right) + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-rectangular}$$
 
 ##### B. Circular Screen (Polar Grid)
 Using $\hat{L}_z = \partial_\phi$:
 <a id="eq-primary-definition-of-Lambda-zz-circular"></a>
-$$\frac{d\Lambda_{zz}}{d\omega} = \frac{2\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \frac{\partial \tilde E_x}{\partial \phi} - \tilde{B}_x^* \frac{\partial \tilde E_y}{\partial \phi} + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-circular}$$
+$$\frac{d\Lambda_{zz}}{d\omega} = \frac{4\pi\epsilon_0 c^2}{\omega}\operatorname{Im}\left[ \tilde{B}_y^* \frac{\partial \tilde E_x}{\partial \phi} - \tilde{B}_x^* \frac{\partial \tilde E_y}{\partial \phi} + \tilde{B}_z^* \tilde E_z \right] \tag{primary-definition-of-Lambda-zz-circular}$$
 ---
 
 ---
@@ -162,11 +164,11 @@ $$u(t) = \frac{1}{2}\epsilon_0 \mathbf{E}^2(t) + \frac{1}{2\mu_0} \mathbf{B}^2(t
 
 *** Spectral Density of the Energy Density***
 For any real field component $E_i(t)$, applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density) with identical factors yields:
-$$\frac{d\langle E_i^2\rangle}{d\omega} = 2\operatorname{Re}\left[\tilde{E}_i \tilde{E}_i^*\right] = 2 |\tilde{E}_i|^2$$
+$$\frac{d\langle E_i^2\rangle}{d\omega} = 4\pi\operatorname{Re}\left[\tilde{E}_i \tilde{E}_i^*\right] = 4\pi |\tilde{E}_i|^2$$
 
-The prefactor $\frac{1}{2}\epsilon_0$ cancels the factor of 2, giving the spectral energy density:
+With the prefactor $\frac{1}{2}\epsilon_0$, this gives the spectral energy density:
 <a id="eq-primary-definition-of-u"></a>
-$$\frac{d u}{d\omega} = \epsilon_0 |\tilde{\mathbf{E}}|^2 + \frac{1}{\mu_0} |\tilde{\mathbf{B}}|^2 = \epsilon_0 \left( |\tilde{\mathbf{E}}|^2 + c^2 |\tilde{\mathbf{B}}|^2 \right) \tag{primary-definition-of-u}$$
+$$\frac{d u}{d\omega} = 2\pi\epsilon_0 |\tilde{\mathbf{E}}|^2 + \frac{2\pi}{\mu_0} |\tilde{\mathbf{B}}|^2 = 2\pi\epsilon_0 \left( |\tilde{\mathbf{E}}|^2 + c^2 |\tilde{\mathbf{B}}|^2 \right) \tag{primary-definition-of-u}$$
 
 where $|\tilde{\mathbf{E}}|^2 = |\tilde{E}_x|^2 + |\tilde{E}_y|^2 + |\tilde{E}_z|^2$ and $|\tilde{\mathbf{B}}|^2 = |\tilde{B}_x|^2 + |\tilde{B}_y|^2 + |\tilde{B}_z|^2$.
 
@@ -184,7 +186,7 @@ $$P_z(t) = \epsilon_0 c^2 \big( E_x(t) B_y(t) - E_y(t) B_x(t) \big)$$
 
 Applying [Eq. (bilinear-spectral-density)](#eq-bilinear-spectral-density):
 <a id="eq-primary-definition-of-Pz"></a>
-$$\frac{d P_z}{d\omega} = 2\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right] = \frac{2}{\mu_0}\operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right] \tag{primary-definition-of-Pz}$$
+$$\frac{d P_z}{d\omega} = 4\pi\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right] = \frac{4\pi}{\mu_0}\operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right] \tag{primary-definition-of-Pz}$$
 
 *(Sanity check: For a paraxial wave propagating along $+z$ with $\tilde{B}_y = \tilde{E}_x/c$ and $\tilde{B}_x = -\tilde{E}_y/c$, this reduces to $\frac{d P_z}{d\omega} = c \frac{d u}{d\omega}$, matching free-space energy transport at the speed of light).*
 
@@ -202,9 +204,9 @@ $$\frac{d P_z}{d\omega} = 2\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \t
      $$\frac{d{\cal J}_z}{d\omega} = \frac{d{\cal L}_z}{d\omega} + \frac{d{\cal S}_z}{d\omega}$$
    - **SAM Flux along $z$ ($\frac{d\Sigma_{zz}}{d\omega}$):** Calculate according to [Eq. (primary-definition-of-Sigma-zz)](#eq-primary-definition-of-Sigma-zz)[cite: 4].
    - - **Energy Density ($\frac{du}{d\omega}$):**
-     $$\frac{du}{d\omega} = \epsilon_0 \left( |\tilde{E}_x|^2 + |\tilde{E}_y|^2 + |\tilde{E}_z|^2 \right) + \epsilon_0 c^2 \left( |\tilde{B}_x|^2 + |\tilde{B}_y|^2 + |\tilde{B}_z|^2 \right)$$
+     $$\frac{du}{d\omega} = 2\pi\epsilon_0 \left( |\tilde{E}_x|^2 + |\tilde{E}_y|^2 + |\tilde{E}_z|^2 \right) + 2\pi\epsilon_0 c^2 \left( |\tilde{B}_x|^2 + |\tilde{B}_y|^2 + |\tilde{B}_z|^2 \right)$$
    - **Energy Flux along $z$ ($\frac{dP_z}{d\omega}$):**
-     $$\frac{dP_z}{d\omega} = 2\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right]$$
+     $$\frac{dP_z}{d\omega} = 4\pi\epsilon_0 c^2 \operatorname{Re}\left[ \tilde{E}_x \tilde{B}_y^* - \tilde{E}_y \tilde{B}_x^* \right]$$
 1. **Surface Integration (Integrated Screen Totals):**
    - Integrate each spectral quantity ($\frac{d{\cal S}_z}{d\omega}$, $\frac{d{\cal L}_z}{d\omega}$, $\frac{d{\cal J}_z}{d\omega}$,  $\frac{d\Sigma_{zz}}{d\omega}$, $\frac{du}{d\omega$}$, $\frac{dP_z}{d\omega}$) across the screen surface using the composite 2D trapezoidal rule:
      - *Rectangular screen:* $\iint \dots\, dx\, dy$ via `scipy.integrate.trapezoid` or nested `numpy.trapz`[cite: 4].

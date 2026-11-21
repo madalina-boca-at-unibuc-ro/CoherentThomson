@@ -4,7 +4,7 @@ total (LR+SR+BR) field in radiation_field.dat. Same formulas and prefactors as p
 comment and theory/numerical_calculation_of_angular_momentum.md), restricted to the ones that need no spatial
 derivative:
 
-- dS_z/domega        spin angular momentum density, (4 eps0/omega) Im[Ex* Ey]
+- dS_z/domega        spin angular momentum density, (8 pi eps0/omega) Im[Ex* Ey]
 - dSigma_zz/domega   spin angular momentum flux through the z-plane
 - du/domega          energy density
 - dP_z/domega        energy flux (Poynting vector, z component)
@@ -102,12 +102,14 @@ def compute_point_observables(radiation_filepath, data):
     Ex, Ey, Ez = _get_E_total(data)
     Bx, By, Bz = _get_B_total(data)
 
-    dSz = (4.0 * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
-    dSigmazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
+    # Prefactors include the 2 pi of Parseval's theorem for the (1/2pi) int dt e^(i omega t) convention of
+    # radiation_field.dat (fixed 2026-11-21: they were 2 pi too small; theory/spectral_density_2pi_fix.md).
+    dSz = (8.0 * np.pi * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
+    dSigmazz = (4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
         np.conj(Bx) * Ex + np.conj(By) * Ey - np.conj(Bz) * Ez)
-    du = (EPSILON_0 * (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
-          + EPSILON_0 * C_LIGHT ** 2 * (np.abs(Bx) ** 2 + np.abs(By) ** 2 + np.abs(Bz) ** 2))
-    dPz = 2.0 * EPSILON_0 * C_LIGHT ** 2 * np.real(Ex * np.conj(By) - Ey * np.conj(Bx))
+    du = 2.0 * np.pi * (EPSILON_0 * (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
+                        + EPSILON_0 * C_LIGHT ** 2 * (np.abs(Bx) ** 2 + np.abs(By) ** 2 + np.abs(Bz) ** 2))
+    dPz = 4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 * np.real(Ex * np.conj(By) - Ey * np.conj(Bx))
 
     n_screen = data['i_screen'].nunique()
     directions = get_observation_directions(radiation_filepath, config_path, n_screen)

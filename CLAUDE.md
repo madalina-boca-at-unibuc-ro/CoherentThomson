@@ -15,6 +15,10 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
 - `plot_observables.py`'s `Lambda_zz/P_z` sign is fixed (`lz_sign`); theory column `L_N/omega_N`,
   `L_N = N(m+σ)−σ`, `σ = 2 Im(ζ₁*ζ₂)`. It was ~5% low at N = 2, likely the old centered-difference `∂φ` (replaced
   by an exact FFT derivative on 2026-10-29): re-run `plot_observables.py` on older runs before reading OAM numbers.
+- **Absolute spectral densities** (`du`, `dP_z`, `dS_z`, `dL_z`, `dΣ_zz`, `dΛ_zz`, photon numbers) were `2π` too small
+  in `plot_observables.py` and `plot_point_spectrum_observables.py` until 2026-11-21 (Parseval's `2π` dropped); ratios
+  were never affected. Re-run the scripts on older runs before quoting an absolute value:
+  `theory/spectral_density_2pi_fix.md`.
 - `b(q)` (`Simulation::compute_form_factor`, spec `theory/thomson_form_factor_diagnostic.md`): one scalar at
   harmonic 1 along the detector normal, using the beam's actual mean momentum. Uses the measured
   `q = k_s − (K_s·P / K_L·P) k_L`, undressed `P`. A translated electron's field gets `e^{-i q·r}`, the conjugate of

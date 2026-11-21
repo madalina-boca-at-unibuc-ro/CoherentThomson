@@ -8,6 +8,18 @@ investigations, bug fixes, cross-checks against the Python reference
 Entries are historical: where one disagrees with the code, the code (and `CLAUDE.md`) wins. Known stale detail:
 `general_factor` is `q_0 / (2*pi * 4*pi*epsilon_0*c^2)` (`simulation.cpp`), not the `1/(2*pi*c)` quoted below.
 
+- **2026-11-21: spectral densities in the post-processing were 2π too small; fixed.**
+  - **Bug.** `numerical_calculation_of_angular_momentum.md` dropped the `2π` of `∫dt e^{−i(ω−ω′)t} = 2πδ(ω−ω′)` in
+    Parseval's theorem. With the solver's `(1/2π) ∫dt e^{iωt}` convention, the one-sided density of `∫dt A_i B_j` is
+    `4π Re[Ã_i B̃_j*]`, not `2 Re[…]`. `plot_observables.py` and `plot_point_spectrum_observables.py` were built on
+    that line, so `du`, `dP_z`, `dS_z`, `dL_z`, `dΣ_zz` and `dΛ_zz` (and any photon number) were all `2π` too small.
+  - **Unaffected:** the solver and its output; every ratio (AM per photon, flux/density = c, fractions, purities,
+    fidelities); `lg_decomposition.py`, `summarize_runs.py` and `compare_lattice_random.py`.
+  - **Check:** before and after, on a copy of run `20261031_130825`: absolute values ×6.283185, ratios identical.
+  - **Old `run_log.txt` sections** written by the two scripts keep the old values until the scripts are re-run. The
+    colour scales of the report's Figs. 3–5 are 2π too small.
+  - Details: `spectral_density_2pi_fix.md`.
+
 - **2026-10-27: `LaguerreGaussLaser` wavefront-curvature sign fixed; `incident_field.dat` moved to the detector
   distance.**
   - **Bug.** `complex_amplitude` had the curvature phase `−k ρ² z/(2(z² + z_R²))` with the carrier `e^{−iφ} =

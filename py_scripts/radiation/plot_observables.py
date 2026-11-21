@@ -15,16 +15,16 @@ own correction) was missing the epsilon_0 = 1/(4*pi) prefactor -- see
 Core::PhysUtils::AtomicUnits::epsilon_0 (phys_utils.hpp) for the same constant on the C++ side.
 
 Angular momentum density (accumulated angular momentum per unit screen area):
-$$\\frac{d\\mathcal{S}_z}{d\\omega} = \\frac{4\\epsilon_0}{\\omega}\\mathrm{Im}[\\tilde E_x^*\\tilde E_y]$$
-$$\\frac{d\\mathcal{L}_z}{d\\omega} = \\frac{2\\epsilon_0}{\\omega}\\sum_i\\mathrm{Im}\\left[\\tilde E_i^*\\,\\hat L_z\\tilde E_i\\right]$$
+$$\\frac{d\\mathcal{S}_z}{d\\omega} = \\frac{8\\pi\\epsilon_0}{\\omega}\\mathrm{Im}[\\tilde E_x^*\\tilde E_y]$$
+$$\\frac{d\\mathcal{L}_z}{d\\omega} = \\frac{4\\pi\\epsilon_0}{\\omega}\\sum_i\\mathrm{Im}\\left[\\tilde E_i^*\\,\\hat L_z\\tilde E_i\\right]$$
 $$\\frac{d\\mathcal{J}_z}{d\\omega} = \\frac{d\\mathcal{L}_z}{d\\omega} + \\frac{d\\mathcal{S}_z}{d\\omega}$$
 
 Angular momentum flux (angular momentum flow per unit screen area, through the screen along its
 own normal Oz -- a genuinely different physical quantity from the density above, not the same
 thing in different units, see CLAUDE.md's density-vs-flux distinction from this project's earlier,
 since-deleted angular-momentum scripts):
-$$\\frac{d\\Sigma_{zz}}{d\\omega} = \\frac{2\\epsilon_0 c^2}{\\omega}\\mathrm{Im}\\left[\\tilde B_x^*\\tilde E_x + \\tilde B_y^*\\tilde E_y - \\tilde B_z^*\\tilde E_z\\right]$$
-$$\\frac{d\\Lambda_{zz}}{d\\omega} = \\frac{2\\epsilon_0 c^2}{\\omega}\\mathrm{Im}\\left[\\tilde B_y^*\\,\\hat L_z\\tilde E_x - \\tilde B_x^*\\,\\hat L_z\\tilde E_y + \\tilde B_z^*\\tilde E_z\\right]$$
+$$\\frac{d\\Sigma_{zz}}{d\\omega} = \\frac{4\\pi\\epsilon_0 c^2}{\\omega}\\mathrm{Im}\\left[\\tilde B_x^*\\tilde E_x + \\tilde B_y^*\\tilde E_y - \\tilde B_z^*\\tilde E_z\\right]$$
+$$\\frac{d\\Lambda_{zz}}{d\\omega} = \\frac{4\\pi\\epsilon_0 c^2}{\\omega}\\mathrm{Im}\\left[\\tilde B_y^*\\,\\hat L_z\\tilde E_x - \\tilde B_x^*\\,\\hat L_z\\tilde E_y + \\tilde B_z^*\\tilde E_z\\right]$$
 $$\\frac{d(\\Sigma_{zz}+\\Lambda_{zz})}{d\\omega} \\;\\text{(total flux)}$$
 
 where $\\hat L_z = x\\partial_y - y\\partial_x$ (rectangular) $= \\partial_\\phi$ (circular) -- the
@@ -36,8 +36,8 @@ angular-momentum quantity above, these are bilinear directly in E/B (never in th
 A), so their spectral-density formula ([Eq. (bilinear-spectral-density)] applied to E/B themselves)
 carries **no explicit 1/omega prefactor** -- don't add one by analogy with S_z/L_z/Sigma_zz/
 Lambda_zz above, that would be wrong:
-$$\\frac{du}{d\\omega} = \\epsilon_0\\left(|\\tilde E_x|^2+|\\tilde E_y|^2+|\\tilde E_z|^2\\right) + \\epsilon_0 c^2\\left(|\\tilde B_x|^2+|\\tilde B_y|^2+|\\tilde B_z|^2\\right)$$
-$$\\frac{dP_z}{d\\omega} = 2\\epsilon_0 c^2\\,\\mathrm{Re}\\left[\\tilde E_x\\tilde B_y^* - \\tilde E_y\\tilde B_x^*\\right]$$
+$$\\frac{du}{d\\omega} = 2\\pi\\epsilon_0\\left(|\\tilde E_x|^2+|\\tilde E_y|^2+|\\tilde E_z|^2\\right) + 2\\pi\\epsilon_0 c^2\\left(|\\tilde B_x|^2+|\\tilde B_y|^2+|\\tilde B_z|^2\\right)$$
+$$\\frac{dP_z}{d\\omega} = 4\\pi\\epsilon_0 c^2\\,\\mathrm{Re}\\left[\\tilde E_x\\tilde B_y^* - \\tilde E_y\\tilde B_x^*\\right]$$
 
 **Always uses the total (physical) Faraday tensor, LR+SR+BR summed** -- there is no
 long-range/short-range/boundary decomposition of any of these observables (that split only has
@@ -455,16 +455,18 @@ def compute_observables(radiation_filepath):
         Ex, Ey, Ez = _get_E_total(subset)
         Bx, By, Bz = _get_B_total(subset)
 
-        dSz = (4.0 * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
-        dSigmazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
+        # Prefactors include the 2 pi of Parseval's theorem for the (1/2pi) int dt e^(i omega t) convention of
+        # radiation_field.dat (fixed 2026-11-21: they were 2 pi too small; theory/spectral_density_2pi_fix.md).
+        dSz = (8.0 * np.pi * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
+        dSigmazz = (4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
             np.conj(Bx) * Ex + np.conj(By) * Ey - np.conj(Bz) * Ez)
 
         # No 1/omega factor here -- see this module's own doc comment: u/P_z are bilinear
         # directly in E/B, never in the vector potential A, so their spectral density carries no
         # such prefactor (unlike dSz/dSigmazz above).
-        du = (EPSILON_0 * (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
-              + EPSILON_0 * C_LIGHT ** 2 * (np.abs(Bx) ** 2 + np.abs(By) ** 2 + np.abs(Bz) ** 2))
-        dPz = 2.0 * EPSILON_0 * C_LIGHT ** 2 * np.real(Ex * np.conj(By) - Ey * np.conj(Bx))
+        du = 2.0 * np.pi * (EPSILON_0 * (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
+                            + EPSILON_0 * C_LIGHT ** 2 * (np.abs(Bx) ** 2 + np.abs(By) ** 2 + np.abs(Bz) ** 2))
+        dPz = 4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 * np.real(Ex * np.conj(By) - Ey * np.conj(Bx))
 
         Ex_grid, Ey_grid, Ez_grid = (a.reshape(grid_shape) for a in (Ex, Ey, Ez))
         Bx_grid, By_grid, Bz_grid = (a.reshape(grid_shape) for a in (Bx, By, Bz))
@@ -472,9 +474,9 @@ def compute_observables(radiation_filepath):
         LEy = lz_sign * _lz_operator(detector_type, Ey_grid, x_grid, y_grid, x_vals, y_vals)
         LEz = lz_sign * _lz_operator(detector_type, Ez_grid, x_grid, y_grid, x_vals, y_vals)
 
-        dLz = (2.0 * EPSILON_0 / omega_au) * np.imag(
+        dLz = (4.0 * np.pi * EPSILON_0 / omega_au) * np.imag(
             np.conj(Ex_grid) * LEx + np.conj(Ey_grid) * LEy + np.conj(Ez_grid) * LEz).ravel()
-        dLambdazz = (2.0 * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
+        dLambdazz = (4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
             np.conj(By_grid) * LEx - np.conj(Bx_grid) * LEy + np.conj(Bz_grid) * Ez_grid).ravel()
 
         rows.append(pd.DataFrame({
