@@ -1,6 +1,6 @@
 # Split of the propagation phase: e^{ik|X|} · e^{ik(R − |X|)} (all detectors, all modes)
 
-Revision of `stabilize_phase_axis_aligned_detector.md`. **Status: implemented 2026-10-23** (summary in
+Revision of the rejected `stabilize_phase_axis_aligned_detector.md` (deleted; in git history). **Status: implemented 2026-10-23** (summary in
 `implementation_details.md` §4.5).
 
 ## 1. Why

@@ -1,5 +1,6 @@
 # Build artifacts (out-of-source build enforced by CMake)
 build/
+build-debug/
 src/build/
 bin/
 

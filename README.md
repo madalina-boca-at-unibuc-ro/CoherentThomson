@@ -19,8 +19,10 @@ cmake --preset release && cmake --build --preset release   # same, via preset
 ```
 
 The build is always `Release` (`-O3 -march=native`): `CMakeLists.txt` overrides any other `CMAKE_BUILD_TYPE`.
-To build another type, pass `-DCOHERENT_THOMSON_ALLOW_NON_RELEASE=ON` (or use the `debug` preset); the option stays
-cached until you pass `=OFF`. Because of `-march=native`, build on the machine that runs the binary.
+To build another type, use the `debug` preset (its own `build-debug/` folder) or pass
+`-DCOHERENT_THOMSON_ALLOW_NON_RELEASE=ON`; the option stays cached until you pass `=OFF`. A non-Release binary goes
+to `bin/<type>/`, so it never replaces the Release one. Because of `-march=native`, build on the machine that runs
+the binary.
 
 The binary lands at `bin/coherent_thomson_solver` and requires a config file argument:
 
