@@ -13,10 +13,10 @@ The solver's convention is b(q) = sum_j w_j exp(+i q z_j), so at q = n K it give
 For harmonic N of a period ratio r = Lambda_mod / Lambda_1, q_N = N q_1 means n = N r.
 
 From the repository root:
-  .venv/bin/python theory/lattice_stack_tests/phase2_density_model.py                 # checkpoint; writes phase2_results.txt
-  .venv/bin/python theory/lattice_stack_tests/phase2_density_model.py --zeta 1 --N 2 --ratio 20 --sheets 120
-  .venv/bin/python theory/lattice_stack_tests/phase2_density_model.py --zeta 1 --ratio 20 --sheets 280 --q-over-K 20.5
-  .venv/bin/python theory/lattice_stack_tests/phase2_density_model.py --run <run_folder>    # b from a run's beam file
+  .venv/bin/python checks/lattice_stack/phase2_density_model.py                 # checkpoint; writes phase2_results.txt
+  .venv/bin/python checks/lattice_stack/phase2_density_model.py --zeta 1 --N 2 --ratio 20 --sheets 120
+  .venv/bin/python checks/lattice_stack/phase2_density_model.py --zeta 1 --ratio 20 --sheets 280 --q-over-K 20.5
+  .venv/bin/python checks/lattice_stack/phase2_density_model.py --run <run_folder>    # b from a run's beam file
 """
 import argparse
 import re

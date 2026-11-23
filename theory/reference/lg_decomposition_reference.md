@@ -1,8 +1,8 @@
 # `lg_decomposition.py`: reference
 
 What `py_scripts/radiation/lg_decomposition.py` computes, its command-line parameters and their defaults, and what
-it writes. Design history, verification runs and open points are in `theory/lg_decomposition_implementation.md`;
-the physics plan is `theory/LG_mode_decomposition.md` (this script is its Stage 2).
+it writes. Design history, verification runs and open points are in `theory/implemented/07_lg_screen_decomposition.md`;
+the physics plan is `theory/work/lg_mode_decomposition_plan.md` (this script is its Stage 2).
 
 The script post-processes one finished run. It changes nothing in the C++ output except appending (or replacing) its
 own section of `run_log.txt`.

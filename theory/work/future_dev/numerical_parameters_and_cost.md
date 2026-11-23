@@ -20,7 +20,7 @@ the electron**. In a plane wave `k·p` is conserved, so the laser phase is linea
 seen by the electron becomes one emitted N = 1 period, so harmonic N gets `trajectory_NT/N` points per period,
 independent of γ.
 
-Scan (`tests/nt_scan.py`): 16 electrons on a 1 w0 disk, Gaussian pulse σ = 25 cycles (cutoff 4), screen scaled to each γ's
+Scan (`checks/nt_scan/nt_scan.py`): 16 electrons on a 1 w0 disk, Gaussian pulse σ = 25 cycles (cutoff 4), screen scaled to each γ's
 emitted angular width, relative L2 difference of the total F (6 components) against NT = 1600 with the same formula. At
 `p_z = 13.48 mc`:
 

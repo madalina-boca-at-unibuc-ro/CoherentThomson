@@ -83,7 +83,7 @@ def extract_rotated_faraday_fields(data):
     long-range, '_s' for short-range, '_b' for boundary), read directly out of radiation_field.dat's
     F^{mu nu} columns, as lab-frame components (no rotation is applied).
     '_b' is identically zero when the run used radiation_formula="direct" -- see
-    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
+    theory/physics/FT_faraday_tensor_v1.md's "Form 2's boundary term F_b" section.
 
     Column mapping mirrors Core::Laser::LaserField::get_faraday_tensor's F^{mu nu} <-> E/B sign
     convention (F^{i0}=E_i, F^{jk}=-eps_jkl B_l): Ex=F10, Ey=F20, Ez=F30, Bx=F32, By=F13, Bz=F21.

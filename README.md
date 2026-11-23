@@ -60,7 +60,7 @@ python3 py_scripts/particle/plot_beam_density_z.py # analytic z-density; + histo
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
 python3 py_scripts/radiation/plot_all_components.py [--incident]
 python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary|total> <mu> <nu> [run_folder]
-                                                   # or `radial_phase all`; flat detectors only (theory/post_processing.md)
+                                                   # or `radial_phase all`; flat detectors only (theory/specs/04_radial_phase_removal.md)
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary|total> <mu> <nu>   # dense_frequency_spectrum=true
 python3 py_scripts/radiation/plot_point_spectrum_all.py            # every range/component + |F| overviews
 python3 py_scripts/radiation/plot_point_spectrum_observables.py    # local spin/energy densities and fluxes vs omega
@@ -86,7 +86,7 @@ formula and spectrum settings, and thread count. Provided configs:
 - `config/config_spectrum.cfg`: a dense frequency scan at a single screen point.
 - `config/config_cross_check.cfg`: parameter-matched to the independent Python reference implementation.
 
-Configs of past production runs are kept with the results that used them (e.g. `theory/scientific_report/configs/`).
+Configs of past production runs are kept with the results that used them (e.g. `reports/2026-10-29_progress/configs/`).
 
 `output_folder` is taken relative to `$HOME`, so the same config works on every machine the repo is checked out on.
 

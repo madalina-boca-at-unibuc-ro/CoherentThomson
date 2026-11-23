@@ -1,6 +1,6 @@
 # Longitudinal lattice stacks and ponderomotive microbunching
 
-Implementation brief for the CoherentThomson coding agent. Work in the existing C++ project at `~/Dropbox/work/bin/c++/codes/CoherentThomson`. Read the scientific report in `theory/scientific_report/progress_report.md`, and `theory/thomson_form_factor_diagnostic.md`. The bunching model comes from Schaap et al., *Phys. Rev. Accel. Beams* **26**, 074401 (2023), especially Eqs. (7), (9), (12), (15), and (24). The local PDF is in `~/Zotero/storage/RQ9MJ5TU/`.
+Implementation brief for the CoherentThomson coding agent. Work in the existing C++ project at `~/Dropbox/work/bin/c++/codes/CoherentThomson`. Read the scientific report in `reports/2026-10-29_progress/progress_report.md`, and `theory/specs/06_form_factor_diagnostic.md`. The bunching model comes from Schaap et al., *Phys. Rev. Accel. Beams* **26**, 074401 (2023), especially Eqs. (7), (9), (12), (15), and (24). The local PDF is in `~/Zotero/storage/RQ9MJ5TU/`.
 
 Implement one phase at a time. At each checkpoint, leave a runnable configuration and the exact commands for reproducing the checks, report the measured quantities and any discrepancies, and stop so the user can run and review that phase before authorizing the next one.
 

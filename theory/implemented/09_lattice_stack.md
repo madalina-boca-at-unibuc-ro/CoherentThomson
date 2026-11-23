@@ -1,8 +1,8 @@
 # Lattice stack: what was implemented
 
 Record of the finished work. The proposal is
-[CoherentThomson-lattice-stack-implementation.md](CoherentThomson-lattice-stack-implementation.md); discussion and open
-questions are in [lattice_stack-work.md](lattice_stack-work.md).
+[theory/specs/09_lattice_stack.md](../specs/09_lattice_stack.md); discussion and open
+questions are in [lattice_stack-work.md](../work/lattice_stack-work.md).
 
 | Part | Status |
 |---|---|
@@ -73,7 +73,7 @@ integer; `M > 1` without a spacing; a stack with a random beam; non-zero `beam_c
 ### Checkpoint results
 
 Run A's laser and lattice (`a0 = 0.1`, 1,076 sites per sheet, pure Gaussian pulse), 16 × 8 screen, harmonics N = 1, 2,
-`long_distance_direct_approx` unless stated. Full output: `theory/lattice_stack_tests/phase1_results.txt`.
+`long_distance_direct_approx` unless stated. Full output: `checks/lattice_stack/phase1_results.txt`.
 
 `b` in these tables used `q = k_s − k_L`, as the code did then; since the next commit it uses the exact `q` (below).
 `c` is the best complex factor in `F_M = c F_1`. `B` is the discrete `B_M` at the measured slope `2 N k_1/(1+β₀)`.
@@ -115,7 +115,7 @@ N = 1 and 5e-8 at N = 2, the same at `M` = 14, 28 and 56.
 
 **Control, `q d = 2π`:** `|b| = 1.000000000` at `M` = 2, 3, 5, diagnostic only.
 
-**Sheet translation:** see `theory/lattice_stack-work.md`. Relative residual power is at most 1e-12 (N = 1) and 2e-10
+**Sheet translation:** see `theory/work/lattice_stack-work.md`. Relative residual power is at most 1e-12 (N = 1) and 2e-10
 (N = 2) across ±140 nm, and `|c| − 1` is at most 2e-6.
 
 **Radiation formulas**, one on-axis point, N = 1, totals:
@@ -133,7 +133,7 @@ is 2e-8 at N = 1 and 1e-7 at N = 2, about the output's rounding.
 ### Exact `q` in the form factor (2026-11-06)
 
 `b` now uses `q = k_s − (K_s·P / K_L·P) k_L`, undressed mean `P`, and the log also lists `k_s − k_L`. No `.dat` output changes
-(checked on the lattice case). Checks, in `theory/lattice_stack_tests/form_factor_exact_q.py`:
+(checked on the lattice case). Checks, in `checks/lattice_stack/form_factor_exact_q.py`:
 
 - At `H = 2π/|k_s−k_L|`, `b = 6.900e-6` against the field's `c = 6.909e-6`. The old `q` gave `|b|` about 6e-9.
 - At θ = 0.9π, `a0 = 0.2`, small plane-wave disk: `b`'s phase is the conjugate of the field's, to 2e-8 rad for an x shift and
@@ -150,11 +150,11 @@ is 2e-8 at N = 1 and 1e-7 at N = 2, about the output's rounding.
 
 ```
 cmake -B build/ && cmake --build build/ --clean-first
-.venv/bin/python theory/lattice_stack_tests/phase1_translation_slope.py
-.venv/bin/python theory/lattice_stack_tests/phase1_stack_scan.py      # about 30 min on 24 threads
-.venv/bin/python theory/lattice_stack_tests/q_formula_head_on.py
-.venv/bin/python theory/lattice_stack_tests/q_formula_tilted_small_disk.py
-.venv/bin/python theory/lattice_stack_tests/q_formula_tilted_wide_disk.py
+.venv/bin/python checks/lattice_stack/phase1_translation_slope.py
+.venv/bin/python checks/lattice_stack/phase1_stack_scan.py      # about 30 min on 24 threads
+.venv/bin/python checks/lattice_stack/q_formula_head_on.py
+.venv/bin/python checks/lattice_stack/q_formula_tilted_small_disk.py
+.venv/bin/python checks/lattice_stack/q_formula_tilted_wide_disk.py
 ```
 
 Run them from the repository root. Finished runs in `~/output_tests/lattice_stack/` are reused, so delete them after
@@ -162,7 +162,7 @@ changing the solver. These runs came from a dirty build on top of `db70d2b`, and
 
 ## Phase 2: density model (2026-11-06)
 
-**Tool.** `theory/lattice_stack_tests/phase2_density_model.py`, standalone. With no arguments it runs the checkpoint in about 1 min
+**Tool.** `checks/lattice_stack/phase2_density_model.py`, standalone. With no arguments it runs the checkpoint in about 1 min
 and writes `phase2_results.txt`; `--zeta` gives one case at any `q`, `N`, sheet count and origin; `--run` compares with a run's log.
 
 **Two options, both at fixed total charge.** With `φ = K z + origin`, `K = 2π/Λ_mod`, uniform sheets `z_j = (j − (SP−1)/2) d`, `d = Λ_mod/S`:
@@ -213,7 +213,7 @@ relative errors there are not a useful measure.
 **What this does not show.** The moved sheets' accuracy at `q = n K` is partly by construction: their sum is the rule for the same integral that
 defines `b_n`. None of this has gone through the solver. Modulated stacks have not been compared with a log or a field.
 
-**To reproduce:** `.venv/bin/python theory/lattice_stack_tests/phase2_density_model.py`, from the repository root.
+**To reproduce:** `.venv/bin/python checks/lattice_stack/phase2_density_model.py`, from the repository root.
 
 ## Phase 3a: bunched stack in the solver (2026-11-06)
 
@@ -246,7 +246,7 @@ to leave a bunched stack's `.dat` files byte-identical, so those results stand; 
 ### Checkpoint results
 
 Run A (`a0 = 0.1`, 1,076 sites per sheet, 16 × 8 screen, `long_distance_direct_approx`), fixed total charge. `c` is the best complex factor in
-`F = c F_flat`; the prediction is `(-1)^n J_n(nζ) e^{+inφ₀}`. Residual: `|F − c F_flat|/|F_flat|`. Full output: `lattice_stack_tests/phase3a_results.txt`.
+`F = c F_flat`; the prediction is `(-1)^n J_n(nζ) e^{+inφ₀}`. Residual: `|F − c F_flat|/|F_flat|`. Full output: `checks/lattice_stack/phase3a_results.txt`.
 
 | Stack | N | Prediction | `\|c−pred\|` | `\|c\|²` | Residual |
 |---|---|---|---|---|---|
@@ -311,13 +311,13 @@ is not established, and on the screen it has no visible effect.
 ```
 .venv/bin/python theory/lattice_stack_tests/phase3a_noop_and_rejects.py <solver built at 8ccd0e6>
 .venv/bin/python theory/lattice_stack_tests/phase3a_switch.py <solver built before the switch; that build no longer exists>
-.venv/bin/python theory/lattice_stack_tests/phase3a_checkpoint.py     # about 20 min on 24 threads
-.venv/bin/python theory/lattice_stack_tests/phase3a_on_axis_n2.py
+.venv/bin/python checks/lattice_stack/phase3a_checkpoint.py     # about 20 min on 24 threads
+.venv/bin/python checks/lattice_stack/phase3a_on_axis_n2.py
 ```
 
 ## Beam distribution rework (2026-11-09)
 
-Plan and decisions: "Beam distribution rework" in [lattice_stack-work.md](lattice_stack-work.md). The Phase 1 and 3a
+Plan and decisions: "Beam distribution rework" in [lattice_stack-work.md](../work/lattice_stack-work.md). The Phase 1 and 3a
 sections above describe the keys as they were; this section supersedes them.
 
 **Layout.**
@@ -357,9 +357,10 @@ wings. `write_run_log` now takes the beam, to read the electrons' axial position
 `py_scripts/particle/plot_beam_density_z.py` reads `H` and `sigma_z` from `run_log.txt` and plots a modulated random
 beam too; runs from before the rework still plot. `config/config_lattice_stack.cfg` is migrated (same beam).
 `phase1_stack_scan.py`, `form_factor_exact_q.py`, `phase3a_checkpoint.py` use the new keys (not rerun);
-`phase3a_noop_and_rejects.py` and `phase3a_switch.py` are marked historical (old keys only).
+`phase3a_noop_and_rejects.py` and `phase3a_switch.py` were marked historical (old keys only) and deleted on
+2026-11-23 (git history keeps them under `theory/lattice_stack_tests/`).
 
-**Checks** (`lattice_stack_tests/rework_checks.py`, results in `rework_results.txt`; old and new solvers built on the
+**Checks** (`checks/lattice_stack/rework_checks.py`, results in `rework_results.txt`; old and new solvers built on the
 same compute node):
 
 1. Old solver against new, same beam: all `.dat` files byte-identical for the flat lattice, a uniform 14-sheet stack
@@ -388,7 +389,7 @@ exact `(−1)ⁿ Jₙ(nζ)` plus the aliases `J_{mS−n}(nζ)`, `m ≠ 0`, the l
 once `ν` passes `x` by the transition width `~x^(1/3)`, hence `S − n > nζ + c n^(1/3)`. At `ζ = 0` this is the
 grating condition `d < Λ_N` (no Bragg lobe from the spacing). A random beam has no aliasing, only `1/√N_e` noise.
 
-**Check** (`lattice_stack_tests/sheets_per_period_aliasing.py`, `sheets_per_period_aliasing_results.txt`): exact
+**Check** (`checks/lattice_stack/sheets_per_period_aliasing.py`, `sheets_per_period_aliasing_results.txt`): exact
 minimum `S` (worst of phase 0, π/2, π) for `n` = 1 to 60 and `ζ` = 0.5, 1, 1.111, 1.5. The rule is within one sheet of
 the `1e-4` column everywhere, except `ζ = 1.5`, `n = 20` (`|b|` ≈ 5e-3): 64 against 68, an error about `1e-2` there.
 Examples at `1e-4`: `ζ = 1`, n = 1, 2, 5, 20, 40: 7, 10, 18, 52, 95 sheets. Phase 3b (`ratio` 20, `ζ` = 1.111):
@@ -397,7 +398,7 @@ N = 1, 2, 3 need 55, 100, 146 per period.
 
 ## Gaussian stack (2026-11-10)
 
-Plan: "Gaussian stack" in [lattice_stack-work.md](lattice_stack-work.md). Supersedes the rework table's lattice rows
+Plan: "Gaussian stack" in [lattice_stack-work.md](../work/lattice_stack-work.md). Supersedes the rework table's lattice rows
 for `H = 0` and wings.
 
 **Layout.** A lattice stack takes the Gaussian width from its own key, `beam_stack_sigma_z` (optional, default 0,
@@ -435,7 +436,7 @@ its name for either type.
 `plot_beam_density_z.py` weights the histogram by `w`, bins lattices by their own sheet count (it divided by `H`), and
 prints the weighted mean and variance. The radiation code and `compute_form_factor` already used per-electron weights.
 
-**Checks** (`lattice_stack_tests/gaussian_stack_checks.py`, `gaussian_stack_results.txt`, old and new solvers built on
+**Checks** (`checks/lattice_stack/gaussian_stack_checks.py`, `gaussian_stack_results.txt`, old and new solvers built on
 the same node):
 
 1. `σ_z = 0`: every `.dat` byte-identical to the old solver (flat lattice, uniform and bunched stacks, random beams with

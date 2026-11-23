@@ -23,17 +23,17 @@ Common to all four:
 - **Beam:** γ ≈ 13.5 head-on, radius from the LG table (`beam_cylinder_radius < 0`).
 - **Numerics:** `long_distance_direct_approx` with `trajectory_NT 100`.
 - **Screen:** at `Z = 160000 w0 = 4×10⁶ λ`, radius sized from the R10 fits (99.5% containment angle × ~1.5).
-- Why the Gaussian pulse and the direct formula: `theory/future_dev/pulse_envelope_and_lg_normalization.md` and
-  `theory/future_dev/numerical_parameters_and_cost.md`. Short version: the old flat-top pulse leaked N = 1
+- Why the Gaussian pulse and the direct formula: `theory/work/future_dev/pulse_envelope_and_lg_normalization.md` and
+  `theory/work/future_dev/numerical_parameters_and_cost.md`. Short version: the old flat-top pulse leaked N = 1
   radiation into N = 2, breaking its azimuthal symmetry.
 
 ## Running
 
-Inside a compute-node job (`theory/srun.txt`: `srun` inside `tmux` on the head node, `--exclude=hpc-ctrl01,hpc-db01`):
+Inside a compute-node job (`theory/cluster.md`: `srun` inside `tmux` on the head node, `--exclude=hpc-ctrl01,hpc-db01`):
 
 ```
 git pull
-bash theory/scientific_report/configs/runs_A-D/run_batch.sh
+bash reports/2026-10-29_progress/configs/runs_A-D/run_batch.sh
 ```
 
 It builds on that node (`--clean-first`, `-march=native`), then runs the four cases one after another, each on all
@@ -106,10 +106,10 @@ field and the projections are underestimated).
   should show how much of that is real.
 - **(2,2):** N = 1 copies the laser mode (`LG_2^{−2}` at ~25 λ, little lens, because the (2,2) laser's peak field is
   lower). N = 2 has clean `l = −5` but is a mixture of radial modes, as the coherent-source model predicted at rest
-  (`theory/lg_decomposition_implementation.md`, Verification 7). So "almost pure LG" applies to N = 1 of both lasers
+  (`theory/implemented/07_lg_screen_decomposition.md`, Verification 7). So "almost pure LG" applies to N = 1 of both lasers
   and N = 2 of the Gaussian laser, not to N = 2 of (2,2).
 - **Sampling noise:** at 8192 electrons the off-`l` power was mostly an incoherent background in the outer rings,
   not a coherent admixture. One electron on axis is `l`-pure to 10⁻⁹ at a0 = 0.3, NT 100 and 200 alike. 65536
   electrons should cut that background ~8×; at a0 = 0.1, N = 2 of (0,0) should rise above 0.95 in `l` purity.
 - **Caveats for the report:** results at one frequency per harmonic; an idealized, fully coherent zero-thickness
-  disk; for the LG laser, "a0" means an on-axis peak of √2·a0 (`theory/future_dev/pulse_envelope_and_lg_normalization.md` §2).
+  disk; for the LG laser, "a0" means an on-axis peak of √2·a0 (`theory/work/future_dev/pulse_envelope_and_lg_normalization.md` §2).

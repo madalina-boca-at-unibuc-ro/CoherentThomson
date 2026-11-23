@@ -11,20 +11,20 @@ prefactors.
 
 ## The convention and where the factor was lost
 
-The solver uses (`theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md`)
+The solver uses (`theory/physics/FT_faraday_tensor_v2.md`)
 
 $$\tilde F(\omega,\mathbf x)=\frac1{2\pi}\int dt\,e^{i\omega t}F(t,\mathbf x),\qquad
 F(t)=\int d\omega\,e^{-i\omega t}\tilde F(\omega).$$
 
 The `1/(2π)` is in `general_factor` (`simulation.cpp`). The Thomson-dipole benchmark
-(`theory/future_dev/tests/thomson_dipole_check.py`, the same convention) confirms the absolute amplitude to ~1e-4.
+(`checks/thomson_dipole/thomson_dipole_check.py`, the same convention) confirms the absolute amplitude to ~1e-4.
 
 For real `A(t)`, `B(t)`, Parseval's theorem in this convention is
 
 $$\int dt\,A_i(t)B_j(t)=2\pi\int_{-\infty}^{\infty}d\omega\,\tilde A_i\tilde B_j^*
 =4\pi\int_0^{\infty}d\omega\,\Re[\tilde A_i\tilde B_j^*].$$
 
-`numerical_calculation_of_angular_momentum.md` wrote the time integral as `2πδ(ω − ω′)` and then dropped the `2π` on
+`theory/physics/angular_momentum_numerics.md` wrote the time integral as `2πδ(ω − ω′)` and then dropped the `2π` on
 the next line, giving `2 Re[…]` instead of `4π Re[…]` for the one-sided density (Eq. bilinear-spectral-density).
 Every formula in that note, and both scripts, were built on that line, so the factor is the same `2π` everywhere.
 
@@ -45,7 +45,7 @@ The photon number `dN_γ/dω = ∫dS (dP_z/dω)/(ħω)` scales with them.
 
 - `py_scripts/radiation/plot_observables.py`: the six prefactors and the docstring formulas.
 - `py_scripts/radiation/plot_point_spectrum_observables.py`: the four prefactors and the docstring.
-- `theory/numerical_calculation_of_angular_momentum.md`: the Parseval step, Eq. (bilinear-spectral-density) and
+- `theory/physics/angular_momentum_numerics.md`: the Parseval step, Eq. (bilinear-spectral-density) and
   every formula derived from it, with a dated note at the Parseval step.
 
 No other script uses an absolute density: `lg_decomposition.py`, `summarize_runs.py` and `compare_lattice_random.py`

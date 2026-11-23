@@ -76,8 +76,8 @@ inline MathUtils::RealFourVector dressed_momentum(const MathUtils::RealFourVecto
 }
 
 // The wavevector of the phase a translated electron's field picks up, measured against the solver
-// (theory/dev_notes.md): shifting it along its free worldline keeps the laser phase fixed, which brings in the
-// undressed K_s.P / K_L.P. A shift r multiplies the field by exp(-i q.r).
+// (theory/work/dev_notes_2026-07-28_to_2026-11-23.md): shifting it along its free worldline keeps the laser phase
+// fixed, which brings in the undressed K_s.P / K_L.P. A shift r multiplies the field by exp(-i q.r).
 inline MathUtils::RealFourVector translation_wavevector(const MathUtils::RealFourVector& P,
                                                         const MathUtils::RealFourVector& k_L,
                                                         const MathUtils::RealFourVector& k_s) {

@@ -1,15 +1,15 @@
 #!/bin/bash
 # Progress report Sec. 5: runs A-D on the polar lattice (plus D with the spacing halved), then the same
-# post-processing as runs A-D (theory/scientific_report/README.md, Post-processing). Run inside a compute-node job
-# (theory/srun.txt), e.g. from the head node:
+# post-processing as runs A-D (reports/2026-10-29_progress/README.md, Post-processing). Run inside a compute-node job
+# (theory/cluster.md), e.g. from the head node:
 #   sbatch --partition=cpu-wide --time=02:00:00 --exclusive --exclude=hpc-ctrl01,hpc-db01 \
 #          --output=$HOME/output/progress_report_20261029/logs/runs_A-D_lattice/slurm-%j.out \
-#          theory/scientific_report/configs/runs_A-D_lattice/run_batch.sh
+#          reports/2026-10-29_progress/configs/runs_A-D_lattice/run_batch.sh
 # Builds first on this node (-march=native). Runs go to ~/output/progress_report_20261029/runs_A-D_lattice/ (the
 # configs' output_folder); progress and the config -> run folder mapping to logs/runs_A-D_lattice/index.txt there.
 set -u
 REPO=~/work/c++/CoherentThomson
-CFG=theory/scientific_report/configs/runs_A-D_lattice
+CFG=reports/2026-10-29_progress/configs/runs_A-D_lattice
 OUT=~/output/progress_report_20261029/runs_A-D_lattice
 LOGS=~/output/progress_report_20261029/logs/runs_A-D_lattice
 mkdir -p "$OUT" "$LOGS"

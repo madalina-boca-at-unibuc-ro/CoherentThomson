@@ -2,7 +2,7 @@
 """Sheet-translation test: translate the flat lattice along z and fit the complex field ratio to exp(-i s z).
 
 Needs no stack code, only beam_center_z. Compares the fitted slope s with the analytic q_N = N k_1 + k_L.
-Run: .venv/bin/python theory/lattice_stack_tests/phase1_translation_slope.py
+Run: .venv/bin/python checks/lattice_stack/phase1_translation_slope.py
 """
 import numpy as np
 

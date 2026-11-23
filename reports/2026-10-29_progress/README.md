@@ -10,7 +10,8 @@ from `~/output/` and `~/output_tests/{ponderomotive_lens,bunch_length}/` (run fo
 there directly (`runs_A-D_lattice/`). The configs are in [configs/](configs/) with the same groups; each is
 byte-identical to the run's own `config.cfg` and, except for `runs_A-D_lattice/`,
 to the original in `config/expansion_a0_scan_server/` (removed 2026-10-31; its README and `run_batch.sh` are now in
-`configs/runs_A-D/`) or `theory/future_dev/tests/{ponderomotive_lens,bunch_length}/`.
+`configs/runs_A-D/`) or `theory/future_dev/tests/{ponderomotive_lens,bunch_length}/` (those copies were deleted on
+2026-11-23 as duplicates; see Path changes below).
 The output folder's `README.md` repeats this manifest with the batch logs, and its `SHA256SUMS` covers the outputs.
 
 Except for Part II, the builds were dirty; each of those run folders' `source.patch` applies to the recorded commit.
@@ -47,7 +48,7 @@ code (later `465c0bd`), job 30462.
 | lattice, spacing 2.44 λ, a0 = 0.01 | `20261030_092744` | `lattice_a0_001.cfg` |
 | random, 65536 electrons, a0 = 0.1 | `20261030_093318` | `random_a0_01.cfg` |
 
-Results and discussion of both lens groups: `theory/future_dev/ponderomotive_lens.md` (Results).
+Results and discussion of both lens groups: `theory/work/future_dev/ponderomotive_lens.md` (Results).
 
 **`runs_A-D_lattice/`**: Sec. 5, Fig. 9. Runs A–D with `beam_distribution polar_lattice`, `beam_lattice_spacing
 2.5 lambda` (configs written for this, not copies: only those two keys and `output_folder` differ from A–D), plus D
@@ -78,9 +79,9 @@ on one transverse sample. Commit `088b7ad` (clean), `hpc-node02`, ~37 min each. 
 | q₁σ = 0.5 (σ = 1.1 nm) | `20261030_155222` | `p0l0_a0_02_R25_sigma_qs05.cfg` |
 | q₁σ = 1 (σ = 2.2 nm) | `20261030_162911` | `p0l0_a0_02_R25_sigma_qs1.cfg` |
 
-The Sec. 6.3 amplitude table is the output of `theory/future_dev/tests/bunch_length/compare_bunch_length.py` (no
-arguments; it finds the runs here). The lens table comes from each run's `run_log.txt` (`lg_decomposition.py` with
-a bounded `--z0` list). Full analysis: `theory/future_dev/tests/bunch_length/README.md`.
+The Sec. 6.3 amplitude table is the output of `configs/bunch_length/compare_bunch_length.py` (no arguments; it finds
+the runs here). The lens table comes from each run's `run_log.txt` (`lg_decomposition.py` with a bounded `--z0` list).
+Full analysis: `configs/bunch_length/README.md`.
 
 ## Post-processing
 
@@ -110,3 +111,19 @@ cluster's Anaconda pandoc 2.12:
 pandoc progress_report.md -o progress_report.pdf --pdf-engine=tectonic -V papersize=a5 \
     -V geometry:margin=11mm -V fontsize=10pt -V colorlinks=true -H pdf_header.tex
 ```
+
+## Path changes (2026-11-23)
+
+This folder was `theory/scientific_report/` until the reorganization of 2026-11-23
+(`theory/archive/reorganization_plan.md`). The frozen configs were moved, not edited, so their comments still name the
+old paths:
+
+| Old | New |
+|---|---|
+| `theory/scientific_report/` | `reports/2026-10-29_progress/` |
+| `theory/future_dev/tests/bunch_length/` (README, scripts) | `configs/bunch_length/`; its four configs were duplicates of the ones here and are deleted |
+| `theory/future_dev/tests/ponderomotive_lens/*.cfg` | deleted: duplicates of `configs/lens_gaussian_pulse/` and `configs/lattice_check_flat_top/` |
+| `theory/future_dev/*.md` | `theory/work/future_dev/*.md` |
+| `theory/lattice_stack_tests/` | `checks/lattice_stack/` |
+| `theory/srun.txt` | `theory/cluster.md` |
+| other `theory/*.md` | see `theory/README.md` and the plan's tables |

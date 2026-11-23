@@ -1,25 +1,25 @@
-"""trajectory_NT convergence vs gamma (theory/future_dev/numerical_parameters_and_cost.md, section 1).
+"""trajectory_NT convergence vs gamma (theory/work/future_dev/numerical_parameters_and_cost.md, section 1).
 
-Generates configs from one_electron_on_axis.cfg (16 electrons on a 1 w0 disk, Gaussian pulse sigma = 25 cycles,
-cutoff 4), runs bin/coherent_thomson_solver for 4 momenta x 6 trajectory_NT x 2 formulas, and prints the relative L2
+Generates configs from checks/one_electron/one_electron_on_axis.cfg (16 electrons on a 1 w0 disk, Gaussian pulse
+sigma = 25 cycles, cutoff 4), runs bin/coherent_thomson_solver for 4 momenta x 6 trajectory_NT x 2 formulas, and prints the relative L2
 difference of the total F (6 components, N = 1 and 2) against NT = 1600 and between the two formulas. Configs and
 the run index go to ~/output_tests/nt_scan/, runs to ~/output_tests/. About 3 minutes on 16 threads.
 
-    python3 theory/future_dev/tests/nt_scan.py run    # run + analyze
-    python3 theory/future_dev/tests/nt_scan.py        # analyze the existing index (runs if there is none)
+    python3 checks/nt_scan/nt_scan.py run    # run + analyze
+    python3 checks/nt_scan/nt_scan.py        # analyze the existing index (runs if there is none)
 """
 import os, re, subprocess, sys, time, glob, json
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
+REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
 S = os.path.expanduser('~/output_tests/nt_scan')
 os.makedirs(S, exist_ok=True)
 sys.path.insert(0, os.path.join(REPO, 'py_scripts', 'radiation'))
 sys.argv = sys.argv[:1]
 from plot_point_spectrum import read_radiation_data, get_point_component
 
-BASE = os.path.join(HERE, 'one_electron_on_axis.cfg')
+BASE = os.path.join(HERE, '..', 'one_electron', 'one_electron_on_axis.cfg')
 OUT = os.path.expanduser('~/output_tests')
 PZ = [0.0, 2.0, 13.483, 50.0]
 NTS = [25, 50, 100, 200, 400, 1600]

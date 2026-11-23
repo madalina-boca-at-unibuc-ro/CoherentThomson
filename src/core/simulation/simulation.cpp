@@ -282,7 +282,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
   // multiply with a common factor; it reduces to -1/(2pi c^2) in atomic units (the minus sign is
   // the emitting particle's own charge, see below). The c^2 (not c) is required by the Jacobian of
   // the t->tau change of variable (dt/d(tau) = (u.n_R0)/c, on top of Jackson's own 1/c) -- see
-  // theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Jacobian of the change of variable"
+  // theory/physics/FT_faraday_tensor_v1.md's "Jacobian of the change of variable"
   // note; both the simplified and direct formulas now share this same overall constant.
   //
   // FIXED: this used to multiply by PhysUtils::AtomicUnits::e_0 (the electron charge *in modulus*,
@@ -304,7 +304,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
 
   // The radiation formulas carry only e^{ik(R - |X|)}; e^{ik|X|} (|X| = the screen point's distance from the
   // origin) is applied here, once per (frequency, screen point), so its rounding is shared by every electron
-  // rather than drawn per electron (theory/stabilize_phase_split_proposal.md). The exported field keeps the full
+  // rather than drawn per electron (theory/specs/05_propagation_phase_split.md). The exported field keeps the full
   // e^{ikR}.
   for (size_t i_omega = 0; i_omega < N_omega; ++i_omega) {
     for (size_t i_screen = 0; i_screen < N_screen; ++i_screen) {

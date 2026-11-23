@@ -358,7 +358,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
     is appended to the component label in the panel titles.
 
     'boundary' is identically zero when the run used radiation_formula="direct" -- see
-    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
+    theory/physics/FT_faraday_tensor_v1.md's "Form 2's boundary term F_b" section.
     'total' is the physical field, LR+SR+BR -- correct for both radiation_formula values without
     branching, since BR is identically zero for "direct"; BR columns are treated as zero (rather
     than erroring) if radiation_field.dat predates the boundary term, so 'total' degrades gracefully

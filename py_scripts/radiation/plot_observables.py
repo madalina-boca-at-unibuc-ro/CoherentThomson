@@ -3,7 +3,7 @@ Computes and plots the z-component of the spin (SAM), orbital (OAM), and total (
 momentum spectral densities, their z-directed fluxes, AND the electromagnetic energy spectral
 density and its z-directed flux (Poynting vector), from a run's coherently-summed Faraday tensor
 (radiation_field.dat) or the incident beam's own analytic field (incident_field.dat, via
---incident) -- see theory/numerical_calculation_of_angular_momentum.md ("Applications for the
+--incident) -- see theory/physics/angular_momentum_numerics.md ("Applications for the
 angular momentum density", sections 1-2 for AM density, 3-4 for AM flux, 5-6 for energy density/
 flux) for the derivation. Formerly plot_angular_momentum.py; renamed plot_observables.py once the
 energy density/flux quantities (sections 5-6 of the theory doc, added after the angular-momentum
@@ -42,7 +42,7 @@ $$\\frac{dP_z}{d\\omega} = 4\\pi\\epsilon_0 c^2\\,\\mathrm{Re}\\left[\\tilde E_x
 **Always uses the total (physical) Faraday tensor, LR+SR+BR summed** -- there is no
 long-range/short-range/boundary decomposition of any of these observables (that split only has
 meaning for the derivation's intermediate F^{mu nu} terms, see
-theory/FT_Faraday_tensor-direct_and_simplified_forms.md); only the sum is the actual radiated field
+theory/physics/FT_faraday_tensor_v1.md); only the sum is the actual radiated field
 E/B appearing in the formulas above. BR is treated as zero if the file predates the boundary term;
 for incident_field.dat, SR/BR are already identically zero so the sum reduces to LR alone.
 
@@ -376,7 +376,7 @@ def compute_observables(radiation_filepath):
     if detector_type not in ('rectangular', 'circular'):
         raise ValueError(
             f"detector_type '{detector_type}' is not a flat rectangular/circular screen -- "
-            "theory/numerical_calculation_of_angular_momentum.md's angular-momentum calculation is "
+            "theory/physics/angular_momentum_numerics.md's angular-momentum calculation is "
             "only implemented for those two (its own 'Target Screens' instruction).")
 
     is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
@@ -456,7 +456,7 @@ def compute_observables(radiation_filepath):
         Bx, By, Bz = _get_B_total(subset)
 
         # Prefactors include the 2 pi of Parseval's theorem for the (1/2pi) int dt e^(i omega t) convention of
-        # radiation_field.dat (fixed 2026-11-21: they were 2 pi too small; theory/spectral_density_2pi_fix.md).
+        # radiation_field.dat (fixed 2026-11-21: they were 2 pi too small; theory/work/spectral_density_2pi_fix.md).
         dSz = (8.0 * np.pi * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
         dSigmazz = (4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
             np.conj(Bx) * Ex + np.conj(By) * Ey - np.conj(Bz) * Ez)
@@ -686,7 +686,7 @@ def _write_run_log_section(run_dir, header, body_lines):
 def append_integration_to_run_log(run_dir, detector_type, integrated, label_suffix=""):
     """
     Appends (or, on a re-run, replaces) a density/flux summary table (one column per QUANTITIES
-    entry) in the run's own run_log.txt -- theory/numerical_calculation_of_angular_momentum.md's
+    entry) in the run's own run_log.txt -- theory/physics/angular_momentum_numerics.md's
     'Surface Integration' step, integrated over the whole screen, one row per frequency.
     `label_suffix` (e.g. " -- incident beam", set when run on incident_field.dat) keeps that table in
     its own section rather than overwriting the actual scattered-radiation run's own logged section,
@@ -697,7 +697,7 @@ def append_integration_to_run_log(run_dir, detector_type, integrated, label_suff
         body += [f"  {_UNCALIBRATED_MAGNITUDE_CAVEAT}", ""]
     body += [
         "  Rough sum_p Delta_A_p * (dQ/domega)_p screen integration "
-        "(theory/numerical_calculation_of_angular_momentum.md,",
+        "(theory/physics/angular_momentum_numerics.md,",
         f"  'Surface Integration' step), {detector_type} detector, trapezoidal quadrature in "
         f"{'(x, y)' if detector_type == 'rectangular' else '(r^2, phi)'}, area weights in atomic units.",
     ]
@@ -818,7 +818,7 @@ def _screen_edge_radius_au(detector_type, config_path):
 
 def estimate_gaussian_waist(result, detector_type, config_path, radiation_filepath):
     """
-    theory/gaussian_waist_postprocessing.md: per frequency, the second-moment width of the normal Poynting
+    theory/specs/08_gaussian_waist_estimate.md: per frequency, the second-moment width of the normal Poynting
     flux on the screen, w_eff^2 = 2 int r^2 P_n dA / int P_n dA (P_n = dPz along the screen normal, trapezoidal
     area weights of get_screen_area_weights_au), and the waist w_0 at the origin of a fundamental Gaussian
     beam with that width at |Z|: w_eff^2 = w_0^2 + (lambda_s Z / (pi w_0))^2. Both roots are returned: the
@@ -887,7 +887,7 @@ def append_waist_to_run_log(run_dir, waist, config_path, laser_is_gaussian, labe
     lambda_L_au = convert_unit_to_number('lambda', config_path)
     Z = waist['Z'].iloc[0]
     body = [
-        "  theory/gaussian_waist_postprocessing.md: w_eff^2 = 2 <r^2> of the normal Poynting flux P_z over the "
+        "  theory/specs/08_gaussian_waist_estimate.md: w_eff^2 = 2 <r^2> of the normal Poynting flux P_z over the "
         "screen (trapezoidal area weights),",
         "  inverted with w_eff^2 = w_0^2 + (lambda_s Z/(pi w_0))^2 (fundamental Gaussian, waist at the origin). "
         "Both roots: 'far' (Z > z_R) and",

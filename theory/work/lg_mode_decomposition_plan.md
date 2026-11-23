@@ -2,15 +2,15 @@
 
 Long-term goal: write the emitted field on the detector as a superposition of Laguerre-Gauss modes and identify
 their parameters (waist, waist position, `p`, `l`, weights). This file tracks the stages as they are implemented.
-Earlier stage: radial-phase removal, `theory/post_processing.md` (`plot_processed.py radial_phase`).
+Earlier stage: radial-phase removal, `theory/specs/04_radial_phase_removal.md` (`plot_processed.py radial_phase`).
 
 All of it is Python post-processing of one run (one detector distance `Z`). The only C++ change it needed is
 the incident-field screen (since 2026-10-27, `incident_field.dat` is at `Z` on a beam-sized grid, described by
-`incident_config.cfg`; `dev_notes.md`), which serves as the known-answer test.
+`incident_config.cfg`; `theory/work/dev_notes_2026-07-28_to_2026-11-23.md`), which serves as the known-answer test.
 
 ## Stage 1: Gaussian waist from the Poynting-flux second moment
 
-Spec: `theory/gaussian_waist_postprocessing.md`. Implemented in `py_scripts/radiation/plot_observables.py`
+Spec: `theory/specs/08_gaussian_waist_estimate.md`. Implemented in `py_scripts/radiation/plot_observables.py`
 (`estimate_gaussian_waist`, `append_waist_to_run_log`). It runs on every non-`--incident` call and writes the
 section "Gaussian waist estimate (plot_observables.py)" to `run_log.txt` (also printed to stdout). On
 `--incident` it runs only when the run has `incident_config.cfg` (the field at `Z`; section label suffixed
@@ -74,15 +74,15 @@ N = 1: the far root is the physical one (deep far field). The inferred `w0 ≈ 1
 laser's 25 `λ_L`. N = 2 is meaningless here (circular, `|l| = 1`).
 
 **Explained by the `a0` test** (runs `20261027_181823`/`182248`, details in
-`lg_decomposition_implementation.md`, Verification 4): with `config_expansion.cfg` the waist is 17.7 λ at
+`theory/implemented/07_lg_screen_decomposition.md`, Verification 4): with `config_expansion.cfg` the waist is 17.7 λ at
 `a0 = 0.1` and 23.5 λ at `a0 = 0.01`. Most of the deficit is ponderomotive dressing, whose radial emission phase
 widens the far field. The rest (23.5 vs 25 λ at `a0 = 0.01`) is the ~1% incoherent speckle of random electron
 positions, which adds a uniform background to the second moment. Stage 2's series waist gives 25.3 λ there.
 
 ## Stage 2: least-squares fit on LG modes at fixed l
 
-Spec: `theory/lg_screen_decomposition_simple.md`. Implemented in `py_scripts/radiation/lg_decomposition.py`.
-Implementation, conventions, verification and first results: `theory/lg_decomposition_implementation.md`.
+Spec: `theory/specs/07_lg_screen_decomposition.md`. Implemented in `py_scripts/radiation/lg_decomposition.py`.
+Implementation, conventions, verification and first results: `theory/implemented/07_lg_screen_decomposition.md`.
 It fits the helicity components `E_±` with unit-norm `LG_p^l` (waist at the origin, `l = J ∓ 1`,
 `J = N(m+σ)` about lab +z) over a scan of trial `w0`. The fit keeps the complex phase, so it uses the wavefront
 curvature that Stage 1 left unused. First results: N = 1 has `eps = 5%` at `w0 ≈ 15.8 λ_L`, with 31% of the
@@ -99,8 +99,8 @@ The **series waist** (`series_waist`) reads the waist and waist position of a si
   `l = L_N` per harmonic as a first generalization.
 - **Waist position:** done. The series waist reads it off a single beam; `--scan-z0` fits `(w_0, z_0)` in the
   basis (`s = Z − z_0`). At rest with `a0 = 0.1` it shows the dressing acting as a focusing lens of `f ≈ z_R`
-  on N = 1 (17.9 λ waist at 914 λ, 95% in one mode; `lg_decomposition_implementation.md`, Verification 6).
-- **Coherent-source prediction:** done for electrons at rest (`lg_decomposition_implementation.md`, "Coherent-source
+  on N = 1 (17.9 λ waist at 914 λ, 95% in one mode; `theory/implemented/07_lg_screen_decomposition.md`, Verification 6).
+- **Coherent-source prediction:** done for electrons at rest (`theory/implemented/07_lg_screen_decomposition.md`, "Coherent-source
   prediction" and Verification 7). The laser mode to the `N`-th power, propagated, times `θ^{|Δl|}`, with no free
   parameter, explains N = 1 to 0.1% and N = 2 to 3–6% in the weak-field limit (0.2% on the lattice beam). It is the right test for `N ≥ 2`
   from an `LG_p^l` laser, whose harmonics are not single modes. To do: a moving beam (Doppler-mapped source and
@@ -112,5 +112,5 @@ The **series waist** (`series_waist`) reads the waist and waist position of a si
   `φ_N(r) ≈ 2N k_L δz_mid(r) ∝ N a0² n_cyc e^{−2r²/w0²}`; it survives at `Z → ∞`. As a pure phase it gives the same
   `f` for every N; N = 2 differs because the phase is Gaussian, not parabolic, plus a 5% detuning amplitude.
   **Done 2026-10-30:** the per-electron dressing factor in the coherent-source prediction explains the `a0 = 0.1`
-  field to 99.99% (N = 1) and 99.8% (N = 2) with no free parameter (`future_dev/ponderomotive_lens.md`).
+  field to 99.99% (N = 1) and 99.8% (N = 2) with no free parameter (`theory/work/future_dev/ponderomotive_lens.md`).
 - N = 2 at small `a0`: rerun with a finer `trajectory_NT` first.

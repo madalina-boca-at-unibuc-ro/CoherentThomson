@@ -14,7 +14,7 @@ they were obtained, and the proposed next step.
 
 **Done the same day:** `plot_observables.py`'s azimuthal derivative is now spectral (FFT), exact for
 `|l| < (N_phi−1)/2`. The old centered difference read `L_z`/`Lambda_zz` low by `1 − sin(lΔφ)/(lΔφ)`: 0.17% at
-`l = 1`, 4.1% at `l = 5` with `N_phi = 64` (details in `dev_notes.md`).
+`l = 1`, 4.1% at `l = 5` with `N_phi = 64` (details in `theory/work/dev_notes_2026-07-28_to_2026-11-23.md`).
 
 **Suggested order:**
 1. Production settings that need no code change: Gaussian envelope, `long_distance_direct_approx` with
@@ -25,7 +25,8 @@ they were obtained, and the proposed next step.
 4. Incoherent part and partially coherent LG decomposition (steps 2 and 3 of the project).
 5. Spectral line and vortex core.
 
-Test inputs are in [tests/](tests/): `one_electron_on_axis.cfg` (the (0,0) run's config with one electron at
+Test inputs are in [checks/one_electron/](../../../checks/one_electron/) and
+[checks/nt_scan/](../../../checks/nt_scan/): `one_electron_on_axis.cfg` (the (0,0) run's config with one electron at
 `r = 0`), `one_electron_on_axis_spectrum.cfg` (the same, single on-axis screen point, dense spectrum 0.5–2.5 ω₁)
 and `nt_scan.py`. Each run takes seconds. Their output goes to `~/output_tests/`, so the plotting scripts' "latest run"
 in `~/output` is not affected.

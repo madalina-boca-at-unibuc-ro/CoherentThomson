@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """b with the exact q against the field: at H = Lambda_1 both are ~7e-6, and b's phase is the conjugate of the field's.
 
-Run from the repository root: .venv/bin/python theory/lattice_stack_tests/form_factor_exact_q.py
+Run from the repository root: .venv/bin/python checks/lattice_stack/form_factor_exact_q.py
 """
 import numpy as np
 

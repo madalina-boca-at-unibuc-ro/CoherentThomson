@@ -1,7 +1,7 @@
 # Ponderomotive lens: the dressing as a dented source
 
 Written 2026-10-30. A physical picture of the radial phase that ponderomotive dressing puts on the emission
-(`lg_decomposition_implementation.md`, Verifications 4 and 6), a parameter-free model of it, and the tests
+(`theory/implemented/07_lg_screen_decomposition.md`, Verifications 4 and 6), a parameter-free model of it, and the tests
 that would confirm it. **Test 1 is done and confirms the model** (Results below): the dressing factor is in
 `lg_decomposition.py`. Tests 2–4 are still open.
 
@@ -91,7 +91,7 @@ The 2026-10-27 runs are not on the server, so the Verification 6 setup was rerun
 - backscatter screen at 2e4 λ, `R_max = 40 w0`;
 - 256 × 64 screen points, `trajectory_NT 100`.
 
-Configs are in `tests/ponderomotive_lens/`; output is in `~/output/progress_report_20261029/lattice_check_flat_top/`
+Configs are in `reports/2026-10-29_progress/configs/lattice_check_flat_top/`; output is in `~/output/progress_report_20261029/lattice_check_flat_top/`
 (moved there with the report's other runs). All runs used one exclusive node (job 30462).
 
 | Run | Beam | `a0` | Time (256 CPUs) |
@@ -137,19 +137,19 @@ Coherent-source prediction fidelity for `E_−`, without → with `d_N`:
   These match Verification 6 (17.9 λ at 914 λ; 7.6 λ at 542 λ).
 - **N = 2's "coherent tail" was sampling.** At `a0 = 0.01` the lattice gives N = 2 fidelity 0.998, with 0.29% of the
   power outside the prediction's 99.9% radius. The random runs gave 0.971 and 2.7%
-  (`lg_decomposition_implementation.md`, Verification 7). Speckle is ~4× larger at N = 2, since its transverse
+  (`theory/implemented/07_lg_screen_decomposition.md`, Verification 7). Speckle is ~4× larger at N = 2, since its transverse
   `q`-area on the same screen scales as `N²`.
 
 ## Results with the report's pure Gaussian pulse (2026-10-30)
 
 Flat-top pulses are no longer used for production (the derivative discontinuity at the plateau edges gives
 unavoidable CEP-like effects), so the test was repeated with the laser of the server a0-scan configs
-(`config/expansion_a0_scan_server/`, now `theory/scientific_report/configs/runs_A-D/`): `laser_flat_duration 0`, `wing_sigma 25` cycles, cutoff 4,
+(`config/expansion_a0_scan_server/`, now `reports/2026-10-29_progress/configs/runs_A-D/`): `laser_flat_duration 0`, `wing_sigma 25` cycles, cutoff 4,
 `long_distance_direct_approx`, LG-table beam radius (1.86 w0). The other changes, as before:
 - electrons at rest, polar lattice;
 - screen at 800 w0, `R_max` 40 w0 (60 w0 at `a0 = 0.2`), 256 × 64 points.
 
-Configs: `tests/ponderomotive_lens/gaussian_lattice_*.cfg`. Job 30464, 78 s per run (1076 electrons). Output:
+Configs: `reports/2026-10-29_progress/configs/lens_gaussian_pulse/gaussian_lattice_*.cfg`. Job 30464, 78 s per run (1076 electrons). Output:
 `~/output/progress_report_20261029/lens_gaussian_pulse/`.
 
 | Run | `a0` | N = 1: without → with `d_N` | N = 2: without → with `d_N` |
@@ -203,7 +203,7 @@ incomplete. Candidates then: the transverse ponderomotive push, or the source's 
 
 ### 2. Single-electron calibration of `d_N(r)` (seconds per run)
 
-Like `tests/one_electron_on_axis.cfg`:
+Like `checks/one_electron/one_electron_on_axis.cfg`:
 - one electron at `r = 0, 0.25, …, 1.5 w0`;
 - one screen point (on axis for N = 1);
 - `a0 = 0.1` and `a0 = 0.01`.
@@ -213,7 +213,7 @@ Take the complex `F` at the run's frequency. Divide by the `a0 = 0.01` value and
 helicity vanishes on axis, so use one fixed off-axis point whose angle is much larger than `r/Z`. This is the
 fastest check of the formula itself, before test 1 puts it into the prediction.
 
-With the lattice beam (`tests/ponderomotive_lens/`), each run below takes under a minute on 256 CPUs.
+With the lattice beam (`reports/2026-10-29_progress/configs/lattice_check_flat_top/`), each run below takes under a minute on 256 CPUs.
 
 ### 3. Evaluate at the undressed frequency (small C++ change, one lattice run)
 

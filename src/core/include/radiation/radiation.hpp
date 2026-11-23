@@ -11,12 +11,12 @@ namespace Core::Radiation {
 // Which closed form of the Fourier-transformed field compute_radiation evaluates, selected by the
 // config key "radiation_formula" (parse_radiation_formula):
 // - Simplified ("simplified"): exact integration-by-parts form of
-//   theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md. Velocity only; fills long_range,
+//   theory/physics/FT_faraday_tensor_v2.md. Velocity only; fills long_range,
 //   short_range, and boundary (the latter only from the two trajectory endpoints).
 // - Direct ("direct"): exact direct FT of the Lienard-Wiechert field. Needs the stored
 //   4-acceleration; fills long_range and short_range, boundary stays zero.
 // - LongDistanceSimplified / LongDistanceDirect ("long_distance_simplified"/"long_distance_direct"):
-//   the long-distance approximation of theory/long_distance_direct_simplified_coding_guide.md
+//   the long-distance approximation of theory/specs/01_long_distance_formulas.md
 //   (fixed reference point r(tau_m), fixed direction n_0, 1/|x_0| amplitude, linearized phase, no
 //   1/R^2 term), evaluated by the two-transverse-projection method. short_range stays zero; the
 //   simplified variant puts its bulk term in long_range and its endpoint term in boundary, the direct

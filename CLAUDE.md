@@ -11,29 +11,30 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
 `Simulation::run_simulation` over the whole beam, and write `.dat` files plus `run_log.txt` to
 `~/<output_folder>/YYYYMMDD_HHMMSS/` (`output_folder` is relative to `$HOME`). `py_scripts/` plots the outputs.
 
-**Open issues** (detail in `theory/dev_notes.md` unless noted):
-- **Old runs need their observables re-run:** OAM numbers before 2026-10-29 (centered-difference `∂φ`, ~5% low at
-  N = 2) and absolute spectral densities / photon numbers before 2026-11-21 (`2π` too small; ratios unaffected,
-  `theory/spectral_density_2pi_fix.md`). Re-run `plot_observables.py` / `plot_point_spectrum_observables.py`
-  before quoting them.
-- `b(q)` (`Simulation::compute_form_factor`, `theory/thomson_form_factor_diagnostic.md`): harmonic 1 along the
-  detector normal, `q = k_s − (K_s·P / K_L·P) k_L` with undressed mean `P`; a translated electron's field gets
-  `e^{-i q·r}` and `q_N = N q_1` (not `N k_1 + k_L`).
-- `LaguerreGaussLaser` matches the standard LG mode numerically but isn't physics-reviewed (Allen 1992; Siegman
-  ch. 17); `PhysUtils::non_linear_Thomson_formula` is flagged in-code for review.
-- The flat-top envelope leaks N = 1 into N = 2 (`laser_flat_duration 0` removes it); LG on-axis field is √2 × the
-  plane wave's at the same `a0`: `theory/future_dev/pulse_envelope_and_lg_normalization.md`. Unacted plans:
-  `theory/future_dev/README.md`.
-- Ponderomotive dressing acts as a lens, so `N ≥ 2` isn't a single LG mode: `theory/future_dev/ponderomotive_lens.md`.
-- **Lattice stack:** Phases 1–3a done; the beam rework (2026-11-09) and Gaussian stack (2026-11-10) await the user's
-  review; Phase 3b next. State and "Resume here": `theory/lattice_stack-work.md`.
+**Open issues and the status of every document:** `theory/README.md`. Read it before starting work; it also
+points to the lattice-stack "Resume here".
+
+## Spec-driven workflow
+
+Work arrives as a numbered task spec, `theory/specs/NN_<name>.md` (next free number in `theory/README.md`). When it is
+done, `theory/implemented/NN_<name>.md`, with the same number, records the status, the commit, where the code is,
+deviations from the spec, judgment calls (e.g. tolerances) and how it was checked.
+
+- **A spec with a `Status: DRAFT, NOT APPROVED` notice is for discussion:** read it and the code it names, reply with
+  your analysis, and wait. Remove the notice only when the user approves.
+- Before implementing, read the real code and the earlier `implemented/` notes; reuse existing classes and
+  conventions rather than creating competing copies. Implement only the current spec.
+- If a needed API in earlier code is missing or broken, fix it there and record it in that spec's `implemented/` note.
+- Afterwards write the `implemented/` note and update `theory/README.md` (status, open issues). Living references
+  (`theory/reference/`) are kept in sync with the code; new log entries go to `theory/work/dev_notes.md`.
+- Rejected specs are not numbered (archive or delete them).
 
 ## Machines
 
 Two laptops share a checkout through Dropbox; two servers sync through git. Python is `.venv` on the laptops and
 Anaconda on the servers. Compilers differ between machines.
 
-**Slurm cluster** (`theory/srun.txt` for commands, limits, long-run recipe): head node `hpc-ctrl01`, compute nodes
+**Slurm cluster** (`theory/cluster.md` for commands, limits, long-run recipe): head node `hpc-ctrl01`, compute nodes
 `hpc-node[01-20]` (256 CPUs, GCC 13.3), shared home.
 - **Always `--exclude=hpc-ctrl01,hpc-db01`**: a job on the head node looks like the login shell (check
   `squeue -u $USER`, not `hostname`).
@@ -65,7 +66,7 @@ is always Release.
 - **Every Release build writes the same `bin/coherent_thomson_solver`** and a no-op build doesn't relink: to compare
   builds (e.g. two commits), `--clean-first` and copy each binary out.
 - **GCC 15.2's SLP vectorizer miscompiles the long-distance radiation functions.** Keep their
-  `__attribute__((optimize("no-tree-slp-vectorize")))` everywhere (`theory/implementation_details.md` §6).
+  `__attribute__((optimize("no-tree-slp-vectorize")))` everywhere (`theory/reference/implementation_details.md` §6).
 
 **Build provenance:** the binary embeds commit, dirty state, compiler, flags, host (`cmake/build_info.cmake`), printed
 in `run_log.txt`; a dirty build writes `<run>/source.patch`. `require_clean_build true` refuses dirty builds. Git
@@ -85,22 +86,21 @@ the commit message and format on a laptop. **No test suite**, no lint command.
 - `config_spectrum.cfg`: one-point dense spectrum. `config_cross_check.cfg`: matched to the Python reference's
   `main.py` `INPUTS`; use it for every C++-vs-Python comparison and update it when `INPUTS` change.
 
-Frozen experiments:
-- `theory/scientific_report/`: the 2026-10-29 progress report; its `README.md` maps every quoted result to a run and a
-  frozen config. Runs in `~/output/progress_report_20261029/`. If a quoted result changes, update the report.
-- `theory/lattice_stack_tests/`: lattice-stack checks (results in `*_results.txt`). They **reuse finished runs in
-  `~/output_tests/lattice_stack/`: delete those after changing the solver.** `rework_checks.py` and
-  `gaussian_stack_checks.py` take `<old_solver> <new_solver>`; `phase3a_noop_and_rejects.py`/`phase3a_switch.py` need
-  pre-rework binaries.
-- `theory/future_dev/tests/`: one-electron configs, the Thomson-dipole benchmark, `nt_scan.py` (`trajectory_NT`
-  convergence, ~3 min), `bunch_length/`, `ponderomotive_lens/`. All write to `~/output_tests/...`.
+Elsewhere:
+- `reports/<name>/`: a report with every experiment that fed it (configs, batch and comparison scripts). Frozen configs
+  are moved, never edited. `reports/2026-10-29_progress/`: the progress report; its `README.md` maps every quoted
+  result to a run and a frozen config. Runs in `~/output/progress_report_20261029/`. If a quoted result changes,
+  update the report.
+- `checks/` (index: `checks/README.md`): reusable checks, all writing to `~/output_tests/...`: the Thomson dipole,
+  one-electron configs, `nt_scan` (`trajectory_NT` convergence, ~3 min) and the lattice-stack checks. The latter
+  **reuse finished runs in `~/output_tests/lattice_stack/`: delete those after changing the solver.**
 
 ### Verification (stands in for tests; use a small copied config)
 
 - **`simplified` vs `direct`** (`radiation_formula`), comparing totals: the main check. They agree to `O(dτ²)` (4x per
   doubling of `trajectory_NT`) down to a 1 λ screen; a `1/(kR)` mismatch means a short-range bug.
-- **Thomson dipole** (the only absolute check, under a second): run `theory/future_dev/tests/thomson_dipole.cfg`, then
-  `python3 theory/future_dev/tests/thomson_dipole_check.py <run>`; agrees to ~1e-4.
+- **Thomson dipole** (the only absolute check, under a second): run `checks/thomson_dipole/thomson_dipole.cfg`, then
+  `python3 checks/thomson_dipole/thomson_dipole_check.py <run>`; agrees to ~1e-4.
 - **Rotation covariance:** rotating laser, beam momentum and forward detector by `R` gives `F → Λ F Λᵀ` (6 digits).
 - **Spherical screen:** `B` exactly ⊥ `n0`, `E` not (`|E_r|/|E_θ|` ~ 0.1), via `plot_spherical_components.py`.
 - **Byte-identity** for intended no-ops: diff the `.dat` outputs with the same config and `random_seed`.
@@ -123,7 +123,7 @@ python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary
 python3 py_scripts/radiation/plot_point_spectrum{,_all,_observables}.py           # dense_frequency_spectrum runs
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>
 python3 py_scripts/radiation/plot_observables.py [--incident]   # rect./circular facing ±Oz (--incident: any)
-python3 py_scripts/radiation/lg_decomposition.py [--incident] ...   # options: theory/lg_decomposition_reference.md
+python3 py_scripts/radiation/lg_decomposition.py [--incident] ...   # options: theory/reference/lg_decomposition_reference.md
 ```
 `--incident` uses `incident_field.dat` (analytic laser field; rectangular/circular detectors only). `mu == nu` is
 rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{32}, F^{13}, F^{21})`.
@@ -153,7 +153,7 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
   `incident_field.dat` is at `z = Z` past the waist (`Radiation::incident_screen`, plus `incident_config.cfg`).
   `radiation_field.dat` is lab-frame components on the detector's local grid (mirrored `(x, −y)` facing −Oz).
 - The beam axis follows the mean momentum; `beam_center_x/y/z` apply **before** that rotation.
-- **Beam along its axis** (full rules: `theory/lattice-stack-implemented.md`, last two sections): `random` is uniform
+- **Beam along its axis** (full rules: `theory/implemented/09_lattice_stack.md`, last two sections): `random` is uniform
   in `H = beam_cylinder_height` with Gaussian end smoothing `beam_sigma_z` (`0` is byte-identical to the plain
   cylinder); `polar_lattice` puts `beam_stack_sheets` sheets over `L`. With `beam_stack_sigma_z > 0` the Gaussian is in
   the sheet **charges**, not positions (no `1/√M` noise). Each type ignores the other's keys, so switching is one edit.
@@ -167,14 +167,15 @@ rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{3
 - A fixed `random_seed` with fewer electrons gives the first electrons of a larger beam: use different seeds for
   independent samples.
 - Negative `beam_cylinder_radius` = `IoUtils::lg_beam_radius_in_w0(p, l) · w0` (LG only); its table is copied from
-  `theory/table of beam electron radius in units of w_0 for different p,l.md`: keep in sync.
+  `theory/specs/03_lg_beam_radius_table.md`: keep in sync.
 - `CircularDetector`'s radial grid is **equal-area**. A detector with grid counts `1` is one exact point.
 
 ### Radiation calculation (the hot path)
 
-Modes, optimizations, precision, timings: `theory/implementation_details.md` (**keep in sync with `radiation.cpp`**).
-Formulas: `theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md`; long-distance modes:
-`theory/long_distance_direct_simplified_coding_guide.md`; OAM: `theory/numerical_calculation_of_angular_momentum.md`.
+Modes, optimizations, precision, timings: `theory/reference/implementation_details.md` (**keep in sync with
+`radiation.cpp`**).
+Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
+`theory/specs/01_long_distance_formulas.md`; OAM: `theory/physics/angular_momentum_numerics.md`.
 
 - **Three terms** (`LR_`/`SR_`/`BR_` columns): long-range, short-range, boundary. **Only the sum is physical**; the
   split differs in LD modes, so compare only totals.
@@ -224,4 +225,5 @@ Flat `key value [unit]` lines; units via `IoUtils::convert_unit_to_number` (chec
 - **Rectangular and spherical screens differ for real** (exact `R`): they agree only when `N_F = a²/(Dλ) << 1`.
   Compare `Re/Im(F01)`, not `|F01|`.
 
-Full history and rationale: `theory/dev_notes.md`.
+History and rationale: `theory/work/dev_notes_2026-07-28_to_2026-11-23.md` (frozen); new entries in
+`theory/work/dev_notes.md`.

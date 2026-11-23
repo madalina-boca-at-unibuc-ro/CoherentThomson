@@ -92,7 +92,7 @@ def modulated_density(bins, modulation, z_c):
 def analytic_density(z, H, sigma_z, z_c):
     """
     Normalized longitudinal density of Core::Particle::generate_electron's z = z_c + U(-H/2, H/2) +
-    N(0, sigma_z^2) (theory/gaussian_smoothed_electron_cylinder.md): the top-hat convolved with the
+    N(0, sigma_z^2) (theory/specs/02_gaussian_smoothed_cylinder.md): the top-hat convolved with the
     Gaussian, reducing to the plain top-hat at sigma_z = 0 and to the Gaussian alone at H = 0.
     """
     s = z - z_c

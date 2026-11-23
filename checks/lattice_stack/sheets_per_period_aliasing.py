@@ -9,7 +9,7 @@ that Particle::modulation_warnings uses. n = N Lambda_mod / Lambda_1. The floor 
 tolerance meaningful for harmonics the modulation barely excites, where a relative error would demand aliases below
 double-precision roundoff.
 
-Run: python3 theory/lattice_stack_tests/sheets_per_period_aliasing.py   (a few seconds; results in
+Run: python3 checks/lattice_stack/sheets_per_period_aliasing.py   (a few seconds; results in
 sheets_per_period_aliasing_results.txt)
 """
 import numpy as np

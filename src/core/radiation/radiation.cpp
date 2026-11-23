@@ -65,12 +65,12 @@ inline void add_boundary_term(MathUtils::ComplexBivector& boundary_bivector, siz
 // applied by the caller, not here, so the fast evenly-spaced-frequency phase-factor recurrence in
 // compute_radiation's i_freq loop stays valid regardless of how this function or the PREFACT
 // terms below change. Shared verbatim by both the simplified and direct forms (see
-// theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Common notation" section) -- the two
+// theory/physics/FT_faraday_tensor_v1.md's "Common notation" section) -- the two
 // forms differ only in their PREFACT terms, never in this phase.
 //
 // The propagation distance enters as R - |X|, not R: e^{ik|X|} is applied once per (frequency, screen point) in
 // Simulation::run_simulation, so its rounding is shared by every electron at that point
-// (theory/stabilize_phase_split_proposal.md). With R itself in the argument, k*R ~ 1e9-1e15 rad at far screens
+// (theory/specs/05_propagation_phase_split.md). With R itself in the argument, k*R ~ 1e9-1e15 rad at far screens
 // would be rounded independently per (electron, tau, screen point).
 inline double radiation_phase_argument(const MathUtils::RealFourVector& x, double delta_R) { return x[0] + delta_R; }
 
@@ -94,7 +94,7 @@ inline MathUtils::Complex long_range_prefactor(double freq, double inv_R) {
 }
 
 // Short-range PREFACT term: 1/R^2, frequency-independent (theory/
-// FT_Faraday_tensor-direct_and_simplified_forms-v2.md, Form 2, Eq. IV.1.2.15). Multiplies the
+// theory/physics/FT_faraday_tensor_v2.md, Form 2, Eq. IV.1.2.15). Multiplies the
 // short-range bivector short_range_bivector_element(n_R0, u, ...) below, NOT the (n_R0, u) bivector
 // F_l/F_b use. This replaces the v1 kernel -(n_R0.u)_3 / (R^2 (n_R0.u)) * (n_R0, u)-bivector, which came
 // from treating Jackson's fixed-event d/dtau as a derivative along the retarded observation path
@@ -113,7 +113,7 @@ inline double short_range_bivector_element(const MathUtils::RealFourVector& n, c
   return s_alpha * u[beta] - n[beta] * u[alpha];
 }
 
-// ---- Boundary term (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, "Form 2's boundary
+// ---- Boundary term (theory/physics/FT_faraday_tensor_v1.md, "Form 2's boundary
 // term F_b") -- only meaningful for the simplified formula, and only nonzero at the two ends of the
 // trajectory's finite tau range. ----
 //
@@ -129,7 +129,7 @@ inline double short_range_bivector_element(const MathUtils::RealFourVector& n, c
 // tau_min) is applied by the caller, which is the only place that knows a given tau is an endpoint.
 inline double boundary_prefactor(double inv_R, double n_R0_contract_u) { return inv_R / n_R0_contract_u; }
 
-// ---- Direct form (theory/FT_Faraday_tensor-direct_and_simplified_forms.md, Form 1) ----
+// ---- Direct form (theory/physics/FT_faraday_tensor_v1.md, Form 1) ----
 //
 // The direct FT of the closed-form Lienard-Wiechert field, as opposed to the simplified form's
 // integration-by-parts derivation above: neither PREFACT term below carries an explicit frequency
@@ -185,7 +185,7 @@ bool are_evenly_spaced(const std::vector<double>& frequencies_list, double step)
   return evenly_spaced;
 }
 
-// Exact formulas ("simplified"/"direct"): theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md.
+// Exact formulas ("simplified"/"direct"): theory/physics/FT_faraday_tensor_v2.md.
 void compute_radiation_exact(const Particle::Electron& electron, const std::vector<double>& frequencies_list,
                              const Detector::Detector_2D& detector, Simulation::PackedRadiationField& field,
                              bool use_direct_formula) {
@@ -251,7 +251,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
       const MathUtils::RealFourVector& u = trajectory[i_tau].momentum;
 
       // R_0 = x_0 - r_0(tau) (observation point minus particle position), matching
-      // theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Common notation" section --
+      // theory/physics/FT_faraday_tensor_v1.md's "Common notation" section --
       // n_R0 = R_0/|R_0| points from the emitting particle to the observer, not the reverse.
       MathUtils::RealFourVector diff = detector_point - x;
 
@@ -280,7 +280,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
       // long_term01..23 is the long-range geometric factor: the bare (n_R0, u) bivector for the
       // simplified formula, or direct_long_range_tensor_term's (n_R0, u, w) combination for the
       // direct formula -- see radiation.hpp's use_direct_formula doc comment and
-      // theory/FT_Faraday_tensor-direct_and_simplified_forms.md.
+      // theory/physics/FT_faraday_tensor_v1.md.
       double amp_short_0 = 0.0;
       double inv_R = 1.0 / R;
       double prefactor_l_direct = 0.0;
@@ -330,7 +330,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
       bool has_boundary_contribution = is_lower_endpoint || is_upper_endpoint;
 
       // Trapezoidal quadrature weight approximating the continuous tau-integral that F_l/F_s
-      // are defined as (theory/FT_Faraday_tensor-direct_and_simplified_forms.md's F_l/F_s formulas
+      // are defined as (theory/physics/FT_faraday_tensor_v1.md's F_l/F_s formulas
       // are literally \int d\tau ... over the electron's finite recorded trajectory). Electron
       // trajectories are recorded at a fixed RK4 step (Electron::get_d_tau), so this reduces to the
       // standard uniform-grid trapezoidal rule: full d_tau weight at every interior tau, half weight
@@ -406,7 +406,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
 }
 
 // Long-distance formulas ("long_distance_simplified"/"long_distance_direct"):
-// theory/long_distance_direct_simplified_coding_guide.md, sections 1-6, via the two-projection method.
+// theory/specs/01_long_distance_formulas.md, sections 1-6, via the two-projection method.
 //
 // Per (electron, screen point) the geometry is frozen at the electron's first sample r(tau_m):
 // x_0 = x - r(tau_m), n_0 = x_0/|x_0|, and a fixed transverse basis e_1, e_2 (e_1 x e_2 = n_0). Per tau
@@ -421,7 +421,7 @@ void compute_radiation_exact(const Particle::Electron& electron, const std::vect
 // part is in the reconstruction factor), so relative phases between electrons are kept. The constant itself is
 // further split as e^{ik|X|} e^{ik(|x_0| - |X| + r^0(tau_m))}, with |x_0| - |X| from distance_minus_reference and
 // e^{ik|X|} applied per (frequency, screen point) in Simulation::run_simulation, so k|x_0| ~ 1e9-1e15 rad is never
-// rounded per electron (theory/stabilize_phase_split_proposal.md).
+// rounded per electron (theory/specs/05_propagation_phase_split.md).
 //
 // GCC's SLP vectorizer miscompiles this function under -O3 -march=native (seen with GCC 15.2): the
 // complex accumulation in the i_freq loop below then returns wrong sums at every frequency after the

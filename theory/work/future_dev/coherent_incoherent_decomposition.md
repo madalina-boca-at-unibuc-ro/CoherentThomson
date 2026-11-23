@@ -70,8 +70,8 @@ computed directly.
      form factor `ρ̃(q)`: coherent part = step 1 × `|ρ̃(q)|²`. This is the `b(q)` diagnostic the code already prints
      (`Simulation::compute_form_factor`).
    - **The correct q was measured on 2026-11-06:** `q = k_s − (K_s·P / K_L·P) k_L`, undressed `P`, with `K_s` the
-     harmonic's own (so `q_N = N q_1`), and a phase `e^{-i q·r}`. See `theory/dev_notes.md` and
-     `theory/lattice_stack_tests/q_formula_*.py`.
+     harmonic's own (so `q_N = N q_1`), and a phase `e^{-i q·r}`. See `theory/work/dev_notes_2026-07-28_to_2026-11-23.md` and
+     `checks/lattice_stack/q_formula_*.py`.
    - A few extra z₀ samples test the time-shift factorization (focusing changes across the bunch).
    - *Incoherent:* N⟨|e|²⟩. In the far field an electron at transverse offset r₀ gives the same angular pattern
      apart from a phase, so `|e|²` depends only on |r₀| and the azimuthal average is a rotation. So one electron per

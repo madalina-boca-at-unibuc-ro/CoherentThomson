@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Gaussian lattice stacks (beam_stack_sigma_z, theory/lattice-stack-implemented.md "Gaussian stack"): equally spaced
+"""Gaussian lattice stacks (beam_stack_sigma_z, theory/implemented/09_lattice_stack.md "Gaussian stack"): equally spaced
 sheets over L = H + 2 cut sigma_z, charges from the smoothed density, then the modulation moving them.
 
-Run from the repository root: python3 theory/lattice_stack_tests/gaussian_stack_checks.py <old_solver> <new_solver>
+Run from the repository root: python3 checks/lattice_stack/gaussian_stack_checks.py <old_solver> <new_solver>
 <old_solver> is a binary built before the change (commit c5c90ee), <new_solver> one built after it. Results are in
 gaussian_stack_results.txt. Runs go to ~/output_tests/lattice_stack/gaussian_stack_checks/.
 

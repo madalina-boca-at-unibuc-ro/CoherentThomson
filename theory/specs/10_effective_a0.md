@@ -98,7 +98,7 @@ Any other value throws. Add it to the list of optional keys in `CLAUDE.md` ("Con
    value the run actually used (read it from `run_log.txt` or write it into `incident_config.cfg`), not
    recompute it from `laser_a0`. List what you changed or found.
 6. **Docs.** Update `CLAUDE.md` ("Frequencies" bullet: the dressing amplitude is `laser_a0` or `xi_eff`) and add a
-   dated entry to `theory/dev_notes.md`.
+   dated entry to `theory/work/dev_notes_2026-07-28_to_2026-11-23.md`.
 
 Out of scope: per-harmonic dressing, using the generated electrons, averaging along `z`, any change to the
 trajectories (the motion always uses the true local field).
@@ -123,7 +123,7 @@ trajectories (the motion always uses the true local field).
    `beam_particle_count`, `beam_distribution` and `beam_cylinder_height`.
 4. **Mode magnitude consistency.** At a few points (on axis, on the ring, at `2 w0`; `z_loc = 0` and
    `z_loc = z_R`) `transverse_mode_magnitude` equals `|amplitude| / E0_c` from `complex_amplitude` at a phase on
-   the flat top, to rounding. One-off check; record it in `dev_notes.md`.
+   the flat top, to rounding. One-off check; record it in `theory/work/dev_notes_2026-07-28_to_2026-11-23.md`.
 5. **Off-axis sanity.** Shifting `beam_center_x` by `+d` and `-d` gives the same `xi_eff`, and the value moves in the
    expected direction for LG_0^0 (lower).
 6. **Consistency of the three uses.** With `beam_averaged`, the log's `lambda_1`, the first entry of

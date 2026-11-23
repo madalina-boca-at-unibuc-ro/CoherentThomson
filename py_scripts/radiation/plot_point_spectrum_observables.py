@@ -1,7 +1,7 @@
 """
 Local radiation observables vs omega/omega_1 at the screen point(s) of a dense_frequency_spectrum run, from the
 total (LR+SR+BR) field in radiation_field.dat. Same formulas and prefactors as plot_observables.py (see its doc
-comment and theory/numerical_calculation_of_angular_momentum.md), restricted to the ones that need no spatial
+comment and theory/physics/angular_momentum_numerics.md), restricted to the ones that need no spatial
 derivative:
 
 - dS_z/domega        spin angular momentum density, (8 pi eps0/omega) Im[Ex* Ey]
@@ -103,7 +103,7 @@ def compute_point_observables(radiation_filepath, data):
     Bx, By, Bz = _get_B_total(data)
 
     # Prefactors include the 2 pi of Parseval's theorem for the (1/2pi) int dt e^(i omega t) convention of
-    # radiation_field.dat (fixed 2026-11-21: they were 2 pi too small; theory/spectral_density_2pi_fix.md).
+    # radiation_field.dat (fixed 2026-11-21: they were 2 pi too small; theory/work/spectral_density_2pi_fix.md).
     dSz = (8.0 * np.pi * EPSILON_0 / omega_au) * np.imag(np.conj(Ex) * Ey)
     dSigmazz = (4.0 * np.pi * EPSILON_0 * C_LIGHT ** 2 / omega_au) * np.imag(
         np.conj(Bx) * Ex + np.conj(By) * Ey - np.conj(Bz) * Ez)

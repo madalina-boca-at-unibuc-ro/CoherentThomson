@@ -19,7 +19,7 @@ protected:
 
   // |X| per screen point (distance from the lab origin), filled alongside `points`. The radiation code splits
   // the propagation phase as e^{ik|X|} e^{ik(R - |X|)}, the first factor shared by every electron at that point
-  // (theory/stabilize_phase_split_proposal.md).
+  // (theory/specs/05_propagation_phase_split.md).
   std::vector<double> point_distances;
 
   // Appends a point given in the detector's own local frame, rotated into the lab frame, with its |X|.

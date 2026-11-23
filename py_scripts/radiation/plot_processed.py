@@ -1,5 +1,5 @@
 """
-Post-processing of the emitted field (theory/post_processing.md): plots a processed version of
+Post-processing of the emitted field (theory/specs/04_radial_phase_removal.md): plots a processed version of
 radiation_field.dat's F^{mu nu} in plot_field.py's format, into png_folder/radiation/processed/<processing>/.
 
 Processings:

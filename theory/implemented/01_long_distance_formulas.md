@@ -1,8 +1,8 @@
 # Long-distance approximation: reading of the coding guide
 
-Review of [long_distance_direct_simplified_coding_guide.md](long_distance_direct_simplified_coding_guide.md),
+Review of [theory/specs/01_long_distance_formulas.md](../specs/01_long_distance_formulas.md),
 checked against the current exact implementation in
-[radiation.cpp](../src/core/radiation/radiation.cpp). No inconsistencies were found.
+[radiation.cpp](../../src/core/radiation/radiation.cpp). No inconsistencies were found.
 
 ## 1. What the approximation does
 
@@ -173,7 +173,7 @@ is manifestly transverse.
 - Selected by `radiation_formula = long_distance_simplified | long_distance_direct`
   (`Radiation::RadiationFormula`). The exact `simplified`/`direct` are unchanged.
 - Output: `SR_` = 0; simplified puts the bulk in `LR_` and the endpoint in `BR_`; direct puts everything in `LR_`.
-- Two-projection method, in `compute_radiation_long_distance` ([radiation.cpp](../src/core/radiation/radiation.cpp)).
+- Two-projection method, in `compute_radiation_long_distance` ([radiation.cpp](../../src/core/radiation/radiation.cpp)).
 - Debug mode was left exact-only at first, and later removed from the code entirely (2026-09-28).
 
 ## 7. Validation
@@ -213,7 +213,7 @@ screen angles grow.
 **Speed:** ~0.017 s/electron (LD simplified) vs ~0.032 (exact simplified) on the 9x9 screen, about 2x faster.
 
 **Compiler issue:** GCC 15.2's SLP vectorizer miscompiled this function under `-O3 -march=native`, giving wrong
-harmonics after the first. It is now disabled for this function only; see `theory/dev_notes.md` (2026-09-28).
+harmonics after the first. It is now disabled for this function only; see `theory/work/dev_notes_2026-07-28_to_2026-11-23.md` (2026-09-28).
 
 ## 8. Stepped phase: `long_distance_simplified_approx` / `long_distance_direct_approx`
 

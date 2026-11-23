@@ -36,7 +36,7 @@ def get_point_component(data, range_type, mu, nu):
     Complex F^{mu nu} of `range_type` (long/short/boundary/total), one value per row of `data`.
 
     'total' is the physical field LR+SR+BR. BR is identically zero for radiation_formula="direct" (see
-    theory/FT_Faraday_tensor-direct_and_simplified_forms-v2.md, Form 2's boundary term), and SR for the
+    theory/physics/FT_faraday_tensor_v2.md, Form 2's boundary term), and SR for the
     long_distance_* formulas; in the LD modes only the total is meaningful. BR columns missing from an old run
     count as zero in 'total'.
     """

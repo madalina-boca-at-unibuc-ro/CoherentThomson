@@ -68,7 +68,7 @@ after the move, on one run.
   fringes.
 - **`plot_all_components.py`:** after the 24 F plots, also the two helicities (raw), plus
   `radial_phase plus|minus`.
-- **`run_batch.sh` of the paper campaign** (`paper_campaign_spec.md` §6) calls `plot_processed.py radial_phase plus`
+- **`run_batch.sh` of the paper campaign** (`theory/specs/12_paper_campaign.md` §6) calls `plot_processed.py radial_phase plus`
   and `… minus` for each run.
 
 ## 5. What not to do

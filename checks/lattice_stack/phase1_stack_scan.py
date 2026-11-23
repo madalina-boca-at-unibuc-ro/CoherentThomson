@@ -5,7 +5,7 @@ Laser, transverse lattice and screen are those of run A (a0 = 0.1) on a 16 x 8 s
 best complex factor in F_M = c F_1 over the screen and all components; `resid` = |F_M - B F_1| / |F_1|, absolute so
 that it stays meaningful at the minima of B. Takes about 30 min on 24 threads; finished runs are reused.
 
-Run from the repository root: .venv/bin/python theory/lattice_stack_tests/phase1_stack_scan.py
+Run from the repository root: .venv/bin/python checks/lattice_stack/phase1_stack_scan.py
 """
 import numpy as np
 

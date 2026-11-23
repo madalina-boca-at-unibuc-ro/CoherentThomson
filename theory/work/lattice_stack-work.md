@@ -4,25 +4,25 @@ Working notes for the longitudinal lattice stack and microbunching project. Thre
 
 | Document | Content |
 |---|---|
-| [CoherentThomson-lattice-stack-implementation.md](CoherentThomson-lattice-stack-implementation.md) | The initial proposal (the brief). |
+| [theory/specs/09_lattice_stack.md](../specs/09_lattice_stack.md) | The initial proposal (the brief). |
 | This file | The current work: analysis, decisions, open questions. |
-| [lattice-stack-implemented.md](lattice-stack-implemented.md) | What was actually done, and how it was checked. |
+| [theory/implemented/09_lattice_stack.md](../implemented/09_lattice_stack.md) | What was actually done, and how it was checked. |
 
 ## Resume here (written 2026-11-06, for continuing on another computer)
 
-**Latest result.** The user's run on a 64 × 64 screen confirms the 3a checkpoint (`lattice-stack-implemented.md`) and the user finds the output good.
+**Latest result.** The user's run on a 64 × 64 screen confirms the 3a checkpoint (`theory/implemented/09_lattice_stack.md`) and the user finds the output good.
 
 **Where things stand.** Everything is committed on `main` (the branch `lattice-stack` holds the same history up to Phase 3a). Preparation, Phase 1, Phase 2 and Phase 3a are
 implemented. **The user reviewed and accepted Phase 3a (2026-11-09).** The beam distribution rework (below) is implemented and checked
-(2026-11-09, `lattice-stack-implemented.md`, "Beam distribution rework") and **waits for the user's review**. On top of it, the
-**Gaussian stack** (below; `lattice-stack-implemented.md`, "Gaussian stack") is implemented and checked (2026-11-10) and also **waits for review**;
+(2026-11-09, `theory/implemented/09_lattice_stack.md`, "Beam distribution rework") and **waits for the user's review**. On top of it, the
+**Gaussian stack** (below; `theory/implemented/09_lattice_stack.md`, "Gaussian stack") is implemented and checked (2026-11-10) and also **waits for review**;
 Phase 3b follows both.
 
 **How the user works on this** (Claude's memory files stay on the old computer, so this is the record):
 
 - Discuss each part of the brief first. Implement only after the user says so, one phase at a time, and stop at each checkpoint for review.
-- Keep three documents: the brief (the proposal), this file (current work and decisions), `lattice-stack-implemented.md` (what was done and how it was checked).
-- `py_scripts/` is for postprocessing only. Tools and checks for this project go in `theory/lattice_stack_tests/`.
+- Keep three documents: the brief (the proposal), this file (current work and decisions), `theory/implemented/09_lattice_stack.md` (what was done and how it was checked).
+- `py_scripts/` is for postprocessing only. Tools and checks for this project go in `checks/lattice_stack/`.
 - Validation is at `a0 = 0.1`.
 
 **To pick up on the other computer:**
@@ -32,14 +32,14 @@ git switch main && git pull     # after the user's push
 cmake -B build/ && cmake --build build/ --clean-first     # always rebuild: -march=native, and Dropbox may sync bin/ and build/
 ```
 
-Then read this section, the Phase 3a part of `lattice-stack-implemented.md`, and `theory/lattice_stack_tests/phase3a_results.txt`.
+Then read this section, the Phase 3a part of `theory/implemented/09_lattice_stack.md`, and `checks/lattice_stack/phase3a_results.txt`.
 
 **Not carried over by git:**
 
-- Runs in `~/output/lattice_stack/` and `~/output_tests/lattice_stack/`. The results files in `theory/lattice_stack_tests/` keep the numbers. Without those runs, the
+- Runs in `~/output/lattice_stack/` and `~/output_tests/lattice_stack/`. The results files in `checks/lattice_stack/` keep the numbers. Without those runs, the
   checks recompute instead of reusing them: `phase3a_checkpoint.py` takes about 20 min on 24 threads, and it needed recomputing anyway once it began setting the switch.
 - The saved pre-change solvers. For the byte-identity scripts, build the commit before the change (`8ccd0e6` for `phase3a_noop_and_rejects.py`; for `phase3a_switch.py`,
-  a build of the Phase 3a code without the switch no longer exists, and that check's result is in `lattice-stack-implemented.md`) and copy the binary out.
+  a build of the Phase 3a code without the switch no longer exists, and that check's result is in `theory/implemented/09_lattice_stack.md`) and copy the binary out.
 - `config/config_lattice_stack.cfg` holds the user's current experiment: bunched stack, `ζ = 1`, ratio 1, S = 14, P = 1, on a 64 × 64 screen.
 
 **Decisions made so far:**
@@ -59,7 +59,7 @@ Then read this section, the Phase 3a part of `lattice-stack-implemented.md`, and
 
 **After the rework: Phase 3b.** (Sheet counts below are in the old S, P terms; with the rework, one period is `M = S`, `H = beam_modulation_period`.) The brief's plan is the same target frequency with `Λ_mod = 20 Λ₁`. What to settle:
 
-- **Sheets:** S = 120 is enough for N = 1, 2 at `ζ` up to about 1.1. N = 3 needs S = 180 (by the earlier estimate; the aliasing rule of 2026-11-09, `lattice-stack-implemented.md`, "Sheets per period", gives 147 at `ζ` = 1.111). `S` follows from the highest harmonic wanted.
+- **Sheets:** S = 120 is enough for N = 1, 2 at `ζ` up to about 1.1. N = 3 needs S = 180 (by the earlier estimate; the aliasing rule of 2026-11-09, `theory/implemented/09_lattice_stack.md`, "Sheets per period", gives 147 at `ζ` = 1.111). `S` follows from the highest harmonic wanted.
 - **`ζ`:** the brief says start at the 3a value, then near the maximum of `|J₂₀(20ζ)|`, at `ζ = 1.111` (`|b₂₀|` = 0.243, against 0.165 at `ζ = 1`).
 - **Cost, one period, S = 120, 1,076 sites per sheet (129,120 trajectories):** about 9 min on 24 threads on the 16 × 8 screen, from 0.10 CPU-s per trajectory (confirmed by the 3a runs).
   On a full 128 × 64 screen, about 1.2 h on 256 cores, from the earlier estimate of 8.7 CPU-s per trajectory.
@@ -80,7 +80,7 @@ to one sheet. Options discussed:
 Unlike the Phase 2 comparison, where charges sampled the modulated density's cusp, the Gaussian-smoothed density is
 smooth, so equally spaced samples converge fast (scratch check before implementing: `~1e-9` to `1e-11` once
 `d ≲ 0.5–0.8 σ_z` and the sheets-per-period rule hold). The random beam keeps its unclipped random shifts. What was done
-and checked: `lattice-stack-implemented.md`, "Gaussian stack".
+and checked: `theory/implemented/09_lattice_stack.md`, "Gaussian stack".
 
 ## Beam distribution rework (before Phase 3b; planned and implemented 2026-11-09)
 
@@ -126,17 +126,18 @@ with the modulation acting on either.
 - `py_scripts/particle/plot_beam_density_z.py` reads `H` with `read_length` (raises on `lambda_1`) and the old stack
   keys: switch it to the resolved `H` in `run_log.txt`. `lambda_1` is not added to the Python converters (it can't be
   computed from the config alone).
-- Configs to migrate: `config/config_lattice_stack.cfg`, `theory/lattice_stack_tests/` (`base_run_A.cfg` variants,
+- Configs to migrate: `config/config_lattice_stack.cfg`, `checks/lattice_stack/` (`base_run_A.cfg` variants,
   `phase1_stack_scan.py`, `phase3a_*.py`, `form_factor_exact_q.py`); delete their cached runs in
   `~/output_tests/lattice_stack/` afterwards. The report's frozen configs use no stacks.
-- Docs: `lattice-stack-implemented.md`, CLAUDE.md.
+- Docs: `theory/implemented/09_lattice_stack.md`, CLAUDE.md.
 
 Done as planned. Deviations: the cached runs in `~/output_tests/lattice_stack/` were kept, since the migrated configs
 differ in text and are never matched to them, and the unchanged ones give byte-identical output (check 1).
-`phase3a_noop_and_rejects.py` and `phase3a_switch.py` test the old keys against old binaries, so they are marked
+`phase3a_noop_and_rejects.py` and `phase3a_switch.py` (deleted 2026-11-23; in git history under
+`theory/lattice_stack_tests/`) test the old keys against old binaries, so they are marked
 historical instead of migrated; `rework_checks.py` replaces them.
 
-**Checks** (`lattice_stack_tests/rework_checks.py`; all pass, `rework_results.txt`):
+**Checks** (`checks/lattice_stack/rework_checks.py`; all pass, `rework_results.txt`):
 
 1. Random beam, modulation off: `.dat` byte-identical to the current solver.
 2. Uniform stack: old `M`, `d` against new `M`, `H = M d`: identical up to the rounding of `H/M` against `d`.
@@ -170,7 +171,7 @@ historical instead of migrated; `rework_checks.py` replaces them.
 ### The analytic `q`
 
 The "diagnostic `q`" and the analytic `q` are the same quantity. "Diagnostic" only names the routine that prints it:
-[form_factor.cpp:33-39](../src/core/simulation/form_factor.cpp#L33-L39) evaluates `q = k_s - k_L` directly from the
+[form_factor.cpp:33-39](../../src/core/simulation/form_factor.cpp#L33-L39) evaluates `q = k_s - k_L` directly from the
 formula, with nothing measured. Here `k_s` is the dressed fundamental along the detector normal (`<a²> = a0²/2`), and
 `k_L` is the laser wavevector. So:
 
@@ -187,7 +188,7 @@ Still to settle for Phase 3: whether the config gives `Λ_mod` as a length or in
 
 ### The exact `q` (measured 2026-11-06)
 
-A recorded open point (`theory/dev_notes.md`, `coherent_incoherent_decomposition.md`) asked whether the phase should use
+A recorded open point (`theory/work/dev_notes_2026-07-28_to_2026-11-23.md`, `coherent_incoherent_decomposition.md`) asked whether the phase should use
 `k_s − k_L` or `k_s − (K_s·P / K_L·P) k_L`. Translating the beam and fitting the field phase settles it: the field gets
 `e^{-i q·r}` with `q_N = N [k_1 − (K_1·P / K_L·P) k_L]`, undressed `P`. On axis and head-on, this is `2 N k_1 / (1+β₀)`.
 
@@ -228,17 +229,17 @@ Consequences:
 
 ## Open items
 
-- **Report PDF** must be rebuilt where pandoc exists (`theory/scientific_report/README.md`, section PDF). The Markdown is corrected.
+- **Report PDF** must be rebuilt where pandoc exists (`reports/2026-10-29_progress/README.md`, section PDF). The Markdown is corrected.
 - **CLAUDE.md:** the `plot_processed.py` usage correction proposed on 2026-11-06 was not applied.
 - **Next:** see "Resume here".
 - **Phase 3b plan, updated for moved sheets:** one modulation period (about 275 nm; S = 120 gives 129,120 trajectories), at S and 2S on the small screen;
   a full screen once if the mode decomposition is wanted; more periods only for an explicit finite-train test.
-- **On-axis N = 2:** the small deviation at one on-axis point (`lattice-stack-implemented.md`, Phase 3a) is unexplained, though about 7e-7 of the screen's rms field.
+- **On-axis N = 2:** the small deviation at one on-axis point (`theory/implemented/09_lattice_stack.md`, Phase 3a) is unexplained, though about 7e-7 of the screen's rms field.
 - **`plot_beam_density_z.py` on uniform stacks:** fixed 2026-11-10 with the Gaussian stack: lattices of either kind now use bins over the sheets, about four per bin,
   weighted by the charges.
 - **Config header:** `config/config_lattice_stack.cfg` is described as a 16 × 8 uniform stack in its first lines and holds the user's experiment now. Decide whether to keep a separate model config.
 - **The `/import` offer** for Codex or Gemini configs from the `/init` step was never taken up.
-- **Phase 2 tool:** `theory/lattice_stack_tests/phase2_density_model.py` gives `b` at any `q`, `N` and ζ. So far it is checked against
+- **Phase 2 tool:** `checks/lattice_stack/phase2_density_model.py` gives `b` at any `q`, `N` and ζ. So far it is checked against
   the log, on uniform and bunched stacks.
 
 ## Analysis of the brief (as given to the user on 2026-11-06)
@@ -253,7 +254,7 @@ scratch scripts. The plan holds up, but the memory problem below has to be fixed
 ### Blocker: memory
 
 `Electron` keeps its whole trajectory and nothing ever frees it
-([electron.cpp:22](../src/core/particle/electron.cpp#L22), line number before the fix). Each state is about 104 bytes,
+([electron.cpp:22](../../src/core/particle/electron.cpp#L22), line number before the fix). Each state is about 104 bytes,
 and a run has 20,000 states per electron (200 cycles × `trajectory_NT` 100), so about 2 MB per electron:
 
 | Run (1,076 sites per sheet) | Electrons | Memory kept |
@@ -283,7 +284,7 @@ take about 2.8 h on 256 cores.
 
 - **Generator:** it's a small extension, and `M = 1` should stay identical because the z position and random draw order
   don't change. The existing check already rejects non-zero `beam_cylinder_height` and `beam_sigma_z`, and I'd keep that.
-- **Weights:** these go in the three accumulation points of [radiation.cpp](../src/core/radiation/radiation.cpp#L396)
+- **Weights:** these go in the three accumulation points of [radiation.cpp](../../src/core/radiation/radiation.cpp#L396)
   (lines 396, 560 and 844), plus the mean momentum and `A` in `form_factor.cpp`.
 - **Normalisation:** I'd use `w = 1/M` per sheet, so a stack carries the same total charge as the flat disk and the
   fields compare directly.
@@ -338,7 +339,7 @@ These are top-hat bins from 40 million quadrature points. So a 1 nm versus 0.5 n
 - `compute_radiation` runs `compute_trajectory` for every electron, and `main.cpp` has already run it on the first 10
   for `electron.dat`, so those 10 are integrated twice. The radiation loops use the first `N_tau` states, so this looks
   harmless. I checked the exact path only, and it costs a little extra time and memory.
-- Lattice settings of the report's run B config (`theory/scientific_report/configs/runs_A-D_lattice/`): `trajectory_NT 100`,
+- Lattice settings of the report's run B config (`reports/2026-10-29_progress/configs/runs_A-D_lattice/`): `trajectory_NT 100`,
   `radiation_formula long_distance_direct_approx`, `laser_wing_sigma 25 cycles`, `laser_wing_sigma_cutoff 4`,
   `laser_flat_duration 0`, `average_pz 13.483 mc`, zero momentum spread, `beam_lattice_spacing 2.5 lambda`.
 - Paper's constants (Schaap et al. 2023): `ζ = L/f`, `f = cγ³β³/[Δγ(ω₁−ω₂)]`, `b_n = (−1)^n J_n(nζ)` (Eq. 9), maximum of

@@ -256,8 +256,8 @@ inline size_t get_N_omega(const ConfigMap& config) { return std::stoul(get_requi
 struct CylinderBeamParams {
   double radius;
   bool radius_from_lg_table;  // true when beam_cylinder_radius < 0 selected the radius via lg_beam_radius_in_w0
-  // H: the random cylinder's height, or the width a lattice stack's sheets fill (theory/lattice_stack-work.md, "Beam
-  // distribution rework"). 0 = a flat disk.
+  // H: the random cylinder's height, or the width a lattice stack's sheets fill
+  // (theory/work/lattice_stack-work.md, "Beam distribution rework"). 0 = a flat disk.
   double height;
   // Gaussian width along the axis; 0 = sharp edges. random: beam_sigma_z, each electron displaced by N(0, sigma_z^2).
   // polar_lattice: beam_stack_sigma_z, carried by the sheets' charges (see stack_sheets). Either way the density is
@@ -275,8 +275,8 @@ struct CylinderBeamParams {
   double sigma_px, sigma_py, sigma_pz;
   // beam_distribution (optional, default random): random = independent uniform draws over the cylinder;
   // polar_lattice = deterministic equal-area rings on a flat disk, node spacing ~beam_lattice_spacing, no sampling
-  // speckle (theory/future_dev/coherent_incoherent_decomposition.md section 3, step 1); beam_particle_count is then
-  // ignored.
+  // speckle (theory/work/future_dev/coherent_incoherent_decomposition.md section 3, step 1); beam_particle_count is
+  // then ignored.
   bool polar_lattice;
   double lattice_spacing;  // requested spacing (polar_lattice only); the rings use polar_lattice_geometry's
   // Longitudinal stack (polar_lattice only, beam_stack_sheets, default 1): the same lattice repeated on M parallel
@@ -315,7 +315,7 @@ inline size_t polar_lattice_site_count(int rings) {
 }
 
 // Beam radius, in units of w0, just larger than the Laguerre-Gauss (p, l) mode's transverse extent
-// (theory/table of beam electron radius in units of w_0 for different p,l.md). The mode profile depends on l only
+// (theory/specs/03_lg_beam_radius_table.md). The mode profile depends on l only
 // through |l|. Throws outside the tabulated p = 0..4, |l| = 0..6.
 inline double lg_beam_radius_in_w0(int p, int l) {
   static constexpr double table[5][7] = {{1.86, 2.15, 2.37, 2.56, 2.72, 2.87, 3.01},
@@ -433,7 +433,7 @@ inline CylinderBeamParams parse_cylinder_beam_params(const ConfigMap& config) {
   }
 
   // Keys of the earlier stack layout. Unknown keys are normally ignored, but dropping one of these silently would
-  // change the beam, so each names its replacement (theory/lattice_stack-work.md, "Beam distribution rework").
+  // change the beam, so each names its replacement (theory/work/lattice_stack-work.md, "Beam distribution rework").
   const std::pair<const char*, const char*> removed_keys[] = {
       {"beam_stack_spacing", "beam_cylinder_height, the stack's width H = M d"},
       {"beam_stack_modulation", "beam_modulation true|false"},

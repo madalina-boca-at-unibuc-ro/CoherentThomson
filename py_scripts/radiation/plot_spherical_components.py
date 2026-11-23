@@ -146,7 +146,7 @@ def plot_spherical_field_component(range_type, field, component, radiation_filep
     plot_point_spectrum (which instead read Cartesian F^{mu nu} components directly).
 
     'boundary' is identically zero when the run used radiation_formula="direct" -- see
-    theory/FT_Faraday_tensor-direct_and_simplified_forms.md's "Form 2's boundary term F_b" section.
+    theory/physics/FT_faraday_tensor_v1.md's "Form 2's boundary term F_b" section.
 
     Renders as a heatmap per frequency (on the spherical detector's own stereographic-projection
     grid, like radiation/plot_field.py) if there's more than one screen point, or a line plot vs.

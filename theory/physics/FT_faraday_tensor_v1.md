@@ -1,5 +1,8 @@
 # Fourier transform of the Faraday tensor — two equivalent forms
 
+> **v1.** Its simplified short-range formula is superseded by `FT_faraday_tensor_v2.md`. Kept because the code
+> cites it for the notation, the direct form, the boundary term and the Jacobian.
+
 Source: `shared_src/elm_el_sc/frequency-domain/FT-direct.tex` (§ "direct
 formula") and `shared_src/elm_el_sc/frequency-domain/FT-simplified.tex`
 (§ "simplified form"). Each ends in a highlighted result box; both boxes are

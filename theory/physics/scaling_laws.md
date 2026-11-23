@@ -69,7 +69,7 @@ Derived combinations that carry the physics:
 
 | Combination | Meaning | Value |
 |---|---|---|
-| `Λ_N ~ N a0² M² n_eff` (× O(1)) | **Ponderomotive lens.** The dent's emission delay is a phase, so it is Lorentz invariant. The exact form is the dressing factor `d_N(r)` of `future_dev/ponderomotive_lens.md`, written in `φ`, `A(r, φ)` and `ω/ω_1`: all invariant. That note's "Not covered: a moving beam" is answered by this: `d_N(r)` from the rest frame applies unchanged at any `γ ≫ 1`. | `\|arg d_1(w0)/d_1(0)\|` = 0.85 rad, `d_2`: 1.69 rad (LG₀⁰, `a0 = 0.1`) |
+| `Λ_N ~ N a0² M² n_eff` (× O(1)) | **Ponderomotive lens.** The dent's emission delay is a phase, so it is Lorentz invariant. The exact form is the dressing factor `d_N(r)` of `theory/work/future_dev/ponderomotive_lens.md`, written in `φ`, `A(r, φ)` and `ω/ω_1`: all invariant. That note's "Not covered: a moving beam" is answered by this: `d_N(r)` from the rest frame applies unchanged at any `γ ≫ 1`. | `\|arg d_1(w0)/d_1(0)\|` = 0.85 rad, `d_2`: 1.69 rad (LG₀⁰, `a0 = 0.1`) |
 | `ξ = [β/(1+β)] n_eff λ_L / z_R`, `z_R = k_L w0²/2` | Path through the focus during the interaction, in Rayleigh ranges. Gouy change about `(2p+\|l\|+1) ξ` | 0.071 → 0.21 rad for LG₀² | 0.008 |
 
 ### Observation
@@ -110,7 +110,7 @@ The current screen (`circular_detector_distance 160000 w0`, `R_max 15 w0`) is at
 
 ## 4. Evidence already in hand
 
-The at-rest lens runs (`future_dev/ponderomotive_lens.md`, Gaussian pulse; `γ = 1`) and the report's runs A and B
+The at-rest lens runs (`theory/work/future_dev/ponderomotive_lens.md`, Gaussian pulse; `γ = 1`) and the report's runs A and B
 (`γ = 13.52`) have the same `a0`, pulse, LG₀⁰ laser with `w0 = 25 λ`, circular polarization and disk radius. They
 differ in `γ` by a factor 13.5 and in screen distance (10.2 vs 2.8 `Z_1`); the rest runs use a lattice, A and B a
 random beam. `ξ` is below 0.01 in both, so the scaling says the fitted beams should agree in `w0` units and `Z_N`

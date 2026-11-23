@@ -376,7 +376,7 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     file << "    step  = " << step << "  (evenly spaced)\n";
   }
 
-  // theory/thomson_form_factor_diagnostic.md. Wavevectors are listed in a.u. (1/bohr) and, in brackets, in units of
+  // theory/specs/06_form_factor_diagnostic.md. Wavevectors are listed in a.u. (1/bohr) and, in brackets, in units of
   // k_L = omega_L/c.
   write_section(file, "Initial form factor b(q) = (1/N) sum_j exp(i q.r_j(0)),  q = k_s - (K_s.P / K_L.P) k_L");
   const double k_L_mag = laser.get_omega() / c;

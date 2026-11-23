@@ -1,8 +1,8 @@
 # LG decomposition of the screen field: implementation notes
 
-Stage 2 of `theory/LG_mode_decomposition.md`. Task spec: `theory/lg_screen_decomposition_simple.md`. Code:
+Stage 2 of `theory/work/lg_mode_decomposition_plan.md`. Task spec: `theory/specs/07_lg_screen_decomposition.md`. Code:
 `py_scripts/radiation/lg_decomposition.py` (Python post-processing only; the C++ export is unchanged). User
-reference (what is computed, every parameter and default, outputs): `theory/lg_decomposition_reference.md`.
+reference (what is computed, every parameter and default, outputs): `theory/reference/lg_decomposition_reference.md`.
 
 ```
 python3 py_scripts/radiation/lg_decomposition.py [--incident] [--harmonic N] [--component plus minus Ex Ey]
@@ -226,7 +226,7 @@ Reported: the **fidelity** `|⟨E_pred|E⟩|²/(‖E_pred‖²‖E‖²)`, the s
 with only an overall complex scale free (`1 − fidelity` is that one-parameter fit's `eps²`), and the measured power
 outside the radius holding 99.9% of the prediction's. A second line ("with the ponderomotive dressing factor") multiplies
 the source by each electron's `d_N(r)` (`dressing_factor`; `A(r)` from the C++'s own LG normalization, the envelope
-and the evaluated frequency from the run; `theory/future_dev/ponderomotive_lens.md`). On the lattice beam at
+and the evaluated frequency from the run; `theory/work/future_dev/ponderomotive_lens.md`). On the lattice beam at
 `a0 = 0.1` this raises the fidelity from 0.78/0.22 (N = 1/2) to 0.9999/0.998. Not modelled: the incoherent speckle
 (~1%) and a moving beam.
 
@@ -307,7 +307,7 @@ no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (
    `w0 = 25 λ`, `Z = 2e4 λ = 10.2 z_R`, 128 x 33 screen of radius 952 λ): `eps = 1.0e-7`, all power in
    `E_+` with `l = 0`, series waist 25.000 λ at `z0 = 0.0009 λ`. This tests Gouy and curvature, which the waist
    check couldn't, and caught a curvature-sign bug in `LaguerreGaussLaser` (with the old sign `eps = 0.94`;
-   `theory/dev_notes.md`).
+   `theory/work/dev_notes_2026-07-28_to_2026-11-23.md`).
 6. **Electrons at rest, `a0 = 0.01` vs 0.1** (runs `20261027_194300`, `config_expansion_rest.cfg`, and
    `20261027_204817`, `config_expansion_rest_a0_01.cfg`; 65536 electrons on a `2 w0` disk at `z = 0`, Gaussian
    laser `w0 = 25 λ` along −Oz, backscatter screen at `2e4 λ = 10 z_R`). `E_-`:
@@ -367,11 +367,11 @@ no single `(p, w0)` exists and the dominant-mode criterion has nothing to find (
 - **N = 1's `p = 1` content (31% at `a0 = 0.1`) is ponderomotive dressing**, not a displaced waist or the
   incoherent background (Verification 4). At rest it acts as a focusing lens of `f ≈ z_R` (Verification 6).
   **Explained 2026-10-30:** the per-electron dressing factor reproduces the field to 99.99% (N = 1) and 99.8% (N = 2),
-  N = 2's stronger focusing included (`future_dev/ponderomotive_lens.md`, Results). Still open from the original list: the predicted radial phase profile against the fitted field, the scaling of `1/f` with `a0²` and
+  N = 2's stronger focusing included (`theory/work/future_dev/ponderomotive_lens.md`, Results). Still open from the original list: the predicted radial phase profile against the fitted field, the scaling of `1/f` with `a0²` and
   the pulse length, and why N = 2 is focused about twice as strongly. Picture, a per-electron dressing factor for the
-  coherent-source prediction, and the test plan: `future_dev/ponderomotive_lens.md`.
+  coherent-source prediction, and the test plan: `theory/work/future_dev/ponderomotive_lens.md`.
 - **N = 2's coherent tail** (most likely sampling: on the lattice beam at `a0 = 0.01` it is 0.29%, with fidelity
-  0.998; `future_dev/ponderomotive_lens.md`, Results): 2.7% of the N = 2 power lies outside the coherent-source prediction, at large
+  0.998; `theory/work/future_dev/ponderomotive_lens.md`, Results): 2.7% of the N = 2 power lies outside the coherent-source prediction, at large
   radius, with the right `l`, for both the Gaussian (`a0 = 0.01`) and LG(2,2) lasers. Candidates: the `θ` factor
   is only the near-axis form of the single-electron pattern, or a source term other than `u^N`; and the screen
   (`R_max = 40 w0`) may clip it. A larger `R_max` would tell.

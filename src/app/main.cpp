@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initial-position form factor at the screen center's Thomson fundamental
-    // (theory/thomson_form_factor_diagnostic.md).
+    // (theory/specs/06_form_factor_diagnostic.md).
     Simulation::FormFactor form_factor = Simulation::compute_form_factor(electron_beam, *laser, *detector);
     std::cout << "Initial form factor b = (" << form_factor.b.real() << ", " << form_factor.b.imag()
               << "), |b| = " << std::abs(form_factor.b) << "\n";

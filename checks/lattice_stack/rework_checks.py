@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Beam distribution rework (theory/lattice_stack-work.md): the new layout against the old solver, the modulated random
+"""Beam distribution rework (theory/work/lattice_stack-work.md): the new layout against the old solver, the modulated random
 beam against the cold-beam value, and the refused or corrected configs.
 
-Run from the repository root: python3 theory/lattice_stack_tests/rework_checks.py <old_solver> <new_solver>
+Run from the repository root: python3 checks/lattice_stack/rework_checks.py <old_solver> <new_solver>
 <old_solver> is a binary built before the rework (commit 35b3a1a), <new_solver> one built after it. Results are in
 rework_results.txt. Runs go to ~/output_tests/lattice_stack/rework_checks/.
 """

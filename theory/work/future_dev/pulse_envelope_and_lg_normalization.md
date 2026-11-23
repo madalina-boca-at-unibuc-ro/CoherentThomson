@@ -16,12 +16,12 @@ At N = 2, `E_−` should be pure `l = −1` (`J = N(m+σ) = −2`, spin −1). T
 
 - The `l = 0` share does not change with electron density: 9.0% in the 8192-electron run `20261025_002302`, 8.9% in
   the 65536-electron run, at ~21× the surface density. Over the same change, the speckle (all `l`) fell from ~1% to 0.05%.
-- **One electron exactly on axis** (`tests/one_electron_on_axis.cfg`), with no sampling and exact axial symmetry, gives N = 2
+- **One electron exactly on axis** (`checks/one_electron/one_electron_on_axis.cfg`), with no sampling and exact axial symmetry, gives N = 2
   `E_−`: 84.9% `l = −1`, **15.1% `l = 0`**.
 
 ### Not the radiation code
 
-On-axis spectrum of that electron (`tests/one_electron_on_axis_spectrum.cfg`). On axis the true N = 2 (`l = −1`)
+On-axis spectrum of that electron (`checks/one_electron/one_electron_on_axis_spectrum.cfg`). On axis the true N = 2 (`l = −1`)
 vanishes, so whatever is at 2ω₁ there is the forbidden part:
 
 | Variant | Peak in 1.9–2.1 ω₁ (÷ N = 1 peak) |

@@ -1,8 +1,8 @@
 """
 Laguerre-Gauss decomposition of one run's emitted field on its own detector screen (Stage 2 of
-theory/LG_mode_decomposition.md; spec theory/lg_screen_decomposition_simple.md; implementation notes and
-conventions theory/lg_decomposition_implementation.md; parameters, defaults and outputs
-theory/lg_decomposition_reference.md).
+theory/work/lg_mode_decomposition_plan.md; spec theory/specs/07_lg_screen_decomposition.md; implementation notes and
+conventions theory/implemented/07_lg_screen_decomposition.md; parameters, defaults and outputs
+theory/reference/lg_decomposition_reference.md).
 
 For every frequency, each selected field component E (default: both lab-frame helicity components
 E_+ = (Ex - i Ey)/sqrt(2), E_- = (Ex + i Ey)/sqrt(2)) is fitted, for each trial waist w0, by weighted complex
@@ -123,7 +123,7 @@ def generalized_laguerre(p, alpha, x):
 
 def lg_mode(p, l, r, phi, s, w0, k):
     """
-    Unit-norm LG mode (theory/lg_screen_decomposition_simple.md), exp(-i omega t) convention, waist at s = 0:
+    Unit-norm LG mode (theory/specs/07_lg_screen_decomposition.md), exp(-i omega t) convention, waist at s = 0:
 
         u = sqrt(2 p!/(pi (p+|l|)!)) / w (sqrt2 r/w)^|l| L_p^|l|(2r^2/w^2) e^{-r^2/w^2}
             e^{i l phi} e^{i k r^2/(2 R_c)} e^{-i (2p+|l|+1) psi}
@@ -182,7 +182,7 @@ def fit_modes(target, basis, weights):
 def series_waist(coeffs, modes, w_b, k):
     """
     Waist and waist position implied by the first coefficient ratio, assuming the target is one LG_0^l beam with
-    its own complex beam parameter (theory/lg_decomposition_implementation.md, "Series waist"). On the basis waist
+    its own complex beam parameter (theory/implemented/07_lg_screen_decomposition.md, "Series waist"). On the basis waist
     plane (s = 0) such a beam is r^|l| e^{-alpha r^2} e^{il phi}; the Laguerre generating function gives
     c_{p+1}/c_p = t sqrt((p+1+|l|)/(p+1)) with t = (alpha w_b^2 - 1)/(alpha w_b^2 + 1). Inverting t from c_1/c_0,
     q = -i z_Rb (1 - t)/(1 + t) (z_Rb = k w_b^2/2) is the beam parameter at s = 0, so the waist sits at
@@ -233,7 +233,7 @@ def laser_intensity_profile(r, p, l, w0):
     |f(r)|^2 at the waist, f = the LG laser's transverse amplitude relative to a plane wave of the same a0, with the
     C++'s own normalization (LaguerreGaussLaser::complex_amplitude): f = Npn (2r^2/w0^2)^{|l|/2}
     1F1(-p, |l|+1, 2r^2/w0^2) e^{-r^2/w0^2}, Npn = sqrt2 sqrt((p+|l|)!/p!)/|l|!. f(0) = sqrt2 for p = l = 0
-    (theory/future_dev/pulse_envelope_and_lg_normalization.md, section 2).
+    (theory/work/future_dev/pulse_envelope_and_lg_normalization.md, section 2).
     """
     a = abs(l)
     npn = math.sqrt(2.0) * math.sqrt(math.factorial(p + a) / math.factorial(p)) / math.factorial(a)
@@ -243,7 +243,7 @@ def laser_intensity_profile(r, p, l, w0):
 
 def dressing_factor(rr, N, k_ratio, A_r, envelope):
     """
-    Ponderomotive dressing factor d_N(r) of an electron at rest (theory/future_dev/ponderomotive_lens.md), for a
+    Ponderomotive dressing factor d_N(r) of an electron at rest (theory/work/future_dev/ponderomotive_lens.md), for a
     screen facing the laser, weak field, cycle-averaged <a^2>:
 
         d_N(r) = int dxi g^N exp{i int_0^xi [k_ratio (1 + A(r) g^2) - N] dxi'} / int dxi g^N,
@@ -269,7 +269,7 @@ def dressing_factor(rr, N, k_ratio, A_r, envelope):
 def coherent_source_prediction(r, phi, s, k, N, l_target, m, laser_p, laser_w0, R_beam, dressing=None):
     """
     Screen field of harmonic N from electrons at rest at the waist of an LG_p^m laser (m about lab +z), in the
-    weak-field limit (theory/lg_decomposition_implementation.md, "Coherent-source prediction"): the coherent
+    weak-field limit (theory/implemented/07_lg_screen_decomposition.md, "Coherent-source prediction"): the coherent
     source is the laser mode to the N-th power over the beam cylinder, u_{p,m}(r, 0)^N e^{iNm phi} for r < R_beam,
     Fresnel-propagated to s, times each electron's own near-axis angular factor (r/s)^|dl| e^{i dl phi} that
     takes the source's N m to the fitted component's l_target (dl = l_target - N m). No free parameter; only the
@@ -628,7 +628,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
                 summary['prediction'] = {'fidelity': prediction_fidelity(pred, target, weights), 'dl': dl,
                                          'r_contained': r_contained,
                                          'outside': power[r > r_contained].sum() / power.sum()}
-                # Same with the ponderomotive dressing factor (theory/future_dev/ponderomotive_lens.md): A(r) =
+                # Same with the ponderomotive dressing factor (theory/work/future_dev/ponderomotive_lens.md): A(r) =
                 # <a^2> = a0^2 |f(r)|^2/2 from the C++'s own LG normalization.
                 k_ratio = k * lambda_L / (2.0 * np.pi)
                 sm = source_model
@@ -652,7 +652,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
 def _summary_lines(summary_rows, context, table_name):
     lambda_L = context['lambda_L']
     lines = [
-        "  theory/lg_decomposition_implementation.md: weighted complex least squares of one field component on "
+        "  theory/implemented/07_lg_screen_decomposition.md: weighted complex least squares of one field component on "
         "unit-norm LG modes",
         "  u_{p,l}(r, phi, s; w0) (waist at the origin, s = screen distance; incident: laser frame), one w0 "
         "for all modes, and projections",
@@ -740,7 +740,7 @@ def _summary_lines(summary_rows, context, table_name):
                          f"({prediction['r_contained'] / lambda_L:.4g} lambda_L) = {prediction['outside']:.4g}")
             dressed = prediction.get('dressed')
             if dressed is not None:
-                lines.append(f"    with the ponderomotive dressing factor d_N(r) (theory/future_dev/"
+                lines.append(f"    with the ponderomotive dressing factor d_N(r) (theory/work/future_dev/"
                              f"ponderomotive_lens.md): fidelity = {dressed['fidelity']:.4f}; |d_N(0)| = {dressed['abs_d0']:.4f}, "
                              f"d_N(w0)/d_N(0) = {dressed['abs_ratio_w0']:.4f} e^{{{dressed['phase_w0']:+.4f}i}}")
         norm_sq = np.sum(np.abs(fit['coeffs']) ** 2)

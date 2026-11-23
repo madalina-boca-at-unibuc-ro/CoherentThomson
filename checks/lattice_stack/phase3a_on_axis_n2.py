@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Why one on-axis point misleads at N = 2: the flat field there is close to zero. Compares it with the screen, for a b_20 stack.
 
-Run from the repository root: .venv/bin/python theory/lattice_stack_tests/phase3a_on_axis_n2.py
+Run from the repository root: .venv/bin/python checks/lattice_stack/phase3a_on_axis_n2.py
 """
 import numpy as np
 

@@ -53,7 +53,7 @@ Electron generate_electron(const CylinderBeamParams& params,
   double r = params.radius * std::sqrt(dis_uniform(gen));
   double phi = dis_uniform(gen) * 2.0 * MathUtils::pi;
   double z = dis_z(gen);
-  // Gaussian-smoothed cylinder (theory/gaussian_smoothed_electron_cylinder.md): a uniform z on [-H/2, H/2] plus an
+  // Gaussian-smoothed cylinder (theory/specs/02_gaussian_smoothed_cylinder.md): a uniform z on [-H/2, H/2] plus an
   // independent N(0, sigma_z^2) displacement, giving longitudinal form factor sinc(qH/2) * exp(-q^2 sigma_z^2 / 2).
   // Not clipped, so the tails extend past the cylinder ends. The draw is skipped at sigma_z = 0 so the RNG stream,
   // and hence the whole beam, is identical to the sharp-edged cylinder's.
@@ -287,7 +287,7 @@ std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, c
     warnings.push_back(text.str());
   }
   if (params.polar_lattice && params.stack_sheets > 1) {
-    // Aliasing of the sheet sum (theory/lattice-stack-implemented.md, "Sheets per period"): S equally spaced moved
+    // Aliasing of the sheet sum (theory/implemented/09_lattice_stack.md, "Sheets per period"): S equally spaced moved
     // sheets add the aliases J_{mS-n}(n zeta) to (-1)^n J_n(n zeta), negligible once S - n clears n zeta by the Bessel
     // transition width ~n^(1/3). S >= n (1 + zeta) + 5 n^(1/3) keeps the relative error of b_n below ~1e-4
     // (sheets_per_period_aliasing.py). The sheets are equally spaced over the span L, Gaussian tails included.
@@ -330,7 +330,7 @@ std::vector<std::string> stack_warnings(const CylinderBeamParams& params, const 
   }
   // Equally spaced samples of the smoothed density add replicas of its transform shifted by 2 pi / d. The nearest one
   // to q_N falls off as exp(-((2 pi / d - q_N) sigma_z)^2 / 2), so (2 pi / d - q_N) sigma_z >= 6 keeps it near e^-18
-  // (theory/lattice-stack-implemented.md, "Gaussian stack"). The sinc of a wide H only lowers it further.
+  // (theory/implemented/09_lattice_stack.md, "Gaussian stack"). The sinc of a wide H only lowers it further.
   const double span = stack_span(params);
   const double spacing = span / static_cast<double>(params.stack_sheets);
   const double q_max = static_cast<double>(N_max) * std::abs(q.q_axial);

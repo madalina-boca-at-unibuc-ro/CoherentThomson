@@ -1,6 +1,6 @@
 # Bunch-length test: does the lens survive a Gaussian bunch, with only the amplitude reduced?
 
-Prepared 2026-10-30. Step 2 of `../../coherent_incoherent_decomposition.md`, as a numerical check: run B of the
+Prepared 2026-10-30. Step 2 of `theory/work/future_dev/coherent_incoherent_decomposition.md`, as a numerical check: run B of the
 progress report (LG (0,0), a0 = 0.2, γ ≈ 13.5 head-on, R_max 25 w0, 65536 random electrons;
 `config/expansion_a0_scan_server/config_expansion_p0l0_a0_02_R25.cfg`, run
 `~/output/progress_report_20261029/runs_A-D/20261029_143739`) with a
@@ -16,7 +16,7 @@ time: `e(z₀) = e(0) e^{iqz₀}`. Then for the same transverse sample
 with `q_N = N (k_1 + k_L)` (head-on, on axis; the screen spans ~1e-4 rad, so q is constant over it to ~1e-8). The
 coherent field keeps its shape (waist, z0, `l`, radial phase), its amplitude falls by ρ̃, and the residual R is
 incoherent noise whose power relative to the coherent part grows as (1 − ρ̃²)/ρ̃². The exact dressed q
-(`q = k_s − (K_s·P/K_L·P) k_L`, measured in `theory/lattice_stack_tests/`) differs from this one by 3e-5 relative at
+(`q = k_s − (K_s·P/K_L·P) k_L`, measured in `checks/lattice_stack/`) differs from this one by 3e-5 relative at
 `a0 = 0.2`, which this test can't resolve. Before 2026-11-06 this test used `N k_1 + k_L`, wrong by 7e-4 at N = 2; the table
 below is recomputed with the corrected formula.
 
@@ -41,10 +41,10 @@ realizations agree within speckle. Check `electron_beam_scatter.dat` x, y are id
 
 ## Running
 
-Inside a compute-node job (`theory/srun.txt`; ~2.5 h for the four runs, so `interactive` (4 h) or `cpu-wide`):
+Inside a compute-node job (`theory/cluster.md`; ~2.5 h for the four runs, so `interactive` (4 h) or `cpu-wide`):
 
 ```
-bash theory/future_dev/tests/bunch_length/run_batch.sh
+bash reports/2026-10-29_progress/configs/bunch_length/run_batch.sh
 ```
 
 ## Analysis

@@ -4,7 +4,7 @@
 c is the best complex factor in F = c F_flat. The prediction is (1/M) sum_j exp(-i q_N z_j) = (-1)^n J_n(n zeta) exp(+i n phase)
 for whole periods at integer n = N ratio: the field's translation phase, the conjugate of b's.
 
-Run from the repository root: .venv/bin/python theory/lattice_stack_tests/phase3a_checkpoint.py
+Run from the repository root: .venv/bin/python checks/lattice_stack/phase3a_checkpoint.py
 It writes phase3a_results.txt. Finished runs are reused, so delete ~/output_tests/lattice_stack/phase3a after changing the solver.
 """
 import numpy as np

@@ -1,13 +1,13 @@
 # Implementation details: radiation computation modes and optimizations
 
 This document describes how `Radiation::compute_radiation`
-([radiation.cpp](../src/core/radiation/radiation.cpp)) evaluates the Fourier-transformed radiated field, the six
+([radiation.cpp](../../src/core/radiation/radiation.cpp)) evaluates the Fourier-transformed radiated field, the six
 computation modes selected by the config key `radiation_formula`, and the numerical and performance
 optimizations behind them. The derivations are in
-[FT_Faraday_tensor-direct_and_simplified_forms-v2.md](FT_Faraday_tensor-direct_and_simplified_forms-v2.md)
-(exact formulas) and [long_distance_direct_simplified_coding_guide.md](long_distance_direct_simplified_coding_guide.md)
+[theory/physics/FT_faraday_tensor_v2.md](../physics/FT_faraday_tensor_v2.md)
+(exact formulas) and [theory/specs/01_long_distance_formulas.md](../specs/01_long_distance_formulas.md)
 (long-distance formulas). Validation data is in
-[long_distance_implementation_review.md](long_distance_implementation_review.md).
+[theory/implemented/01_long_distance_formulas.md](../implemented/01_long_distance_formulas.md).
 
 ## 1. What is computed
 
@@ -224,7 +224,7 @@ an exact identity (`distance_minus_reference` in `radiation.cpp`; $|\mathbf X|$ 
 distance, angle or orientation. $e^{ik|\mathbf X|}$ is applied once per (frequency, screen point) in
 `run_simulation`, next to `general_factor`, so its rounding is shared by every electron at that point. The
 exported field still carries the full $e^{ikR}$. Per-electron $\mathbf n_0$, $1/|\mathbf x_0|$ and trajectories are
-untouched. Measurements are in `stabilize_phase_split_proposal.md`; in short, all modes now converge to 6–7 digits
+untouched. Measurements are in `theory/specs/05_propagation_phase_split.md`; in short, all modes now converge to 6–7 digits
 in $D^2|F|^2$ up to $kD\sim5\times10^{17}$, where the old code had lost the off-axis pattern from $kD\sim10^{13}$,
 and the exact modes run ~40% faster (smaller sin/cos arguments).
 

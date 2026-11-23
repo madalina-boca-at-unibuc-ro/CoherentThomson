@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'future_dev' / 'tests' / 'bunch_length'))
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'configs' / 'bunch_length'))
 from compare_bunch_length import read_field  # noqa: E402
 
 REPORT = Path.home() / 'output/progress_report_20261029'

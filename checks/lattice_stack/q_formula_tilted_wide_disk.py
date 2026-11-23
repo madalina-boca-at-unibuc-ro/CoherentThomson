@@ -1,4 +1,4 @@
-import sys; sys.path.insert(0,'theory/lattice_stack_tests')
+import sys; sys.path.insert(0,'checks/lattice_stack')
 import numpy as np
 from lattice_stack_common import *
 pz=13.483; E=np.hypot(1,pz); th=0.9*np.pi; a0=0.2; d=1.4e-2
