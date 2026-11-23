@@ -130,13 +130,14 @@ inline double get_laser_frequency(const ConfigMap& config) {
 
 inline double get_laser_a0(const ConfigMap& config) { return std::stod(get_required(config, "laser_a0")); }
 
-// Half-width of the flat-top plateau, in radians.
+// Full length of the flat-top plateau, in radians (0 = pure Gaussian pulse).
 inline double get_laser_flat_duration(const ConfigMap& config) {
   auto [value, unit] = split_value_and_unit(get_required(config, "laser_flat_duration"));
   return value * convert_unit_to_number(unit, config);
 }
 
-// Standard deviation (phase width) of the Gaussian wings, in radians.
+// Phase width tau of the Gaussian wings, in radians: amplitude exp(-(delta_phi/tau)^2), not a standard deviation
+// (field rms tau/sqrt(2)). In cycles (cycles_adim), it is the manuscript's N_c = tau/(2 pi) for a pure Gaussian.
 inline double get_laser_wing_sigma(const ConfigMap& config) {
   auto [value, unit] = split_value_and_unit(get_required(config, "laser_wing_sigma"));
   return value * convert_unit_to_number(unit, config);
@@ -148,7 +149,7 @@ inline double get_laser_delay(const ConfigMap& config) {
   return value * convert_unit_to_number(unit, config);
 }
 
-// Number of Gaussian-wing standard deviations included in the simulated phase range.
+// How many wing widths tau the simulated phase range extends beyond the plateau (field cut at exp(-cutoff^2)).
 inline double get_laser_wing_sigma_cutoff(const ConfigMap& config) {
   return std::stod(get_required(config, "laser_wing_sigma_cutoff"));
 }

@@ -59,8 +59,9 @@ python3 py_scripts/particle/plot_beam_scatter.py   # only if plot_beam_scatter=t
 python3 py_scripts/particle/plot_beam_density_z.py # analytic z-density; + histogram if plot_beam_scatter=true
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
 python3 py_scripts/radiation/plot_all_components.py [--incident]
-python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary|total> <mu> <nu> [run_folder]
-                                                   # or `radial_phase all`; flat detectors only (theory/specs/04_radial_phase_removal.md)
+python3 py_scripts/radiation/plot_field_carrier_removed.py [<long|short|boundary|total> [<mu> <nu>]] [run_folder]
+          # the field times e^{-ik_N(R-Z)} (spherical carrier removed); every component by default, or one range, or
+          # one component; flat detectors only (theory/specs/04_radial_phase_removal.md)
 python3 py_scripts/radiation/plot_point_spectrum.py <long|short|boundary|total> <mu> <nu>   # dense_frequency_spectrum=true
 python3 py_scripts/radiation/plot_point_spectrum_all.py            # every range/component + |F| overviews
 python3 py_scripts/radiation/plot_point_spectrum_observables.py    # local spin/energy densities and fluxes vs omega

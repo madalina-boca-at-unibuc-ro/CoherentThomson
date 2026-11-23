@@ -121,7 +121,7 @@ Conventions: `py_scripts/PLOTTING_NOTES.md`.
 python3 py_scripts/{laser,detector,particle}/<script>.py   # some need plot_*=true flags in the config
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
 python3 py_scripts/radiation/plot_all_components.py [--incident]
-python3 py_scripts/radiation/plot_processed.py radial_phase <long|short|boundary|total> <mu> <nu>   # or `radial_phase all`; flat detectors only
+python3 py_scripts/radiation/plot_field_carrier_removed.py [<range> [<mu> <nu>]] [run_folder]   # F e^{-ik_N(R-Z)}; all components by default; flat detectors only
 python3 py_scripts/radiation/plot_point_spectrum{,_all,_observables}.py           # dense_frequency_spectrum runs
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>
 python3 py_scripts/radiation/plot_observables.py [--incident]   # rect./circular facing ±Oz (--incident: any)

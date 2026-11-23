@@ -15,10 +15,12 @@ protected:
   double a0;             // Dimensionless laser strength parameter (a0 = eE0/(m_e c omega))
   double E0_c;           // Peak electric field amplitude divided by c for proper unit
                          // consistency in the Faraday tensor
-  double flat_duration;  // Half-width of the flat-top plateau phase
-  double wing_sigma, delay,
-      wing_sigma_cutoff;              // Standard deviation phase width of Gaussian wings
-                                      // the overall delay shift in phase units and the cutoff factor of the Gaussian
+  double flat_duration;  // Full length (in phase) of the flat-top plateau, from delay to delay + flat_duration
+  // wing_sigma: phase width tau of the Gaussian wings, amplitude exp(-(delta_phi/tau)^2) (envelope()); not a standard
+  // deviation: the field's rms width is tau/sqrt(2), the intensity's tau/2, and with no plateau wing_sigma/(2 pi) is
+  // the manuscript's N_c. delay: overall phase shift. wing_sigma_cutoff: the simulated range extends cutoff * tau
+  // beyond the plateau on each side (the field there is exp(-cutoff^2) of its peak).
+  double wing_sigma, delay, wing_sigma_cutoff;
   MathUtils::Complex zeta_1, zeta_2;  // Complex polarization coefficients for the two orthogonal
                                       // polarization directions; e.g. zeta_1=(1,0), zeta_2=(0,1) gives
                                       // circular polarization

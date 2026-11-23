@@ -34,7 +34,7 @@ for name in p0l0_a0_01_R15 p2l2_a0_01_R15 p0l0_a0_02_R25 p2l2_a0_02_R25 p2l2_a0_
     python3 py_scripts/radiation/plot_all_components.py "$run"
     python3 py_scripts/radiation/plot_observables.py "$run"
     python3 py_scripts/radiation/lg_decomposition.py "$run" --w0=$W0 --z0=$Z0 --z0-unit lambda
-    python3 py_scripts/radiation/plot_processed.py radial_phase total 0 1 "$run"
+    python3 py_scripts/radiation/plot_field_carrier_removed.py total 0 1 "$run"  # was plot_processed.py radial_phase
   } > "$LOGS/post_$name.log" 2>&1
   echo "$(date '+%F %T') POST  $name rc=$?" | tee -a "$LOGS/index.txt"
   sleep 2   # run folders are timestamped to the second

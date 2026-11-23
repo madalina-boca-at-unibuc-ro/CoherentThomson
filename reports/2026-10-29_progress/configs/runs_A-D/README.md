@@ -52,7 +52,7 @@ python3 py_scripts/radiation/plot_all_components.py R
 python3 py_scripts/radiation/plot_observables.py R
 Z0=$(python3 -c "print(','.join(str(v) for v in range(-1500000, 1500001, 100000)))")
 python3 py_scripts/radiation/lg_decomposition.py R --z0=$Z0 --z0-unit lambda
-python3 py_scripts/radiation/plot_processed.py radial_phase total 0 1 R
+python3 py_scripts/radiation/plot_field_carrier_removed.py total 0 1 R   # was plot_processed.py radial_phase (renamed 2026-11-23)
 ```
 
 - **Use the bounded z0 list** (−1.5×10⁶ … 1.5×10⁶ λ in 10⁵ steps). Write it as `--z0=…` because it starts with a minus

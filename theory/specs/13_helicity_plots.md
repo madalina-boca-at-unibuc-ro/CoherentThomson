@@ -63,12 +63,12 @@ after the move, on one run.
   - **Files:** `png_folder/radiation/emitted/radiation_field_total_Eplus_omega{i}.png` (and `Eminus`).
   - **No new colour or axis conventions:** Re and Im share ±|E|max, the phase is flat-shaded, and the axes are in
     angle. When `scaled_parameters.py` exists, the axes switch to $\theta/\theta_*$ (as for every screen plot).
-- **`plot_processed.py`:** `radial_phase plus|minus` applies the existing carrier removal $e^{-ik_N(R-Z)}$ to $E_\pm$.
-  `radial_phase all` includes both. **This is the version to look at:** without it, Re and Im are dominated by
+- **`plot_field_carrier_removed.py`** (was `plot_processed.py radial_phase`): `plus|minus` applies the existing carrier
+  removal $e^{-ik_N(R-Z)}$ to $E_\pm$; the default (all components) includes both. **This is the version to look at:** without it, Re and Im are dominated by
   fringes.
 - **`plot_all_components.py`:** after the 24 F plots, also the two helicities (raw), plus
-  `radial_phase plus|minus`.
-- **`run_batch.sh` of the paper campaign** (`theory/specs/12_paper_campaign.md` §6) calls `plot_processed.py radial_phase plus`
+  `plot_field_carrier_removed.py plus|minus`.
+- **`run_batch.sh` of the paper campaign** (`theory/specs/12_paper_campaign.md` §6) calls `plot_field_carrier_removed.py plus`
   and `… minus` for each run.
 
 ## 5. What not to do
@@ -80,7 +80,7 @@ after the move, on one run.
 ## 6. Verification
 
 1. **Refactor is a no-op:**
-   - `plot_field.py total 0 1` and `plot_processed.py radial_phase total 0 1` give byte-identical PNGs before and
+   - `plot_field.py total 0 1` and `plot_field_carrier_removed.py total 0 1` give byte-identical PNGs before and
      after, on one run (same matplotlib version);
    - the `run_log.txt` sections are identical (§3).
 2. **Consistency with the decomposition:** on report run C (LG22, $a_0=0.1$; lattice `20261031_094054`), the power

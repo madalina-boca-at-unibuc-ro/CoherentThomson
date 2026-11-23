@@ -2,7 +2,7 @@
 
 Long-term goal: write the emitted field on the detector as a superposition of Laguerre-Gauss modes and identify
 their parameters (waist, waist position, `p`, `l`, weights). This file tracks the stages as they are implemented.
-Earlier stage: radial-phase removal, `theory/specs/04_radial_phase_removal.md` (`plot_processed.py radial_phase`).
+Earlier stage: radial-phase removal, `theory/specs/04_radial_phase_removal.md` (`plot_field_carrier_removed.py`).
 
 All of it is Python post-processing of one run (one detector distance `Z`). The only C++ change it needed is
 the incident-field screen (since 2026-10-27, `incident_field.dat` is at `Z` on a beam-sized grid, described by

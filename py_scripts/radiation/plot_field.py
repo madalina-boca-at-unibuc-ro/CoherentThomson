@@ -352,7 +352,7 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
     F^{mu nu} of the requested (long_range/short_range/boundary/total) Faraday tensor over
     the detector screen, one figure per configured frequency.
 
-    Optional hooks for post-processing scripts (plot_processed.py): `field_transform(field, omega_ratio)`
+    Optional hooks for post-processing scripts (plot_field_carrier_removed.py): `field_transform(field, omega_ratio)`
     maps each frequency's complex field (i_screen order; omega_ratio = that row's omega/omega_1) to the
     plotted one, `png_subdir` replaces the 'emitted'/'incident' output subfolder, and `title_note`
     is appended to the component label in the panel titles.
