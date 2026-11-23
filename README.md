@@ -77,13 +77,12 @@ Configs are flat `key value [unit]` text files covering detector geometry and di
 frequency/envelope/polarization/mode, beam particle count/geometry, initial momentum distribution, radiation
 formula and spectrum settings, and thread count. Provided configs:
 
-- `config/config.cfg`: the default, for current experiments (random electron positions).
-- `config/config_lattice.cfg`: the same with a polar-lattice beam (`beam_distribution polar_lattice`).
-- `config/config_lattice_stack.cfg`: a longitudinal stack of lattice sheets (`beam_stack_sheets`), uniform or bunched
-  (`beam_modulation`), on run A of the progress report (Gaussian pulse, `a0 = 0.1`).
-- `config/config_modulation_stack.cfg`: a Gaussian stack (`beam_stack_sigma_z`) with long modulation periods. Runs
-  can reach millions of trajectories: estimate the cost (sheets × lattice sites) before starting one.
-- `config/config_spectrum.cfg`: a dense frequency scan at a single screen point.
+- `config/reference/`: one reference config per beam situation (2D random, 2D lattice, 3D random with Gaussian
+  ends, the same modulated, uniform and modulated lattice stacks, and a one-point dense spectrum), all on the same
+  laser and screen. Don't edit them for a run: copy one to `config/work/` (ignored by git). Index and costs:
+  `config/reference/README.md`.
+- `config/config.cfg`: the default working config (a copy of `reference/random_2d.cfg`); the plotting scripts read
+  `output_folder` from it.
 - `config/config_cross_check.cfg`: parameter-matched to the independent Python reference implementation.
 
 Configs of past production runs are kept with the results that used them (e.g. `reports/2026-10-29_progress/configs/`).

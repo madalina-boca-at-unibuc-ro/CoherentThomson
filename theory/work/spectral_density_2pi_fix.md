@@ -58,8 +58,10 @@ screen, polar lattice, N = 1, 2):
 - every value in "Screen-integrated observables" changes by a factor of 6.283185 (2π to the 7 printed digits);
 - "Flux/density ratios" and "OAM-to-energy ratios" are unchanged, to every printed digit.
 
-`plot_point_spectrum_observables.py` got the identical change. It compiles but has not been run, because no
-`dense_frequency_spectrum` run was at hand.
+`plot_point_spectrum_observables.py` got the identical change. Run on 2026-11-23, before (`a738ee8`) and after, on
+copies of a `checks/one_electron/one_electron_on_axis_spectrum.cfg` run (801 frequencies, one on-axis point): the six
+absolute values (`dP_z/dω`, `du/dω` at three frequencies) change by 6.283185 ± 3e-7 (2π to the printed digits), and
+every other printed line (ratios, spin per photon) is identical.
 
 ## Consequences for existing results
 

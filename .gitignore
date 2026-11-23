@@ -1,6 +1,9 @@
 # Build artifacts (out-of-source build enforced by CMake)
 build/
 build-debug/
+
+# Personal working copies of the reference configs (config/reference/README.md)
+config/work/
 src/build/
 bin/
 

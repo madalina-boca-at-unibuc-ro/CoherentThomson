@@ -36,11 +36,11 @@ reports/2026_thomson_paper/
 - **`config/` stays as it is**, for generic and experimental configs.
 - **`reference_config/`** (untracked) was to become `base/base.cfg` after the fixes in §3, but it was removed before
   this spec was implemented. **Open:** what `base/base.cfg` starts from instead (§3 takes every key from
-  `config/config_lattice.cfg`).
+  `config/config_lattice.cfg`, replaced on 2026-11-23 by `config/reference/lattice_2d.cfg`, a candidate).
 
 ## 3. `base/base.cfg`
 
-- **Every key, as in `config/config_lattice.cfg`, with its comments.** Keys that `runs.csv` sets get the placeholder
+- **Every key, as in `config/reference/lattice_2d.cfg` (was `config/config_lattice.cfg`), with its comments.** Keys that `runs.csv` sets get the placeholder
   value `@ROW` (§5), so a key that is forgotten in a row cannot silently take a stale value.
 - **Shared choices**, from the run plan:
   - envelope: `laser_flat_duration 0`, cutoff 4;

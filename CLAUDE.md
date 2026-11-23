@@ -77,14 +77,16 @@ the commit message and format on a laptop. **No test suite**, no lint command.
 
 ### Configs and test inputs
 
-**Iterating on code changes:** copy a config (don't edit `config/config.cfg` unless the task is about it) and drop
-`beam_particle_count` to e.g. `50`. `config/` holds only generic configs:
-- `config.cfg`: default random beam, current experiments. `config_lattice.cfg`: the same plus `polar_lattice`; keep
-  its other keys in step with `config.cfg`.
-- `config_lattice_stack.cfg` (run A, Gaussian pulse, `a0 = 0.1`) and `config_modulation_stack.cfg` (Gaussian stack,
-  64 × 64 screen): current stack experiments, not kept in step. Estimate cost (sheets × sites) before running.
-- `config_spectrum.cfg`: one-point dense spectrum. `config_cross_check.cfg`: matched to the Python reference's
-  `main.py` `INPUTS`; use it for every C++-vs-Python comparison and update it when `INPUTS` change.
+**Iterating on code changes:** copy a config to your scratch space (don't edit `config/config.cfg` or a reference
+unless the task is about it) and shrink it (`beam_particle_count`, screen points; a lattice stack shrinks only through
+`beam_stack_sheets` or the spacing). `config/` holds:
+- `reference/`: one config per beam situation (`random_2d`, `lattice_2d`, `random_3d`, `random_3d_modulated`,
+  `lattice_stack_uniform`, `lattice_stack_modulated`, `spectrum_lattice_2d`), identical except for the beam section
+  (and the spectrum's screen): **a change to the shared base goes into all seven.** Production size; costs in
+  `reference/README.md`. The user copies one to `config/work/` (ignored by git) to work.
+- `config.cfg`: the default working config (a copy of `reference/random_2d.cfg`); scripts read its `output_folder`.
+- `config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`; use it for every C++-vs-Python
+  comparison and update it when `INPUTS` change.
 
 Elsewhere:
 - `reports/<name>/`: a report with every experiment that fed it (configs, batch and comparison scripts). Frozen configs

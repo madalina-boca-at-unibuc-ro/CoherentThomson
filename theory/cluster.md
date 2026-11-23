@@ -64,7 +64,7 @@ RELEASE THE NODE WHEN THE RUN ENDS (unattended runs, e.g. overnight)
 With `srun ... --pty bash` the job is the shell, not the solver: when the run finishes the node stays allocated
 (and accounted) until the shell ends or the time limit. Instead, make the run itself the job, inside tmux:
      srun --partition=cpu-wide --time=12:00:00 --exclusive --exclude=hpc-db01,hpc-ctrl01 \
-          bash -c "cd ~/work/c++/CoherentThomson && python3 py_scripts/compile_and_run.py config/config_modulation_stack.cfg"
+          bash -c "cd ~/work/c++/CoherentThomson && python3 py_scripts/compile_and_run.py config/work/<my_copy>.cfg"
 It builds on the node (-march=native), runs, and the job ends as soon as the command does (success or error),
 after radiation_field.dat and run_log.txt are written. The output stays visible in the tmux window.
 Alternatives in an interactive srun shell: end the command with `; exit`, or, while the solver runs, type `exit` +
