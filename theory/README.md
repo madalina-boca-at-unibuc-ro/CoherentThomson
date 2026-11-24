@@ -21,7 +21,8 @@ Detail in `work/dev_notes_2026-07-28_to_2026-11-23.md` unless noted.
   ch. 17); `PhysUtils::non_linear_Thomson_formula` is flagged in-code for review.
 - The flat-top envelope leaks N = 1 into N = 2 (`laser_flat_duration 0` removes it); the LG on-axis field is √2 × the
   plane wave's at the same `a0`: `work/future_dev/pulse_envelope_and_lg_normalization.md`. Unacted plans:
-  `work/future_dev/README.md`.
+  `work/future_dev/README.md`. LG (0, 2) peaks at 0.736 `a0` (local ⟨a²⟩ = 0.541 a0²/2), so `frequencies_list`'s ω_N
+  (dressed with a0²/2) lies below the whole LG (0, 2) line for a0 ≳ 0.3 (a0 scan, `implemented/15_spectrum_map.md`).
 - **Python cross-check in the old geometry only** (spec 14): the Python reference still starts the electrons at t = 0
   with the pulse front at them, so `config_cross_check.cfg` keeps `laser_delay = cutoff·σ`. Port spec 14 there before
   comparing collisions at the focus.
@@ -47,7 +48,7 @@ Detail in `work/dev_notes_2026-07-28_to_2026-11-23.md` unless noted.
 
 ## specs/ and implemented/
 
-Next free number: 16.
+Next free number: 17.
 
 | NN | Spec | Implemented | Status |
 |---|---|---|---|
@@ -66,6 +67,7 @@ Next free number: 16.
 | 13 | Helicity-component plots `E₊`, `E₋` | — | Draft |
 | 14 | Collision timing: honour `laser_delay`, start each electron at the pulse front (collision at the LG focus) | Implementation notes | Done (Python cross-check deferred: the reference keeps the old arrangement) |
 | 15 | Dense spectrum on a screen line: dP_z/dω, \|E₊\|, \|E₋\| maps in (θ, ω) | Implementation notes | Done |
+| 16 | Screen fields at arbitrary frequencies: `omega_list` (`N:value`), harmonic index in the run log, spectrum peaks | — | Draft |
 
 ## work/
 

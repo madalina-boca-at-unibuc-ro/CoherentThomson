@@ -8,22 +8,28 @@ dense_frequency_spectrum run on a line of screen points (rectangular Nx or Ny = 
   These don't depend on phi for an axisymmetric source, so one azimuth stands for the screen; Cartesian F components
   do (both helicities present), which is why they aren't mapped. Solid lines: the computed harmonics N omega_1.
   Dashed: N omega_1 (1 + a0^2/2), the undressed limit (head-on, on axis; the angle dependence is negligible at
-  gamma theta << 1).
+  gamma theta << 1). Dotted: the red edge of the laser's actual peak <a^2> (see the summary below).
 - Line-integrated spectrum: dW/domega = sum_i dP_z/domega(theta_i) A_i, A_i the annulus of the i-th point (edges
   halfway between points), assuming axisymmetry: the beam's spectrum through the screen's disk.
-- Summary per harmonic window omega/omega_1 in [N - 1/2, N + 1/2), printed and written to run_log.txt under its own
-  section: the integrated spectrum's peak and its offset from N, FWHM, the central 90% band, the energy fraction
-  within +-1% of N, and theta of the dP_z/domega maximum at N omega_1 and at the peak.
+- Summary per harmonic window, printed and written to run_log.txt under its own section: the integrated spectrum's
+  peak and its offset from N, FWHM, the central 90% band, the energy fractions within +-1% of N omega_1 and in the
+  reachable band, and theta of the dP_z/domega maximum at N omega_1 and at the peak. Harmonic N can reach
+  N x [(1 + a0^2/2)/(1 + g a0^2/2), 1 + a0^2/2] omega_1 (g = the laser's peak |a|^2/a0^2, 0.541 for the code's LG
+  (0, 2); omega_1 itself is dressed with g = 1); windows split halfway between neighbouring bands.
 
 Spectra at a fixed theta: single-point runs and plot_point_spectrum*.py.
 
-Usage: python3 plot_spectrum_map.py [run_folder] [--range R] [--omega-min W] [--omega-max W]
+Usage: python3 plot_spectrum_map.py [run_folder] [--range R] [--omega-min W] [--omega-max W] [--harmonic N] [--linear]
+--linear (colour from 0 to max) needs a plotted range holding one harmonic: --harmonic N, or --omega-min/--omega-max.
+PNGs: spectrum_map{,_integrated}[_N<N>][_linear].png.
 """
 import argparse
+import math
 import os
 import sys
 
 import numpy as np
+import scipy.special
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
@@ -105,19 +111,54 @@ def angle_scale(theta_max):
     return 1.0, 'rad'
 
 
-def harmonic_lines(ax, omega, a0, vertical=False):
-    """Solid at N omega_1 (computed), dashed at N omega_1 (1 + a0^2/2) (undressed, head-on), inside the range."""
+def peak_a2_fraction(config_path):
+    """Peak local |a|^2 / a0^2 of the laser's transverse profile at the waist: 1 for a plane wave; for LG (p, l) the
+    maximum over rho of |Npn (sqrt2 rho/w0)^|l| 1F1(-p, |l|+1, 2 rho^2/w0^2) exp(-rho^2/w0^2)|^2, the C++
+    LaguerreGaussLaser amplitude with its custom Npn (0.541 for (0, 2), 2 on axis for (0, 0))."""
+    laser_type, _ = read_config_value('laser_type', config_path)
+    if laser_type != 'laguerre_gauss':
+        return 1.0
+    p = int(read_config_value('laser_lg_p', config_path)[0])
+    n = abs(int(read_config_value('laser_lg_l', config_path)[0]))
+    Npn = np.sqrt(2.0) / math.factorial(n) * np.sqrt(math.factorial(p + n) / math.factorial(p))
+    u = np.linspace(0.0, 10.0 + 4.0 * (p + n), 200001)  # rho^2 / w0^2
+    amplitude = Npn * (2.0 * u) ** (n / 2.0) * scipy.special.hyp1f1(-p, n + 1, 2.0 * u) * np.exp(-u)
+    return float(np.max(amplitude ** 2))
+
+
+def harmonic_bands(a0, g):
+    """(lower, upper) in omega/omega_1 per unit N: the emission a peak local <a^2> = g a0^2/2 can reach, from its
+    red edge (1 + a0^2/2)/(1 + g a0^2/2) (head-on, on axis) up to the undressed 1 + a0^2/2."""
     undressed = 1.0 + a0 ** 2 / 2.0
+    return undressed / (1.0 + g * a0 ** 2 / 2.0), undressed
+
+
+def window_boundary(N, lower, upper):
+    """omega/omega_1 between harmonic band N and band N + 1 (halfway between N upper and (N + 1) lower); 0 -> below N = 1."""
+    return 0.5 * lower if N == 0 else 0.5 * (N * upper + (N + 1) * lower)
+
+
+def harmonics_in(omega_min, omega_max, lower, upper):
+    """The harmonics whose window overlaps [omega_min, omega_max]."""
+    return [N for N in range(1, int(np.floor(omega_max / lower)) + 2)
+            if window_boundary(N - 1, lower, upper) < omega_max and window_boundary(N, lower, upper) > omega_min]
+
+
+def harmonic_lines(ax, omega, a0, g, vertical=False):
+    """Solid at N omega_1 (computed); dashed at N omega_1 (1 + a0^2/2) (undressed); dotted at the red edge of the
+    laser's actual peak <a^2> (harmonic_bands), when it differs from N omega_1. Inside the plotted range."""
+    lower, upper = harmonic_bands(a0, g)
     draw = ax.axvline if vertical else ax.axhline
-    for N in range(1, int(np.floor(omega.max())) + 1):
-        if omega.min() <= N <= omega.max():
-            draw(N, color='white' if not vertical else 'tab:red', linewidth=0.8, alpha=0.8)
-        if omega.min() <= N * undressed <= omega.max():
-            draw(N * undressed, color='white' if not vertical else 'tab:red', linewidth=0.8, alpha=0.8,
-                 linestyle='--')
+    color = 'tab:red' if vertical else 'white'
+    for N in range(1, int(np.floor(omega.max() / lower)) + 1):
+        for value, style in ((N, '-'), (N * upper, '--'), (N * lower, ':')):
+            if style == ':' and abs(lower - 1.0) < 1e-6:
+                continue
+            if omega.min() <= value <= omega.max():
+                draw(value, color=color, linewidth=0.8 if style != ':' else 1.2, alpha=0.8, linestyle=style)
 
 
-def draw_maps(theta, omega, maps, a0, dynamic_range, png_dir, title):
+def draw_maps(theta, omega, maps, a0, g, dynamic_range, png_dir, title, linear=False, suffix=''):
     scale, unit = angle_scale(theta.max())
     fig, axes = plt.subplots(1, 3, figsize=(17, 5.5), sharey=True)
     panels = (('dPz', r'$dP_z/d\omega$'), ('E_plus', r'$|E_+|$'), ('E_minus', r'$|E_-|$'))
@@ -129,24 +170,27 @@ def draw_maps(theta, omega, maps, a0, dynamic_range, png_dir, title):
         if not np.isfinite(vmax) or vmax <= 0.0:
             ax.set_title(f"{label}: zero")
             continue
-        vmin = vmax / dynamic_range
-        image = ax.pcolormesh(theta * scale, omega, np.clip(values, vmin, None), shading='nearest',
-                              norm=LogNorm(vmin=vmin, vmax=vmax), cmap='viridis')
-        harmonic_lines(ax, omega, a0)
+        if linear:
+            image = ax.pcolormesh(theta * scale, omega, values, shading='nearest', vmin=0.0, vmax=vmax, cmap='viridis')
+        else:
+            vmin = vmax / dynamic_range
+            image = ax.pcolormesh(theta * scale, omega, np.clip(values, vmin, None), shading='nearest',
+                                  norm=LogNorm(vmin=vmin, vmax=vmax), cmap='viridis')
+        harmonic_lines(ax, omega, a0, g)
         ax.set_title(label + (' (|value|)' if key == 'dPz' and np.nanmin(maps[key]) < 0 else ''))
         ax.set_xlabel(rf'$\theta$ [{unit}]')
         fig.colorbar(image, ax=ax, pad=0.02)
     axes[0].set_ylabel(OMEGA_LABEL)
-    fig.suptitle(f"{title}\nsolid: $N\\omega_1$; dashed: $N\\omega_1(1 + a_0^2/2)$, undressed limit (head-on, on axis)",
-                 fontsize=10)
+    fig.suptitle(f"{title}\nsolid: $N\\omega_1$; dashed: $N\\omega_1(1 + a_0^2/2)$, undressed; dotted: red edge of the "
+                 f"peak $\\langle a^2\\rangle = {g:.3g}\\,a_0^2/2$ (head-on, on axis)", fontsize=10)
     fig.tight_layout()
-    path = os.path.join(png_dir, 'spectrum_map.png')
+    path = os.path.join(png_dir, f'spectrum_map{suffix}.png')
     fig.savefig(path, dpi=200, bbox_inches='tight')
     plt.close(fig)
     print(f"Successfully saved plot to {path}")
 
 
-def draw_integrated(omega, dW, a0, png_dir, title):
+def draw_integrated(omega, dW, a0, g, png_dir, title, suffix=''):
     fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
     for ax, log in zip(axes, (False, True)):
         ax.plot(omega, np.abs(dW) if log else dW, color='tab:blue', linewidth=1.0)
@@ -155,29 +199,37 @@ def draw_integrated(omega, dW, a0, png_dir, title):
             positive = np.abs(dW)[np.abs(dW) > 0]
             if positive.size:
                 ax.set_ylim(positive.max() * 1e-12, positive.max() * 2)
-        harmonic_lines(ax, omega, a0, vertical=True)
+        harmonic_lines(ax, omega, a0, g, vertical=True)
         ax.set_xlabel(OMEGA_LABEL)
         ax.set_ylabel(r'$dW/d\omega$ through the line' + ' (|value|)' * log + ' [a.u.]')
         ax.grid(alpha=0.3)
     fig.suptitle(f"{title}: line-integrated spectrum (axisymmetric), $\\sum_i dP_z/d\\omega\\, A_i$", fontsize=10)
     fig.tight_layout()
-    path = os.path.join(png_dir, 'spectrum_map_integrated.png')
+    path = os.path.join(png_dir, f'spectrum_map_integrated{suffix}.png')
     fig.savefig(path, dpi=200, bbox_inches='tight')
     plt.close(fig)
     print(f"Successfully saved plot to {path}")
 
 
-def summary_lines(theta, omega, dPz, dW):
+def summary_lines(theta, omega, dPz, dW, a0, g):
     scale, unit = angle_scale(theta.max())
     unit = unit.replace(r'$\mu$', 'u')
     lines = [f"  integrated over {len(theta)} points, theta {theta[0] * scale:.4g} to {theta[-1] * scale:.4g} {unit}; "
              f"omega/omega_1 {omega[0]:.6g} to {omega[-1]:.6g}, step {omega[1] - omega[0]:.3g}"]
-    for N in range(1, int(np.floor(omega.max() + 0.5)) + 1):
-        window = (omega >= N - 0.5) & (omega < N + 0.5)
+    lower, upper = harmonic_bands(a0, g)
+    lines.append(f"  peak local <a^2> = {g:.4g} a0^2/2 (laser profile): harmonic N reachable over N x [{lower:.6g}, "
+                 f"{upper:.6g}] omega_1 (head-on, on axis); windows split halfway between neighbouring bands")
+
+    def boundary(N):  # between band N and band N + 1
+        return window_boundary(N, lower, upper)
+
+    for N in range(1, int(np.floor(omega.max() / lower)) + 1):
+        window = (omega >= boundary(N - 1)) & (omega < boundary(N))
         if window.sum() < 3:
             continue
         w_omega, w_dW = omega[window], dW[window]
-        partial = omega[0] > N - 0.5 or omega[-1] < N + 0.5 - (omega[1] - omega[0])
+        partial = omega[0] > boundary(N - 1) or omega[-1] < boundary(N) - (omega[1] - omega[0])
+        band = (w_omega >= N * lower) & (w_omega <= N * upper)
         energy = w_dW.sum()
         i_peak = int(np.argmax(w_dW))
         above = np.nonzero(w_dW >= 0.5 * w_dW[i_peak])[0]
@@ -191,6 +243,8 @@ def summary_lines(theta, omega, dPz, dW):
                   f"    FWHM span {w_omega[above[0]]:.6g} to {w_omega[above[-1]]:.6g} (width {w_omega[above[-1]] - w_omega[above[0]]:.4g})",
                   f"    central 90% of the window's energy: {lo:.6g} to {hi:.6g}",
                   f"    energy within +-1% of N omega_1: {w_dW[near].sum() / energy if energy > 0 else float('nan'):.4g} of the window",
+                  f"    energy in the reachable band {N * lower:.6g} to {N * upper:.6g}: "
+                  f"{w_dW[band].sum() / energy if energy > 0 else float('nan'):.4g} of the window",
                   f"    theta of max dP_z/domega: {theta[np.nanargmax(dPz[at_N])] * scale:.4g} {unit} at omega = N omega_1, "
                   f"{theta[np.nanargmax(dPz[at_peak])] * scale:.4g} {unit} at the peak"]
     return lines
@@ -202,29 +256,56 @@ def main():
     parser.add_argument('--range', type=float, default=1e6, help='log colour range max/min (default 1e6)')
     parser.add_argument('--omega-min', type=float, default=None, help='crop the plots (omega/omega_1)')
     parser.add_argument('--omega-max', type=float, default=None, help='crop the plots (omega/omega_1)')
+    parser.add_argument('--harmonic', type=int, default=None,
+                        help='crop the plots to harmonic N: its window, narrowed to where its spectrum is above 1e-3 '
+                             'of the peak (unless --omega-min/--omega-max are given)')
+    parser.add_argument('--linear', action='store_true',
+                        help='linear colour scale from 0; needs a range holding one harmonic (--harmonic or --omega-*)')
     args = parser.parse_args()
 
     radiation_filepath = resolve_radiation_file(args.run_folder)
     theta, omega, maps, config_path = build_maps(radiation_filepath)
     a0 = float(read_config_value('laser_a0', config_path)[0])
+    g = peak_a2_fraction(config_path)
     detector_type, _ = read_config_value('detector_type', config_path)
     distance = read_length(f'{detector_type}_detector_distance', config_path)
     rho = distance * np.tan(theta)
     dW = np.nansum(maps['dPz'] * annulus_areas(rho)[None, :], axis=1)
 
+    lower, upper = harmonic_bands(a0, g)
     keep = np.ones(len(omega), dtype=bool)
+    if args.harmonic is not None:
+        # The harmonic's window, then (unless --omega-* says otherwise) cropped to where its integrated spectrum is
+        # above 1e-3 of its peak, padded by 25% of that span: at small a0 the line is far narrower than the window.
+        keep &= (omega >= window_boundary(args.harmonic - 1, lower, upper)) & (
+            omega < window_boundary(args.harmonic, lower, upper))
+        if args.omega_min is None and args.omega_max is None and keep.any():
+            strong = keep & (dW >= 1e-3 * np.nanmax(np.where(keep, dW, np.nan)))
+            lo, hi = omega[strong].min(), omega[strong].max()
+            pad = 0.25 * max(hi - lo, omega[1] - omega[0])
+            keep &= (omega >= lo - pad) & (omega <= hi + pad)
     if args.omega_min is not None:
         keep &= omega >= args.omega_min
     if args.omega_max is not None:
         keep &= omega <= args.omega_max
+    if not keep.any():
+        print("Error: no frequency left after cropping.")
+        sys.exit(1)
+    harmonics = harmonics_in(omega[keep].min(), omega[keep].max(), lower, upper)
+    if args.linear and len(harmonics) > 1:
+        print(f"Error: --linear needs one harmonic in the plotted range, which holds N = {harmonics}: harmonics differ by "
+              "orders of magnitude. Use --harmonic N or --omega-min/--omega-max.")
+        sys.exit(1)
+    suffix = (f'_N{args.harmonic}' if args.harmonic is not None else '') + ('_linear' if args.linear else '')
     run_dir = os.path.dirname(radiation_filepath)
     png_dir = os.path.join(run_dir, 'png_folder', MODULE_NAME, 'spectrum_map')
     os.makedirs(png_dir, exist_ok=True)
     title = f"{os.path.basename(run_dir)}: a0 = {a0:g}, {len(theta)} points"
-    draw_maps(theta, omega[keep], {k: v[keep] for k, v in maps.items()}, a0, args.range, png_dir, title)
-    draw_integrated(omega[keep], dW[keep], a0, png_dir, title)
+    draw_maps(theta, omega[keep], {k: v[keep] for k, v in maps.items()}, a0, g, args.range, png_dir, title,
+              linear=args.linear, suffix=suffix)
+    draw_integrated(omega[keep], dW[keep], a0, g, png_dir, title, suffix=suffix)
 
-    lines = summary_lines(theta, omega, maps['dPz'], dW)
+    lines = summary_lines(theta, omega, maps['dPz'], dW, a0, g)
     print('\n'.join(lines))
     _write_run_log_section(run_dir, _RUN_LOG_SECTION_HEADER, lines)
 
