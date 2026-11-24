@@ -47,7 +47,7 @@ Detail in `work/dev_notes_2026-07-28_to_2026-11-23.md` unless noted.
 
 ## specs/ and implemented/
 
-Next free number: 15.
+Next free number: 16.
 
 | NN | Spec | Implemented | Status |
 |---|---|---|---|
@@ -65,6 +65,7 @@ Next free number: 15.
 | 12 | Paper run campaign (`reports/2026_thomson_paper/`) | — | Draft; depends on 11 |
 | 13 | Helicity-component plots `E₊`, `E₋` | — | Draft |
 | 14 | Collision timing: honour `laser_delay`, start each electron at the pulse front (collision at the LG focus) | Implementation notes | Done (Python cross-check deferred: the reference keeps the old arrangement) |
+| 15 | Dense spectrum on a screen line: dP_z/dω, \|E₊\|, \|E₋\| maps in (θ, ω) | — | Draft |
 
 ## work/
 
