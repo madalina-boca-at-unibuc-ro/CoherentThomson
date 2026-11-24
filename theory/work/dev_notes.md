@@ -38,3 +38,7 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   digits at all five, pure E₋, J = −6. Main ring ~110–130 µrad and slowly decaying outer rings: 4–11% of the flux beyond
   0.9 R_max (30% at 2.893). Next: containment (R_max ~150 w0, N_R 128, below the lattice order at ~1.1 mrad; one
   frequency per run keeps the fast path), or dressing ω_N with the laser's real peak a² (a spec).
+- Distance test (a0 = 1 line spectrum at 640000 w0 = 64 m, line to 160 w0 so 0–250 µrad as at 16 m; run
+  `~/output/20261124_202914`): the (θ, ω) maps are the same as at 16 m (N = 1 indistinguishable, N = 2 marginally
+  crisper), |E| ∝ 1/D and dP_z/dω ∝ 1/D² exactly, integrated peaks within 0.001 ω₁ and 3% in height. The island
+  structure is the far-field pattern of the source, not a Fresnel effect: 16 m is already far field for it.
