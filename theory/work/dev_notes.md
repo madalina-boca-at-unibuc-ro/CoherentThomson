@@ -14,3 +14,11 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   `theory/implemented/14_collision_timing.md`.
 - Side result (n2_residue tests): the near-axis N = 2 of `simplified` at a0 = 1 was an O(dτ²) residue of the LR/BR
   cancellation (J_z = 0); use `long_distance_direct*` and cutoff 6 for weak harmonics.
+
+## 2026-11-24: spectrum along a screen line (spec 15)
+
+- `dense_frequency_spectrum` now runs on a line of screen points (rectangular `Nx` or `Ny` 1, circular `N_phi` 1),
+  with a memory estimate and an 8 GB cap; `plot_spectrum_map.py` maps dP_z/dω, |E₊|, |E₋| over (θ, ω/ω₁) and gives
+  the line-integrated spectrum. At a0 = 0.1 the integrated lines peak within their width of N ω₁ (offsets +0.0033,
+  +0.0058). Next: the a0 = 1 scan the spec suggests, to see how far ω₁ is from the real spectrum.
+  `theory/implemented/15_spectrum_map.md`.

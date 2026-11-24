@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -152,12 +153,31 @@ int main(int argc, char* argv[]) {
     std::cout << "Initial form factor b = (" << form_factor.b.real() << ", " << form_factor.b.imag()
               << "), |b| = " << std::abs(form_factor.b) << "\n";
 
-    if (IoUtils::get_required(simulation_config, "dense_frequency_spectrum") == "true" &&
-        detector->get_total_points() != 1) {
-      std::cerr << "Error: dense_frequency_spectrum=true requires a detector collapsed to a single point, "
-                << "but this detector has " << detector->get_total_points() << " points -- only the first "
-                << "detector point will be used.\n";
-      detector->restrict_to_first_point();
+    // A dense spectrum runs on one point or on a line of points (rectangular Nx or Ny = 1, circular N_phi = 1;
+    // theory/specs/15_spectrum_map.md). A 2D grid or a spherical screen keeps only its first point.
+    if (IoUtils::get_required(simulation_config, "dense_frequency_spectrum") == "true") {
+      if (detector->get_total_points() != 1 && !detector->is_line()) {
+        std::cerr << "Error: dense_frequency_spectrum=true needs a single point or a line of points (rectangular "
+                  << "Nx or Ny = 1, circular N_phi = 1), but this detector is a " << detector->get_cols() << " x "
+                  << detector->get_rows() << " grid -- only the first detector point will be used.\n";
+        detector->restrict_to_first_point();
+      }
+      const Simulation::FieldMemoryEstimate memory =
+          Simulation::estimate_field_memory(IoUtils::get_num_threads(simulation_config), electron_beam.size(),
+                                            detector->get_total_points(), sim_par.frequencies.size());
+      std::cout << "Dense spectrum: " << detector->get_total_points() << " screen points x "
+                << sim_par.frequencies.size() << " frequencies; buffers " << memory.total_bytes / 1e9 << " GB ("
+                << memory.threads << " threads x " << memory.per_thread_bytes / 1e6 << " MB + "
+                << memory.reconstructed_bytes / 1e6 << " MB), radiation_field.dat ~" << memory.file_bytes / 1e6
+                << " MB\n";
+      if (memory.total_bytes > Simulation::kDenseSpectrumMemoryCap) {
+        throw std::runtime_error("dense spectrum too large: " + std::to_string(memory.total_bytes / 1e9) +
+                                 " GB of field buffers (" + std::to_string(memory.threads) + " threads x " +
+                                 std::to_string(memory.per_thread_bytes / 1e6) + " MB + " +
+                                 std::to_string(memory.reconstructed_bytes / 1e6) + " MB) is above the " +
+                                 std::to_string(Simulation::kDenseSpectrumMemoryCap / 1e9) +
+                                 " GB cap; reduce the screen points, N_omega or num_threads");
+      }
     }
 
     // A first run log before the long part, marked in progress, so a stopped run can still be plotted (beam, laser,

@@ -37,6 +37,10 @@ struct simulation_parameters {
 
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser);
 
+// The thread count run_simulation uses: requested (num_threads; 0 = all), capped at the CPUs this process may run
+// on (its affinity mask, e.g. a Slurm allocation) and at the number of electrons.
+size_t resolve_num_threads(size_t requested, size_t num_electrons);
+
 // One screen point's contribution at one frequency: the sum, over every electron in the beam, of that
 // electron's far-field long-range (velocity) / short-range (acceleration) Faraday tensor F^{\mu\nu} —
 // summed as complex amplitudes (not intensities), since capturing the inter-electron interference is
@@ -79,6 +83,21 @@ struct PackedFaraday {
 struct PackedRadiationField {
   std::vector<std::vector<PackedFaraday>> field;
 };
+
+// Memory of a run's radiation field (theory/specs/15_spectrum_map.md): one PackedRadiationField per thread, the
+// reconstructed RadiationField, and radiation_field.dat as text (~1.3 kB per row). Checked before a dense spectrum
+// on a line, which multiplies screen points by N_omega.
+struct FieldMemoryEstimate {
+  size_t threads;
+  double per_thread_bytes;
+  double reconstructed_bytes;
+  double total_bytes;  // threads * per_thread_bytes + reconstructed_bytes
+  double file_bytes;
+};
+FieldMemoryEstimate estimate_field_memory(size_t requested_threads, size_t num_electrons, size_t N_screen,
+                                          size_t N_omega);
+// A dense spectrum on a line is refused above this many bytes of buffers (FieldMemoryEstimate::total_bytes).
+inline constexpr double kDenseSpectrumMemoryCap = 8.0e9;
 
 // Computes the beam's radiated field on the detector screen, over the configured frequency grid.
 // Partitions the electron beam across a pool of worker threads; each thread accumulates its assigned

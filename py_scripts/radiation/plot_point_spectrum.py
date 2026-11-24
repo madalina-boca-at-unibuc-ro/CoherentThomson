@@ -31,6 +31,19 @@ def read_radiation_data(radiation_filepath):
         sys.exit(1)
 
 
+MAX_SCREEN_POINTS = 4
+
+
+def require_few_points(data):
+    """Exits on a run with more than MAX_SCREEN_POINTS screen points: one curve per point is unreadable for a line
+    (theory/specs/15_spectrum_map.md); a line run is for plot_spectrum_map.py, a fixed theta for a single-point run."""
+    n_screen = data['i_screen'].nunique()
+    if n_screen > MAX_SCREEN_POINTS:
+        print(f"Error: {n_screen} screen points; these scripts draw one curve per point (at most "
+              f"{MAX_SCREEN_POINTS}). For a line run use plot_spectrum_map.py; for one theta, a single-point run.")
+        sys.exit(1)
+
+
 def get_point_component(data, range_type, mu, nu):
     """
     Complex F^{mu nu} of `range_type` (long/short/boundary/total), one value per row of `data`.
@@ -74,6 +87,7 @@ def plot_point_spectrum(range_type, mu, nu, radiation_filepath, data=None):
     """
     if data is None:
         data = read_radiation_data(radiation_filepath)
+    require_few_points(data)
     field = get_point_component(data, range_type, mu, nu)
     png_dir = get_point_spectrum_png_dir(radiation_filepath)
 

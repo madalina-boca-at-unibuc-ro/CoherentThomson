@@ -19,6 +19,7 @@ from plot_point_spectrum import (
     mark_harmonics,
     plot_point_spectrum,
     read_radiation_data,
+    require_few_points,
     resolve_radiation_file,
 )
 
@@ -58,6 +59,7 @@ def plot_point_spectrum_overview(range_type, radiation_filepath, data):
 if __name__ == "__main__":
     input_file = resolve_radiation_file(sys.argv[1] if len(sys.argv) >= 2 else None)
     data = read_radiation_data(input_file)
+    require_few_points(data)
 
     for range_type in RANGE_TYPES:
         plot_point_spectrum_overview(range_type, input_file, data)

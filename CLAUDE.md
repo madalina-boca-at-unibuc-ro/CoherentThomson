@@ -123,7 +123,8 @@ python3 py_scripts/{laser,detector,particle}/<script>.py   # some need plot_*=tr
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
 python3 py_scripts/radiation/plot_all_components.py [--incident]
 python3 py_scripts/radiation/plot_field_carrier_removed.py [<range> [<mu> <nu>]] [run_folder]   # F e^{-ik_N(R-Z)}; all components by default; flat detectors only
-python3 py_scripts/radiation/plot_point_spectrum{,_all,_observables}.py           # dense_frequency_spectrum runs
+python3 py_scripts/radiation/plot_point_spectrum{,_all,_observables}.py           # dense_frequency_spectrum, one point
+python3 py_scripts/radiation/plot_spectrum_map.py [run_folder] [--range R]         # dense spectrum on a line: (theta, omega) maps
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>
 python3 py_scripts/radiation/plot_observables.py [--incident]   # rect./circular facing ±Oz (--incident: any)
 python3 py_scripts/radiation/lg_decomposition.py [--incident] ...   # options: theory/reference/lg_decomposition_reference.md
@@ -201,8 +202,11 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
 
 - `frequencies_list[i] = non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i)`, `q` dressed with
   `<a²> = a0²/2` for every polarization. **Don't change it to `a0²`** (a past bug).
-- `dense_frequency_spectrum=true`: `N_omega` points at one screen point (bounds in `omega_laser` or
-  `first_harmonic_frequency` only). Internally frequencies are `omega/c`; the output `omega` column is `omega/omega_1`.
+- `dense_frequency_spectrum=true`: `N_omega` points at one screen point or on a **line** (rectangular `Nx` or `Ny` 1,
+  circular `N_phi` 1; spec 15); a 2D grid keeps only its first point. Memory ~ points × `N_omega` × threads: estimated
+  on stdout and in `run_log.txt`, refused above 8 GB of buffers. Bounds in `omega_laser` or
+  `first_harmonic_frequency` only. Internally frequencies are `omega/c`; the output `omega` column is `omega/omega_1`.
+  Map only φ-independent quantities on a line (dP_z/dω, |E±|), not Cartesian components.
 
 ### Laser
 

@@ -144,6 +144,25 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   return simulation_parameters{d_tau_traj, simulation_length, frequencies_list, fundamental_frequency, q, total_cycles};
 };
 
+size_t resolve_num_threads(size_t requested, size_t num_electrons) {
+  size_t max_threads = available_cpu_count();
+  size_t threads = (requested == 0 || requested > max_threads) ? max_threads : requested;
+  return std::max<size_t>(1, std::min(threads, num_electrons));
+}
+
+FieldMemoryEstimate estimate_field_memory(size_t requested_threads, size_t num_electrons, size_t N_screen,
+                                          size_t N_omega) {
+  FieldMemoryEstimate estimate;
+  estimate.threads = resolve_num_threads(requested_threads, num_electrons);
+  const double cells = static_cast<double>(N_screen) * static_cast<double>(N_omega);
+  estimate.per_thread_bytes = cells * sizeof(PackedFaraday);
+  estimate.reconstructed_bytes = cells * sizeof(Faraday);
+  estimate.total_bytes =
+      static_cast<double>(estimate.threads) * estimate.per_thread_bytes + estimate.reconstructed_bytes;
+  estimate.file_bytes = cells * 1300.0;  // measured: ~1295 bytes per radiation_field.dat row
+  return estimate;
+}
+
 RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& laser,
                               const Detector::Detector_2D& detector, std::vector<Particle::Electron>& electron_beam,
                               const std::vector<double>& frequencies_list, size_t& num_threads,
@@ -158,8 +177,7 @@ RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& 
       Radiation::parse_radiation_formula(IoUtils::get_required(config, "radiation_formula"));
 
   size_t max_threads = available_cpu_count();
-  if (num_threads == 0 || num_threads > max_threads) num_threads = max_threads;
-  num_threads = std::min(num_threads, num_electrons);
+  num_threads = resolve_num_threads(num_threads, num_electrons);
   // Printed up front (main.cpp's "Number of threads" only appears after the run finishes), so a long or
   // killed run still shows the resolved count and the CPUs available to it (e.g. a Slurm allocation).
   std::cout << "Using " << num_threads << " threads (requested " << IoUtils::get_num_threads(config) << ", "

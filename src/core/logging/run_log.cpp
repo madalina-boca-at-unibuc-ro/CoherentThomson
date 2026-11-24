@@ -398,6 +398,26 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
          << "]\n";
     file << "  omega_max (as configured)   " << omega_range.omega_max << "  [" << unit_name(omega_range.max_unit)
          << "]\n";
+    // The screen it runs on (theory/specs/15_spectrum_map.md): one point or a line; theta from the detector normal.
+    const size_t N_points = detector.get_total_points();
+    const std::array<double, 3>& normal = detector.get_normal_direction();
+    auto theta_of = [&](size_t i) {
+      const MathUtils::RealFourVector p = detector.get_point(i);
+      const double r = std::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3]);
+      return std::acos(std::clamp((p[1] * normal[0] + p[2] * normal[1] + p[3] * normal[2]) / r, -1.0, 1.0));
+    };
+    if (N_points == 1) {
+      file << "  screen                      one point, theta " << theta_of(0) * 1e6 << " urad\n";
+    } else {
+      file << "  screen                      line of " << N_points << " points (" << detector.get_cols() << " x "
+           << detector.get_rows() << "), theta " << theta_of(0) * 1e6 << " to " << theta_of(N_points - 1) * 1e6
+           << " urad\n";
+    }
+    const Simulation::FieldMemoryEstimate memory = Simulation::estimate_field_memory(
+        IoUtils::get_num_threads(config), beam.size(), N_points, sim_par.frequencies.size());
+    file << "  field buffers (estimate)    " << memory.total_bytes / 1e9 << " GB (" << memory.threads << " threads x "
+         << memory.per_thread_bytes / 1e6 << " MB + " << memory.reconstructed_bytes / 1e6
+         << " MB), radiation_field.dat ~" << memory.file_bytes / 1e6 << " MB\n";
   } else {
     file << "  N_harmonics                 " << IoUtils::get_number_of_harmonics(config) << "\n";
     file << "  N_harmonics_min             " << IoUtils::get_number_of_harmonics_min(config) << "\n";

@@ -53,6 +53,11 @@ public:
     point_distances.resize(1);
   }
 
+  // A line of screen points (one grid count 1, the other > 1) on which a dense frequency spectrum may run
+  // (theory/specs/15_spectrum_map.md): rectangular with Nx or Ny = 1, circular with N_phi = 1. A single point is not
+  // a line.
+  virtual bool is_line() const { return false; }
+
   // Pure virtual function: This handles the one-to-one mapping to 3D space
   virtual std::string get_type_name() const = 0;
   virtual double get_row_coordinate(size_t i) const = 0;  // For diagnostic output
@@ -92,6 +97,7 @@ public:
                       double dir_y, double dir_z);
 
   std::string get_type_name() const override { return "RectangularDetector"; }
+  bool is_line() const override { return (N1 == 1) != (N2 == 1); }
   double get_distance() const { return distance; }
   double get_row_coordinate(size_t i) const override;
   double get_col_coordinate(size_t j) const override;
@@ -115,6 +121,7 @@ public:
                    double dir_z);
 
   std::string get_type_name() const override { return "CircularDetector"; }
+  bool is_line() const override { return N2 == 1 && N1 > 1; }  // N_phi = 1: one azimuth, N_R radii
   double get_distance() const { return distance; }
   double get_row_coordinate(size_t i) const override;
   double get_col_coordinate(size_t j) const override;

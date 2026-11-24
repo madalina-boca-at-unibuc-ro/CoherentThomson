@@ -47,6 +47,7 @@ from plot_point_spectrum import (
     get_point_spectrum_png_dir,
     mark_harmonics,
     read_radiation_data,
+    require_few_points,
     resolve_radiation_file,
 )
 from plot_field import read_config_value, read_length, get_screen_coordinates
@@ -260,6 +261,7 @@ def draw_observables_figure(result, sigma_ref, png_dir, log_scale):
 
 def plot_point_spectrum_observables(radiation_filepath):
     data = read_radiation_data(radiation_filepath)
+    require_few_points(data)
     result, sigma_ref = compute_point_observables(radiation_filepath, data)
     png_dir = get_point_spectrum_png_dir(radiation_filepath)
     for log_scale in (False, True):
