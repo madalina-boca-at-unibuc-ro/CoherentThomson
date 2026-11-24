@@ -178,7 +178,10 @@ $$
 and each $\tau$ needs two exponentials whatever the number of frequencies; every further frequency costs one
 complex multiplication. This requires the phase argument to be independent of frequency, which is why the
 prefactors are kept separate from the phase (`radiation_phase_argument`). A per-electron check falls back to
-one exponential per frequency if the list is not evenly spaced.
+one exponential per frequency if the list is not evenly spaced, and the stepped `_approx` modes fall back to the
+unstepped long-distance function. An uneven `omega_list` (spec 16) therefore costs more: measured on `lattice_2d`
+(16×16, 8 frequencies), ×7 for `long_distance_direct_approx` and ×2.7 for `simplified`
+(`theory/implemented/16_omega_list.md`).
 
 ### 4.2 Why the long-distance approximation alone gives only ~1.6×
 

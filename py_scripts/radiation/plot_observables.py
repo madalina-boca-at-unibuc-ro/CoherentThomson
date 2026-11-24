@@ -229,6 +229,32 @@ _ENERGY_NORMALIZED_PAIRS = (
 _FUNDAMENTAL_FREQUENCY_RE = re.compile(r'(?m)^\s*fundamental_frequency\s+([+-]?[\d.]+[eE][+-]?\d+)\s+a\.u\.')
 
 
+# One frequencies_list line of run_log.txt with its harmonic: "    [i] <omega/c>  (<x> omega_1)  N = <n>".
+_HARMONIC_LINE_RE = re.compile(r'(?m)^\s+\[(\d+)\]\s+\S+\s+\(\S+ omega_1\)\s+N = (\d+)\s*$')
+
+
+def read_harmonic_indices(run_dir):
+    """
+    {i_omega: N} from run_log.txt's frequencies_list (theory/specs/16_omega_list.md): the harmonic each frequency
+    belongs to, N_harmonics_min + i for a harmonic run, the given N for an omega_list run. None for a dense-spectrum
+    run or a run log written before 2026-11-24 (no "N =" there): callers then fall back to N = round(omega/omega_1),
+    which is wrong for an omega_list frequency in a broad line (at a0 = 1, 2.9 omega_1 belongs to N = 2).
+    """
+    log_path = os.path.join(run_dir, "run_log.txt")
+    if not os.path.exists(log_path):
+        return None
+    with open(log_path) as f:
+        found = {int(i): int(N) for i, N in _HARMONIC_LINE_RE.findall(f.read())}
+    return found or None
+
+
+def harmonic_index(i_omega, omega_ratio, harmonics):
+    """(N, guessed): N from read_harmonic_indices' map when it has i_omega, else round(omega/omega_1)."""
+    if harmonics is not None and i_omega in harmonics:
+        return harmonics[i_omega], False
+    return int(round(omega_ratio)), True
+
+
 def _read_fundamental_frequency_au(run_dir):
     """
     Returns the run's own raw fundamental_frequency (omega_1, atomic units, inverse time), parsed
@@ -598,7 +624,7 @@ def _read_laser_spin(config_path):
     return 2.0 * (np.conj(zeta[0]) * zeta[1]).imag / norm_sq
 
 
-def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m, sigma, is_incident):
+def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m, sigma, is_incident, harmonics=None):
     """
     Adds the theoretical OAM/energy ratio column to an _ENERGY_NORMALIZED_PAIRS ratio table, next to
     the numerical Lambda_zz/P_z column so the two can be compared row by row.
@@ -606,9 +632,9 @@ def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m, sigma,
     Emitted field (_THEORY_COLUMN): the N-th harmonic absorbs N laser photons, each carrying m + sigma
     (orbital + spin), so J_N = N(m+sigma) per emitted photon, whose spin stays sigma (S_z/P_z*omega = +-1 on
     the runs checked, not N*sigma). The orbital part is L_N = N(m+sigma) - sigma, and the target is
-    L_N/omega_N, with N = round(omega/omega_1) (exact in the default harmonic mode, the nearest harmonic for
-    dense_frequency_spectrum=true) and omega_N the row's own raw frequency
-    (omega/omega_1)*fundamental_frequency_au. N = 1 gives m/omega_1; linear polarization (sigma = 0) gives
+    L_N/omega_N, with N from the run log (`harmonics`, read_harmonic_indices: exact for harmonic and omega_list
+    runs) or, without it, N = round(omega/omega_1) (the nearest harmonic for dense_frequency_spectrum=true), and
+    omega_N the row's own raw frequency (omega/omega_1)*fundamental_frequency_au. N = 1 gives m/omega_1; linear polarization (sigma = 0) gives
     N m/omega_N = m/omega_1 on every harmonic.
 
     Incident field (_THEORY_COLUMN_INCIDENT): the laser's own single frequency, not a harmonic of
@@ -621,7 +647,8 @@ def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m, sigma,
         if is_incident:
             ratios[_THEORY_COLUMN_INCIDENT] = m / omega_au
         else:
-            N = np.round(omega_ratio)
+            N = np.array([harmonic_index(int(i), w, harmonics)[0]
+                          for i, w in zip(ratios['i_omega'].to_numpy(), omega_ratio)], dtype=float)
             ratios[_THEORY_COLUMN] = (N * (m + sigma) - sigma) / omega_au
     return ratios
 
@@ -780,8 +807,9 @@ def append_energy_ratios_to_run_log(run_dir, ratios, m, sigma, is_incident, labe
     else:
         theory_column = _THEORY_COLUMN
         caption_lines.append(
-            f"  '{theory_column}' is the orbital part L_N/omega_N, N = round(omega/omega_1): the N-th "
-            "harmonic carries J = N(m+s) per photon of energy omega_N = N*omega_1, of which the spin is s, so "
+            f"  '{theory_column}' is the orbital part L_N/omega_N, N the run log's harmonic (else "
+            "round(omega/omega_1)): the N-th "
+            "harmonic carries J = N(m+s) per photon of energy omega_N (the row's omega), of which the spin is s, so "
             "L_N = N(m+s) - s (hbar=1). N = 1 gives m/omega_1; s = 0 (linear) gives m/omega_1 on every harmonic.")
     _append_ratio_table_to_run_log(run_dir, ratios, _ENERGY_NORMALIZED_PAIRS, _RUN_LOG_ENERGY_RATIO_HEADER,
                                     caption_lines, label_suffix=label_suffix,
@@ -1036,7 +1064,8 @@ def plot_observables(radiation_filepath):
         m *= n_sign
         sigma *= n_sign
     energy_ratios = compute_ratio_table(integrated, _ENERGY_NORMALIZED_PAIRS)
-    energy_ratios = add_theoretical_oam_energy_ratio(energy_ratios, fundamental_frequency_au, m, sigma, is_incident)
+    energy_ratios = add_theoretical_oam_energy_ratio(energy_ratios, fundamental_frequency_au, m, sigma, is_incident,
+                                                     harmonics=None if is_incident else read_harmonic_indices(run_dir))
     print(f"OAM-to-energy ratios (m={m}, s={sigma:+.6g}; numerical Lambda_zz/P_z column expected to match the "
           "theoretical column):")
     print(energy_ratios.to_string(index=False))

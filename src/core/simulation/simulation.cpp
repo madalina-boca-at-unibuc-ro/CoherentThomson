@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -79,8 +80,14 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
   // switching modes doesn't silently reinterpret whatever count was already configured for the
   // other mode.
   bool dense_spectrum = IoUtils::get_required(config, "dense_frequency_spectrum") == "true";
-  size_t N_frequencies =
-      dense_spectrum ? IoUtils::get_number_of_frequencies(config) : IoUtils::get_number_of_harmonics(config);
+  // Optional user-chosen frequencies (theory/specs/16_omega_list.md); refused together with the dense mode.
+  const std::optional<IoUtils::OmegaList> omega_list = IoUtils::get_omega_list(config);
+  if (omega_list && dense_spectrum) {
+    throw std::invalid_argument("omega_list and dense_frequency_spectrum true are two frequency modes; use one");
+  }
+  size_t N_frequencies = dense_spectrum ? IoUtils::get_number_of_frequencies(config)
+                         : omega_list   ? omega_list->entries.size()
+                                        : IoUtils::get_number_of_harmonics(config);
   std::vector<double> frequencies_list(N_frequencies);
 
   MathUtils::RealFourVector p(p0, px, py, pz);
@@ -134,6 +141,20 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
                                          : omega_min;
       frequencies_list[i] = omega / PhysUtils::AtomicUnits::c;  // match non_linear_Thomson_formula's omega/c convention
     }
+  } else if (omega_list) {
+    // Same units as the dense mode's bounds: omega/omega_1 (the default-dressed fundamental) or omega/omega_laser.
+    const double scale = omega_list->unit == IoUtils::OmegaRangeUnit::FirstHarmonicFrequency
+                             ? fundamental_frequency
+                             : laser.get_omega() / PhysUtils::AtomicUnits::c;
+    for (size_t i = 0; i < N_frequencies; i++) {
+      frequencies_list[i] = omega_list->entries[i].value * scale;
+      for (size_t j = 0; j < i; ++j) {
+        if (omega_list->entries[j].value == omega_list->entries[i].value) {
+          std::cerr << "Warning: omega_list repeats " << omega_list->entries[i].value << " (entries " << j << " and "
+                    << i << ")\n";
+        }
+      }
+    }
   } else {
     size_t N_harmonics_min = IoUtils::get_number_of_harmonics_min(config);
     for (size_t i = 0; i < N_frequencies; i++) {
@@ -141,7 +162,18 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
     }
   }
 
-  return simulation_parameters{d_tau_traj, simulation_length, frequencies_list, fundamental_frequency, q, total_cycles};
+  simulation_parameters parameters{d_tau_traj, simulation_length, frequencies_list, fundamental_frequency,
+                                   q,          total_cycles};
+  parameters.frequency_mode = dense_spectrum ? "dense" : omega_list ? "omega_list" : "harmonics";
+  parameters.harmonics.assign(N_frequencies, 0);
+  for (size_t i = 0; i < N_frequencies; i++) {
+    if (omega_list) {
+      parameters.harmonics[i] = omega_list->entries[i].N;
+    } else if (!dense_spectrum) {
+      parameters.harmonics[i] = IoUtils::get_number_of_harmonics_min(config) + i;
+    }
+  }
+  return parameters;
 };
 
 size_t resolve_num_threads(size_t requested, size_t num_electrons) {

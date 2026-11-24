@@ -428,12 +428,31 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
   file << "  dressed momentum q          (" << sim_par.q[0] << ", " << sim_par.q[1] << ", " << sim_par.q[2] << ", "
        << sim_par.q[3] << ")  a.u.\n";
 
+  // The frequency mode, and for harmonics/omega_list every frequency with its harmonic N (the scripts read N from
+  // these lines: theory/specs/16_omega_list.md).
+  file << "  frequency mode              " << sim_par.frequency_mode;
+  if (sim_par.frequency_mode == "omega_list") {
+    bool evenly_spaced = true;
+    const size_t count = sim_par.frequencies.size();
+    for (size_t i = 2; i < count; ++i) {
+      const double expected =
+          sim_par.frequencies[0] + static_cast<double>(i) * (sim_par.frequencies[1] - sim_par.frequencies[0]);
+      evenly_spaced = evenly_spaced && std::abs(sim_par.frequencies[i] - expected) <= 1e-9 * std::abs(expected);
+    }
+    file << "  (N_harmonics/N_harmonics_min ignored; "
+         << (evenly_spaced ? "evenly spaced: fast phase recurrence" : "not evenly spaced: no phase recurrence") << ")";
+  }
+  file << "\n";
   file << "  frequencies_list (" << sim_par.frequencies.size() << " points, omega/c convention, "
        << "normalized by fundamental_frequency to match radiation_field.dat's own omega column):\n";
-  if (sim_par.frequencies.size() <= 20) {
+  if (sim_par.frequency_mode != "dense" || sim_par.frequencies.size() <= 20) {
     for (size_t i = 0; i < sim_par.frequencies.size(); ++i) {
       file << "    [" << i << "] " << sim_par.frequencies[i] << "  ("
-           << sim_par.frequencies[i] / sim_par.fundamental_frequency << " omega_1)\n";
+           << sim_par.frequencies[i] / sim_par.fundamental_frequency << " omega_1)";
+      if (i < sim_par.harmonics.size() && sim_par.harmonics[i] > 0) {
+        file << "  N = " << sim_par.harmonics[i];
+      }
+      file << "\n";
     }
   } else {
     double first = sim_par.frequencies.front();

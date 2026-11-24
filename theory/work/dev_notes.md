@@ -22,3 +22,11 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   the line-integrated spectrum. At a0 = 0.1 the integrated lines peak within their width of N ω₁ (offsets +0.0033,
   +0.0058). Next: the a0 = 1 scan the spec suggests, to see how far ω₁ is from the real spectrum.
   `theory/implemented/15_spectrum_map.md`.
+
+## 2026-11-24: a0 scan and screen fields at arbitrary frequencies (spec 16)
+
+- a0 scan on the line reference (0.1–1): harmonic N fills N × [(1 + a0²/2)/(1 + g a0²/2), 1 + a0²/2] ω₁ with g = 0.541
+  for the code's LG (0, 2) (peak 0.736 a0), so ω₁ is below the line for a0 ≳ 0.3; at a0 = 1 the line breaks into
+  islands in θ and fringes in ω (linear maps, `plot_spectrum_map.py --harmonic 1 --linear`).
+- Spec 16: `omega_list` (`N:value`), N logged per frequency and read by the scripts, peaks and a ready `omega_list`
+  line from `plot_spectrum_map.py`. `theory/implemented/16_omega_list.md`.

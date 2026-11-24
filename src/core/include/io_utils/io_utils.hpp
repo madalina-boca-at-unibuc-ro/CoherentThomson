@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -234,6 +235,67 @@ inline OmegaRange get_omega_range(const ConfigMap& config) {
   auto [omega_min, min_unit] = get_omega_bound(config, "omega_min");
   auto [omega_max, max_unit] = get_omega_bound(config, "omega_max");
   return {omega_min, omega_max, min_unit, max_unit};
+}
+
+// The optional omega_list (theory/specs/16_omega_list.md): screen frequencies chosen by the user instead of the
+// harmonics, as "N:value N:value ... unit". N is the harmonic each frequency belongs to (it can't be inferred from the
+// value once lines are broad), the unit first_harmonic_frequency (omega/omega_1) or omega_laser, for all entries.
+// std::nullopt when the key is absent; anything malformed throws, naming the entry: a wrong frequency would silently
+// image the wrong thing.
+struct OmegaListEntry {
+  size_t N;
+  double value;  // in `unit`
+};
+struct OmegaList {
+  std::vector<OmegaListEntry> entries;
+  OmegaRangeUnit unit;
+};
+
+inline std::optional<OmegaList> get_omega_list(const ConfigMap& config) {
+  auto it = config.find("omega_list");
+  if (it == config.end()) {
+    return std::nullopt;
+  }
+  std::istringstream stream(it->second);
+  std::vector<std::string> tokens;
+  for (std::string token; stream >> token;) {
+    tokens.push_back(token);
+  }
+  const std::string hint =
+      " (omega_list \"" + it->second + "\"; expected N:value entries, then first_harmonic_frequency or omega_laser)";
+  if (tokens.size() < 2) {
+    throw std::invalid_argument("omega_list needs at least one N:value entry and a unit" + hint);
+  }
+  const std::string unit = to_lower(tokens.back());
+  if (unit != "first_harmonic_frequency" && unit != "omega_laser") {
+    throw std::invalid_argument("omega_list: the last token must be the unit, not \"" + tokens.back() + "\"" + hint);
+  }
+  OmegaList list;
+  list.unit = unit == "first_harmonic_frequency" ? OmegaRangeUnit::FirstHarmonicFrequency : OmegaRangeUnit::OmegaLaser;
+  for (size_t i = 0; i + 1 < tokens.size(); ++i) {
+    const std::string& entry = tokens[i];
+    const size_t colon = entry.find(':');
+    const std::string N_text = colon == std::string::npos ? "" : entry.substr(0, colon);
+    const std::string value_text = colon == std::string::npos ? "" : entry.substr(colon + 1);
+    const bool N_is_integer =
+        !N_text.empty() && std::all_of(N_text.begin(), N_text.end(), [](unsigned char ch) { return std::isdigit(ch); });
+    double value = 0.0;
+    size_t used = 0;
+    try {
+      value = std::stod(value_text, &used);
+    } catch (const std::exception&) {
+      used = 0;
+    }
+    if (!N_is_integer || std::stoul(N_text) < 1 || used == 0 || used != value_text.size() || !std::isfinite(value) ||
+        value <= 0.0) {
+      throw std::invalid_argument("omega_list: bad entry \"" + entry +
+                                  "\", expected N:value with an integer N >= 1 "
+                                  "and a value > 0" +
+                                  hint);
+    }
+    list.entries.push_back({std::stoul(N_text), value});
+  }
+  return list;
 }
 
 inline size_t get_laser_NT(const ConfigMap& config) { return std::stoul(get_required(config, "laser_NT")); }

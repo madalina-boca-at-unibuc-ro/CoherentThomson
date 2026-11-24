@@ -33,6 +33,11 @@ struct simulation_parameters {
   // here so a consumer (e.g. Logging::write_run_log) can normalize a per-electron/per-screen-point
   // timing figure down to a per-cycle cost without re-deriving it from the laser directly.
   double total_cycles;
+
+  // The harmonic each frequency belongs to (theory/specs/16_omega_list.md): N_harmonics_min + i in the harmonic mode,
+  // the given N with omega_list, 0 (none) in the dense mode. Logged per frequency; the scripts read it from the log.
+  std::vector<size_t> harmonics = {};
+  std::string frequency_mode = "harmonics";  // "harmonics", "omega_list" or "dense"
 };
 
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser);

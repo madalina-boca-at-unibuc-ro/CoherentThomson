@@ -67,7 +67,7 @@ Next free number: 17.
 | 13 | Helicity-component plots `E₊`, `E₋` | — | Draft |
 | 14 | Collision timing: honour `laser_delay`, start each electron at the pulse front (collision at the LG focus) | Implementation notes | Done (Python cross-check deferred: the reference keeps the old arrangement) |
 | 15 | Dense spectrum on a screen line: dP_z/dω, \|E₊\|, \|E₋\| maps in (θ, ω) | Implementation notes | Done |
-| 16 | Screen fields at arbitrary frequencies: `omega_list` (`N:value`), harmonic index in the run log, spectrum peaks | — | Draft |
+| 16 | Screen fields at arbitrary frequencies: `omega_list` (`N:value`), harmonic index in the run log, spectrum peaks | Implementation notes | Done |
 
 ## work/
 

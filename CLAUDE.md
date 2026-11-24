@@ -201,7 +201,12 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
 ### Frequencies
 
 - `frequencies_list[i] = non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i)`, `q` dressed with
-  `<a²> = a0²/2` for every polarization. **Don't change it to `a0²`** (a past bug).
+  `<a²> = a0²/2` for every polarization. **Don't change it to `a0²`** (a past bug). At large a0 that ω_N misses the
+  line (LG (0, 2): below it for a0 ≳ 0.3): image chosen frequencies with the optional
+  `omega_list  1:1.47 2:2.51  first_harmonic_frequency` (`N:value`, unit ω/ω₁ or `omega_laser`; spec 16), e.g. the
+  line printed by `plot_spectrum_map.py`. Each frequency's harmonic N is logged in `run_log.txt` and read by the
+  scripts (`plot_observables.read_harmonic_indices`); without it they guess round(ω/ω₁). An uneven list loses the
+  phase recurrence (×2.7–7 slower).
 - `dense_frequency_spectrum=true`: `N_omega` points at one screen point or on a **line** (rectangular `Nx` or `Ny` 1,
   circular `N_phi` 1; spec 15); a 2D grid keeps only its first point. Memory ~ points × `N_omega` × threads: estimated
   on stdout and in `run_log.txt`, refused above 8 GB of buffers. Bounds in `omega_laser` or
@@ -232,8 +237,8 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
 Flat `key value [unit]` lines; units via `IoUtils::convert_unit_to_number` (check it before adding one).
 - **An unrecognized unit only warns** (assumes `1.0`). **A blank value drops the key.** Unknown keys are ignored. What
   a run actually used (with SI values) is in its `run_log.txt`, which re-reads keys the way the factories do.
-- All keys are required except `require_clean_build`, `beam_distribution`, `beam_lattice_spacing`, `beam_stack_*` and
-  `beam_modulation*`. `w0` units need `laser_type=laguerre_gauss`.
+- All keys are required except `require_clean_build`, `beam_distribution`, `beam_lattice_spacing`, `beam_stack_*`,
+  `beam_modulation*` and `omega_list`. `w0` units need `laser_type=laguerre_gauss`.
 
 ## Physics notes
 

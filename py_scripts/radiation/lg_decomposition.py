@@ -61,6 +61,8 @@ from plot_observables import (
     _read_laser_spin,
     _write_run_log_section,
     get_screen_area_weights_au,
+    harmonic_index,
+    read_harmonic_indices,
 )
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
@@ -527,6 +529,7 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
     grid_step = _grid_step_au(detector_type, config_path)
     source_model = None if is_incident else _source_model(run_dir, config_path)
     fundamental_frequency_au = _read_fundamental_frequency_au(run_dir)
+    harmonics = None if is_incident else read_harmonic_indices(run_dir)
     lambda_L = convert_unit_to_number('lambda', config_path)
     p_values = list(range(p_min, p_max + 1))
 
@@ -536,11 +539,12 @@ def decompose_run(field_filepath, components, harmonic=None, l_override=None, p_
         omega_ratio = subset['omega'].iloc[0]
         if len(subset) != len(weights):
             raise ValueError(f"i_omega={i_omega}: {len(subset)} screen points, {len(weights)} expected from the config.")
-        N = 1 if is_incident else int(round(omega_ratio))
+        N, guessed = (1, False) if is_incident else harmonic_index(int(i_omega), omega_ratio, harmonics)
         if harmonic is not None and N != harmonic:
             continue
-        if not is_incident and abs(omega_ratio - N) > 1e-6:
-            print(f"WARNING: i_omega={i_omega}: omega/omega_1 = {omega_ratio:.6g} is not a harmonic; using N = {N}.")
+        if guessed and abs(omega_ratio - N) > 1e-6:
+            print(f"WARNING: i_omega={i_omega}: omega/omega_1 = {omega_ratio:.6g} is not a harmonic and the run log "
+                  f"gives no N; using N = round(omega/omega_1) = {N}.")
         k = omega_ratio * fundamental_frequency_au / C_LIGHT
         J = total_angular_momentum(N, m, sigma)
         if J is None and l_override is None:

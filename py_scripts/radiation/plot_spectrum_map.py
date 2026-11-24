@@ -13,7 +13,9 @@ dense_frequency_spectrum run on a line of screen points (rectangular Nx or Ny = 
   halfway between points), assuming axisymmetry: the beam's spectrum through the screen's disk.
 - Summary per harmonic window, printed and written to run_log.txt under its own section: the integrated spectrum's
   peak and its offset from N, FWHM, the central 90% band, the energy fractions within +-1% of N omega_1 and in the
-  reachable band, and theta of the dP_z/domega maximum at N omega_1 and at the peak. Harmonic N can reach
+  reachable band, theta of the dP_z/domega maximum at N omega_1 and at the peak, the energy-weighted centroid, the
+  local maxima above 10% of the window maximum, and a ready omega_list line of those maxima (spec 16; they are peaks
+  of the integrated spectrum, not of a given island of the map: pick others from the map). Harmonic N can reach
   N x [(1 + a0^2/2)/(1 + g a0^2/2), 1 + a0^2/2] omega_1 (g = the laser's peak |a|^2/a0^2, 0.541 for the code's LG
   (0, 2); omega_1 itself is dressed with g = 1); windows split halfway between neighbouring bands.
 
@@ -211,12 +213,29 @@ def draw_integrated(omega, dW, a0, g, png_dir, title, suffix=''):
     print(f"Successfully saved plot to {path}")
 
 
+def local_peaks(omega, values, fraction):
+    """(omega, height / max) of the local maxima of `values` above `fraction` of its maximum, highest first: a sample
+    larger than its neighbours on the scan's own grid, no smoothing; a flat top counts once (its first sample)."""
+    top = np.nanmax(values) if len(values) else 0.0
+    if not np.isfinite(top) or top <= 0.0:
+        return []
+    peaks = []
+    for i in range(1, len(values) - 1):
+        j = i
+        while j + 1 < len(values) - 1 and values[j + 1] == values[i]:
+            j += 1
+        if values[i] > values[i - 1] and values[i] > values[j + 1] and values[i] >= fraction * top:
+            peaks.append((omega[i], values[i] / top))
+    return sorted(peaks, key=lambda peak: -peak[1])
+
+
 def summary_lines(theta, omega, dPz, dW, a0, g):
     scale, unit = angle_scale(theta.max())
     unit = unit.replace(r'$\mu$', 'u')
     lines = [f"  integrated over {len(theta)} points, theta {theta[0] * scale:.4g} to {theta[-1] * scale:.4g} {unit}; "
              f"omega/omega_1 {omega[0]:.6g} to {omega[-1]:.6g}, step {omega[1] - omega[0]:.3g}"]
     lower, upper = harmonic_bands(a0, g)
+    all_peaks = []
     lines.append(f"  peak local <a^2> = {g:.4g} a0^2/2 (laser profile): harmonic N reachable over N x [{lower:.6g}, "
                  f"{upper:.6g}] omega_1 (head-on, on axis); windows split halfway between neighbouring bands")
 
@@ -238,6 +257,8 @@ def summary_lines(theta, omega, dPz, dW, a0, g):
         near = np.abs(w_omega - N) <= 0.01 * N
         at_N = int(np.argmin(np.abs(omega - N)))
         at_peak = int(np.nonzero(window)[0][i_peak])
+        peaks = local_peaks(w_omega, w_dW, 0.1)
+        all_peaks += [(N, w) for w, _ in peaks]
         lines += [f"  N = {N}{' (window only partly scanned)' if partial else ''}:",
                   f"    integrated peak at omega/omega_1 = {w_omega[i_peak]:.6g} (offset from N {w_omega[i_peak] - N:+.4g})",
                   f"    FWHM span {w_omega[above[0]]:.6g} to {w_omega[above[-1]]:.6g} (width {w_omega[above[-1]] - w_omega[above[0]]:.4g})",
@@ -246,7 +267,15 @@ def summary_lines(theta, omega, dPz, dW, a0, g):
                   f"    energy in the reachable band {N * lower:.6g} to {N * upper:.6g}: "
                   f"{w_dW[band].sum() / energy if energy > 0 else float('nan'):.4g} of the window",
                   f"    theta of max dP_z/domega: {theta[np.nanargmax(dPz[at_N])] * scale:.4g} {unit} at omega = N omega_1, "
-                  f"{theta[np.nanargmax(dPz[at_peak])] * scale:.4g} {unit} at the peak"]
+                  f"{theta[np.nanargmax(dPz[at_peak])] * scale:.4g} {unit} at the peak",
+                  f"    centroid (energy-weighted) at omega/omega_1 = {np.sum(w_omega * w_dW) / energy if energy > 0 else float('nan'):.6g}",
+                  "    local maxima above 10% of the window maximum (omega/omega_1: height): "
+                  + ", ".join(f"{w:.5g}: {h:.3g}" for w, h in peaks)]
+    if all_peaks:
+        ordered = sorted(all_peaks, key=lambda peak: (peak[0], peak[1]))
+        lines.append("  omega_list line for a screen run at these peaks (theory/specs/16_omega_list.md; a peak of the "
+                     "integrated spectrum, not of a given island of the map):")
+        lines.append("    omega_list    " + " ".join(f"{N}:{w:.6g}" for N, w in ordered) + "   first_harmonic_frequency")
     return lines
 
 
