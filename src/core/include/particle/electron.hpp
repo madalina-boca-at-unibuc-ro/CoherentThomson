@@ -1,5 +1,6 @@
 #pragma once
 #include <iosfwd>
+#include <optional>
 #include <vector>
 
 #include "../laser/laser_field.hpp"
@@ -28,10 +29,13 @@ public:
   // state) is recorded on every subsequent set_state() call. Storage for
   // N_tau points is reserved only when compute_trajectory() runs, so an
   // electron waiting its turn holds just its initial state. charge_weight is the charge this electron stands for, in
-  // units of one electron; it scales its radiated field and nothing in its motion.
+  // units of one electron; it scales its radiated field and nothing in its motion. reference_position is the
+  // configured position: where the electron would be at t = 0 in free flight (theory/specs/14_collision_timing.md);
+  // the trajectory itself starts earlier, at initial_position. It defaults to initial_position.
   Electron(const Core::MathUtils::RealFourVector& initial_position,
            const Core::MathUtils::RealFourVector& initial_momentum, const double initial_tau, const double d_tau,
-           const size_t N_tau, const double charge_weight = 1.0);
+           const size_t N_tau, const double charge_weight = 1.0,
+           const std::optional<Core::MathUtils::RealFourVector>& reference_position = std::nullopt);
   ~Electron();
 
   // Advances the current state by one proper-time step d_tau: reads the
@@ -63,8 +67,10 @@ public:
   // used afterwards.
   void release_trajectory();
 
-  // Initial state accessors
+  // Initial state accessors. The initial position is where the trajectory starts (at the pulse front, x^0 = c t_0);
+  // the reference position is the configured one at t = 0 (x^0 = 0), the one b(q) and the beam diagnostics use.
   const Core::MathUtils::RealFourVector& get_initial_position() const { return initial_position; }
+  const Core::MathUtils::RealFourVector& get_reference_position() const { return reference_position; }
   const Core::MathUtils::RealFourVector& get_initial_momentum() const { return initial_momentum; }
 
   // Current state accessors
@@ -107,6 +113,7 @@ private:
 
   // Initial state: 4-position x^\mu, 4-velocity u^\mu
   Core::MathUtils::RealFourVector initial_position;
+  Core::MathUtils::RealFourVector reference_position;  // free-flight position at t = 0
   Core::MathUtils::RealFourVector initial_momentum;
 
   // Current state, mutated in-place by set_state() as the trajectory is

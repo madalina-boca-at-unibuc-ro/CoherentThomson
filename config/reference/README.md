@@ -17,6 +17,8 @@ Run A of the 2026-10-29 progress report with `w0 = 10 lambda`: LG `(p, l) = (0, 
 polarization, pure Gaussian pulse (`laser_wing_sigma 25` cycles, cutoff 4, no flat top), `p_z = 13.483 mc` head-on,
 harmonics N = 1, 2, `long_distance_direct_approx`, `trajectory_NT 100`, circular screen of radius `37.5 w0`
 (64 × 64, equal-area rings) at `160000 w0`. Disk radius from the LG table (`beam_cylinder_radius -3`).
+`laser_delay 0` since 2026-11-24 (spec 14): the pulse peak meets the beam centre at the LG focus. Before, it met it
+49.9 λ downstream (2.5% below the peak intensity); the screen check below predates the change.
 
 **Screen, checked on a `lattice_2d` run:** N = 1 fits (`w_eff = 12.4 w0`, 5e-5 of the flux within 10% of the edge);
 N = 2 is clipped (`w_eff = 34 w0`, 37% near the edge). For N = 2 work, widen `circular_detector_R_max` (to ~100 w0)

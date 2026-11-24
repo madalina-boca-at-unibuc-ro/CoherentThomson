@@ -105,14 +105,9 @@ int main(int argc, char* argv[]) {
       size_t heatmap_Nx = std::stoull(IoUtils::get_required(simulation_config, "field_heatmap_Nx"));
       size_t heatmap_Ny = std::stoull(IoUtils::get_required(simulation_config, "field_heatmap_Ny"));
 
-      // The actual instant the flat-top plateau begins at: LaserField's constructor (laser_field.cpp)
-      // sets its internal phase-domain `delay` to wing_sigma_cutoff * wing_sigma (currently ignoring
-      // the parsed laser_delay entirely -- see CLAUDE.md), and envelope(phi) switches from the leading
-      // Gaussian wing to the flat plateau exactly at phi = delay. Recomputing that same product here
-      // (rather than using laser_delay) keeps this in sync with the real switch point regardless of
-      // whether laser_delay happens to match wing_sigma_cutoff * wing_sigma.
-      double t_heatmap = IoUtils::get_laser_wing_sigma_cutoff(simulation_config) *
-                         IoUtils::get_laser_wing_sigma(simulation_config) / laser->get_omega();
+      // The instant the plateau start (the peak, with no plateau) crosses z = 0: phi = delay
+      // (laser_delay, theory/specs/14_collision_timing.md).
+      double t_heatmap = laser->get_delay() / laser->get_omega();
 
       Laser::export_field_heatmap_z0(*laser, t_heatmap, x_min, x_max, y_min, y_max, heatmap_Nx, heatmap_Ny,
                                      heatmap_axes_scale, heatmap_axes_unit,
@@ -125,9 +120,8 @@ int main(int argc, char* argv[]) {
     // Before the beam: a bunched stack's period follows the detector's normal.
     auto detector = Detector::create_detector(simulation_config);
 
-    auto electron_beam =
-        Particle::generate_cylinder_beam(simulation_config, sim_par.tau_0_traj, sim_par.d_tau_traj,
-                                         sim_par.simulation_length, *laser, detector->get_normal_direction());
+    auto electron_beam = Particle::generate_cylinder_beam(
+        simulation_config, sim_par.d_tau_traj, sim_par.simulation_length, *laser, detector->get_normal_direction());
 
     if (IoUtils::get_required(simulation_config, "plot_beam_scatter") == "true") {
       std::string beam_axes_unit = "lambda";

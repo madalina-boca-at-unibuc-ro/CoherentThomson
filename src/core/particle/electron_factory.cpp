@@ -10,10 +10,12 @@ namespace Core::Particle {
 namespace {
 
 // Places one electron at (x, y, z) in the cylinder's canonical frame and draws its momentum: translation by
-// beam_center, rotation onto the mean momentum, then Gaussian momenta about average_p (advances gen).
+// beam_center, rotation onto the mean momentum, then Gaussian momenta about average_p (advances gen). That position is
+// the electron's free-flight position at t = 0 (its reference position); the trajectory starts earlier, where its
+// free-flight line reaches the pulse front phi_min (theory/specs/14_collision_timing.md).
 Electron place_electron(const CylinderBeamParams& params, const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation,
-                        double x, double y, double z, double tau_0, double d_tau, size_t N_tau, std::mt19937& gen,
-                        double charge_weight = 1.0) {
+                        double x, double y, double z, const Core::Laser::LaserField& laser, double d_tau, size_t N_tau,
+                        std::mt19937& gen, double charge_weight = 1.0) {
   // Apply the beam's global translation before the rotation below, so the offset itself is expressed in the
   // same canonical frame as beam_cylinder_radius/height and gets carried along with the beam through it (rather
   // than being a fixed shift applied afterwards).
@@ -24,9 +26,6 @@ Electron place_electron(const CylinderBeamParams& params, const Core::MathUtils:
   // Reorient the cylinder so its height axis matches the beam's own mean momentum direction.
   std::array<double, 3> pos_local = MathUtils::rotate3d(beam_axis_rotation, {x, y, z});
 
-  // Create the position 4-vector: (t=tau_0, x, y, z)
-  MathUtils::RealFourVector position(PhysUtils::AtomicUnits::c * tau_0, pos_local[0], pos_local[1], pos_local[2]);
-
   double px = params.average_px + params.sigma_px * std::normal_distribution<double>(0.0, 1.0)(gen);
   double py = params.average_py + params.sigma_py * std::normal_distribution<double>(0.0, 1.0)(gen);
   double pz = params.average_pz + params.sigma_pz * std::normal_distribution<double>(0.0, 1.0)(gen);
@@ -35,14 +34,37 @@ Electron place_electron(const CylinderBeamParams& params, const Core::MathUtils:
                                                                  // energy-momentum relation
   MathUtils::RealFourVector momentum(p0, px, py, pz);            // Initial momentum 4-vector
 
-  return Electron(position, momentum, tau_0, d_tau, N_tau, charge_weight);
+  // Start at the pulse front, on the electron's own free-flight line (its own velocity, spread included); the field
+  // before the front is below exp(-cutoff^2) of its peak. Proper time is t / gamma along that line (tau = 0 at t = 0).
+  const std::array<double, 3> beta{px / p0, py / p0, pz / p0};
+  const FreeFlightCrossing start = free_flight_crossing(laser, laser.get_phi_min(), pos_local, beta);
+  MathUtils::RealFourVector position(start.ct, start.point[0], start.point[1], start.point[2]);
+  MathUtils::RealFourVector reference(0.0, pos_local[0], pos_local[1], pos_local[2]);
+  const double tau_0 = start.ct / (PhysUtils::AtomicUnits::c * (p0 / mc));
+
+  return Electron(position, momentum, tau_0, d_tau, N_tau, charge_weight, reference);
 }
 
 }  // namespace
 
+FreeFlightCrossing free_flight_crossing(const Core::Laser::LaserField& laser, double phi,
+                                        const std::array<double, 3>& x, const std::array<double, 3>& beta) {
+  // phi = k (ct - n.x) on x(t) = x + beta ct: ct (1 - n.beta) - n.x = phi / k.
+  const MathUtils::RealFourVector n = laser.get_unity_n();
+  const double n_dot_x = n[1] * x[0] + n[2] * x[1] + n[3] * x[2];
+  const double n_dot_beta = n[1] * beta[0] + n[2] * beta[1] + n[3] * beta[2];
+  const double k = laser.get_omega() / PhysUtils::AtomicUnits::c;
+  FreeFlightCrossing crossing;
+  crossing.ct = (phi / k + n_dot_x) / (1.0 - n_dot_beta);
+  for (int i = 0; i < 3; ++i) {
+    crossing.point[i] = x[i] + beta[i] * crossing.ct;
+  }
+  return crossing;
+}
+
 Electron generate_electron(const CylinderBeamParams& params,
-                           const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation, double tau_0, double d_tau,
-                           size_t N_tau, std::mt19937& gen) {
+                           const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation,
+                           const Core::Laser::LaserField& laser, double d_tau, size_t N_tau, std::mt19937& gen) {
   if (!params.lengths_resolved) {
     throw std::logic_error("generate_electron: beam lengths in lambda_1 not resolved (resolve_beam_lengths)");
   }
@@ -67,7 +89,7 @@ Electron generate_electron(const CylinderBeamParams& params,
   }
 
   // Convert cylindrical coordinates to Cartesian coordinates (cylinder height axis along canonical Oz).
-  return place_electron(params, beam_axis_rotation, r * std::cos(phi), r * std::sin(phi), z, tau_0, d_tau, N_tau, gen);
+  return place_electron(params, beam_axis_rotation, r * std::cos(phi), r * std::sin(phi), z, laser, d_tau, N_tau, gen);
 }
 
 AxialTranslation axial_translation(const CylinderBeamParams& params, const Core::Laser::LaserField& laser,
@@ -91,8 +113,8 @@ AxialTranslation axial_translation(const CylinderBeamParams& params, const Core:
   const double q_squared = q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
   result.q_transverse = std::sqrt(std::max(0.0, q_squared - result.q_axial * result.q_axial));
   result.degenerate = std::abs(result.q_axial) < 1e-6 * std::sqrt(q_squared);
-  result.lambda_1 = result.degenerate ? std::numeric_limits<double>::infinity()
-                                      : 2.0 * MathUtils::pi / std::abs(result.q_axial);
+  result.lambda_1 =
+      result.degenerate ? std::numeric_limits<double>::infinity() : 2.0 * MathUtils::pi / std::abs(result.q_axial);
   return result;
 }
 
@@ -189,7 +211,7 @@ std::vector<double> axial_positions(const std::vector<Electron>& beam, const Cyl
   std::vector<double> z;
   z.reserve(beam.size());
   for (const Electron& electron : beam) {
-    const MathUtils::RealFourVector& x = electron.get_initial_position();
+    const MathUtils::RealFourVector& x = electron.get_reference_position();
     z.push_back(x[1] * axis[0] + x[2] * axis[1] + x[3] * axis[2] - params.center_z);
   }
   return z;
@@ -339,7 +361,8 @@ std::vector<std::string> stack_warnings(const CylinderBeamParams& params, const 
     const double needed = std::ceil(span * (q_max + 6.0 / params.sigma_z) / (2.0 * MathUtils::pi));
     std::ostringstream text;
     text << "sheet spacing L/M = " << spacing / params.sigma_z
-         << " sigma_z is too coarse for the Gaussian edges at N = " << N_max << ": (2 pi / d - q_N) sigma_z = " << margin << " < 6; beam_stack_sheets >= " << needed
+         << " sigma_z is too coarse for the Gaussian edges at N = " << N_max
+         << ": (2 pi / d - q_N) sigma_z = " << margin << " < 6; beam_stack_sheets >= " << needed
          << " keeps the replica below ~1e-8";
     warnings.push_back(text.str());
   }
@@ -353,8 +376,8 @@ std::vector<std::string> stack_warnings(const CylinderBeamParams& params, const 
   return warnings;
 }
 
-std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const double tau_0, const double d_tau,
-                                             const size_t N_tau, const Core::Laser::LaserField& laser,
+std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const double d_tau, const size_t N_tau,
+                                             const Core::Laser::LaserField& laser,
                                              const std::array<double, 3>& detector_normal) {
   CylinderBeamParams params = IoUtils::parse_cylinder_beam_params(config);
   resolve_beam_lengths(params, laser, detector_normal);
@@ -368,8 +391,7 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const doub
       std::cerr << "Warning: " << warning << "\n";
     }
   }
-  for (const std::string& warning :
-       stack_warnings(params, axial_translation(params, laser, detector_normal), N_max)) {
+  for (const std::string& warning : stack_warnings(params, axial_translation(params, laser, detector_normal), N_max)) {
     std::cerr << "Warning: " << warning << "\n";
   }
 
@@ -395,13 +417,13 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const doub
     for (size_t m = 0; m < sheets; ++m) {
       const double z = sheet_z[m];
       const double charge_weight = sheet_w[m];
-      beam.push_back(place_electron(params, beam_axis_rotation, 0.0, 0.0, z, tau_0, d_tau, N_tau, gen, charge_weight));
+      beam.push_back(place_electron(params, beam_axis_rotation, 0.0, 0.0, z, laser, d_tau, N_tau, gen, charge_weight));
       for (int j = 1; j <= rings; ++j) {
         const double r = j * spacing;
         const long nodes = std::lround(2.0 * MathUtils::pi * j);
         for (long i = 0; i < nodes; ++i) {
           const double phi = 2.0 * MathUtils::pi * static_cast<double>(i) / static_cast<double>(nodes);
-          beam.push_back(place_electron(params, beam_axis_rotation, r * std::cos(phi), r * std::sin(phi), z, tau_0,
+          beam.push_back(place_electron(params, beam_axis_rotation, r * std::cos(phi), r * std::sin(phi), z, laser,
                                         d_tau, N_tau, gen, charge_weight));
         }
       }
@@ -417,7 +439,7 @@ std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const doub
   // random sequence.
   std::mt19937 gen(random_seed);
   for (size_t p = 0; p < num_particles; ++p) {
-    beam.push_back(generate_electron(params, beam_axis_rotation, tau_0, d_tau, N_tau, gen));
+    beam.push_back(generate_electron(params, beam_axis_rotation, laser, d_tau, N_tau, gen));
   }
 
   return beam;

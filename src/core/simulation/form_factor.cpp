@@ -42,7 +42,9 @@ FormFactor compute_form_factor(const std::vector<Particle::Electron>& electron_b
 
   std::complex<double> A(0.0, 0.0);
   for (const Particle::Electron& electron : electron_beam) {
-    double phase = MathUtils::dot3(q, electron.get_initial_position());
+    // Positions at a common time (t = 0), where the translation relation holds; the trajectories start at different
+    // times (theory/specs/14_collision_timing.md).
+    double phase = MathUtils::dot3(q, electron.get_reference_position());
     A += electron.get_charge_weight() * std::complex<double>(std::cos(phase), std::sin(phase));
   }
 

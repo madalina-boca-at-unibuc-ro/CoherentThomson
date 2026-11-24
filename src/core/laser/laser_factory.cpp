@@ -11,7 +11,6 @@ std::unique_ptr<LaserField> create_laser(const ConfigMap& config) {
     double wing_sigma_val = IoUtils::get_laser_wing_sigma(config);
     double delay_val = IoUtils::get_laser_delay(config);
     double wing_cutoff_sigmas = IoUtils::get_laser_wing_sigma_cutoff(config);
-    // TO DO: the delay here should be transferred to the initial time in simulation : to be written in CLAUDE.md
 
     auto [zeta_1_in, zeta_2_in] = IoUtils::get_laser_zeta(config);
 

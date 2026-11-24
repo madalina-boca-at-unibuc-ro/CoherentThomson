@@ -18,7 +18,8 @@ protected:
   double flat_duration;  // Full length (in phase) of the flat-top plateau, from delay to delay + flat_duration
   // wing_sigma: phase width tau of the Gaussian wings, amplitude exp(-(delta_phi/tau)^2) (envelope()); not a standard
   // deviation: the field's rms width is tau/sqrt(2), the intensity's tau/2, and with no plateau wing_sigma/(2 pi) is
-  // the manuscript's N_c. delay: overall phase shift. wing_sigma_cutoff: the simulated range extends cutoff * tau
+  // the manuscript's N_c. delay: the phase at which the plateau starts (laser_delay); the plateau start crosses the
+  // origin, where an LG focus sits, at t = delay / omega. wing_sigma_cutoff: the simulated range extends cutoff * tau
   // beyond the plateau on each side (the field there is exp(-cutoff^2) of its peak).
   double wing_sigma, delay, wing_sigma_cutoff;
   MathUtils::Complex zeta_1, zeta_2;  // Complex polarization coefficients for the two orthogonal
@@ -79,6 +80,7 @@ public:
   double get_a0() const { return a0; }
   double get_flat_duration() const { return flat_duration; }
   double get_wing_sigma_cutoff() const { return wing_sigma_cutoff; }
+  double get_delay() const { return delay; }
   MathUtils::Complex get_zeta_1() const { return zeta_1; }
   MathUtils::Complex get_zeta_2() const { return zeta_2; }
   double get_phi_min() const { return phi_min; }

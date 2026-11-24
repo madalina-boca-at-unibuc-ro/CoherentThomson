@@ -143,7 +143,8 @@ inline double get_laser_wing_sigma(const ConfigMap& config) {
   return value * convert_unit_to_number(unit, config);
 }
 
-// Global phase shift of the pulse, in radians.
+// The phase at which the pulse plateau starts (its peak, with no plateau), in radians: it crosses the origin at
+// t = delay / omega (theory/specs/14_collision_timing.md).
 inline double get_laser_delay(const ConfigMap& config) {
   auto [value, unit] = split_value_and_unit(get_required(config, "laser_delay"));
   return value * convert_unit_to_number(unit, config);

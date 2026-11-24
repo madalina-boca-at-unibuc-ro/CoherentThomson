@@ -27,10 +27,22 @@ using CylinderBeamParams = Core::IoUtils::CylinderBeamParams;
 // actually moves in, rather than always along canonical Oz regardless of
 // where average_p* points). Advances gen's state, so a caller generating a
 // whole beam must share one generator across calls to get a single
-// reproducible sequence. params must be resolved (resolve_beam_lengths).
+// reproducible sequence. params must be resolved (resolve_beam_lengths). The drawn position is the electron's
+// free-flight position at t = 0; its trajectory starts at the pulse front (free_flight_crossing at phi_min).
 Electron generate_electron(const CylinderBeamParams& params,
-                           const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation, double tau_0, double d_tau,
-                           size_t N_tau, std::mt19937& gen);
+                           const Core::MathUtils::RotationMatrix3x3& beam_axis_rotation,
+                           const Core::Laser::LaserField& laser, double d_tau, size_t N_tau, std::mt19937& gen);
+
+// When and where the free-flight line x(t) = x + beta ct reaches the laser phase phi = k (ct - n.x):
+// ct = (phi / k + n.x) / (1 - n.beta). Electrons start at phi_min; the run log uses it for the collision point.
+// Derived for the present geometry (theory/specs/14_collision_timing.md, collision-geometry warning): 1 - n.beta is
+// small for a co-propagating beam, and the start then moves far back.
+struct FreeFlightCrossing {
+  double ct;                    // c t at the crossing
+  std::array<double, 3> point;  // position at the crossing
+};
+FreeFlightCrossing free_flight_crossing(const Core::Laser::LaserField& laser, double phi,
+                                        const std::array<double, 3>& x, const std::array<double, 3>& beta);
 
 // The harmonic-1 translation wavevector q along the detector normal (the q of Simulation::compute_form_factor, from
 // the configured average_p, undressed), split along and across the beam axis. Uses the configured average_p, as the
@@ -65,8 +77,8 @@ std::vector<double> sheet_positions(const CylinderBeamParams& params);
 // with its charge.
 std::vector<double> sheet_weights(const CylinderBeamParams& params);
 
-// Each electron's initial position along the beam axis, from the beam centre: the z the generator drew (and the
-// modulation moved), recovered from the rotated position.
+// Each electron's position along the beam axis at t = 0 (its reference position), from the beam centre: the z the
+// generator drew (and the modulation moved), recovered from the rotated position.
 std::vector<double> axial_positions(const std::vector<Electron>& beam, const CylinderBeamParams& params);
 
 // The modulation's derived numbers, from resolved params. Lengths are in a.u.
@@ -116,8 +128,8 @@ std::vector<std::string> stack_warnings(const CylinderBeamParams& params, const 
 std::vector<std::string> modulation_warnings(const CylinderBeamParams& params, const ModulationGeometry& geometry,
                                              size_t N_max);
 
-std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const double tau_0, const double d_tau,
-                                             const size_t N_tau, const Core::Laser::LaserField& laser,
+std::vector<Electron> generate_cylinder_beam(const ConfigMap& config, const double d_tau, const size_t N_tau,
+                                             const Core::Laser::LaserField& laser,
                                              const std::array<double, 3>& detector_normal);
 
 }  // namespace Core::Particle

@@ -149,6 +149,55 @@ void write_run_log(const ConfigMap& config, const Laser::LaserField& laser, cons
     write_kv(file, "LG w0", lg_w0, lambda_au);
   }
 
+  write_kv_au(file, "laser_delay (phase)", laser.get_delay());
+  file << "  laser_delay (cycles)        " << laser.get_delay() / (2.0 * MathUtils::pi)
+       << "  (the plateau start crosses the origin at t = laser_delay)\n";
+
+  // Where the beam centre meets the pulse, on its free-flight line (theory/specs/14_collision_timing.md): the plateau
+  // start (the peak, with no plateau) and, with a plateau, its end. The LG focus is at the origin.
+  write_section(file, "Collision (beam centre, free flight)");
+  {
+    IoUtils::CylinderBeamParams centre_params = IoUtils::parse_cylinder_beam_params(config);
+    const double px = centre_params.average_px, py = centre_params.average_py, pz = centre_params.average_pz;
+    const double p0 = std::sqrt(px * px + py * py + pz * pz + mc * mc);
+    const std::array<double, 3> beta{px / p0, py / p0, pz / p0};
+    const std::array<double, 3> centre =
+        MathUtils::rotate3d(MathUtils::rotation_matrix_from_direction(px, py, pz),
+                            {centre_params.center_x, centre_params.center_y, centre_params.center_z});
+    const MathUtils::RealFourVector n = laser.get_unity_n();
+    const double z_R = is_laguerre_gauss ? MathUtils::pi * lg_w0_au * lg_w0_au / lambda_au : 0.0;
+    auto write_crossing = [&](const std::string& what, double phi) {
+      const Particle::FreeFlightCrossing x = Particle::free_flight_crossing(laser, phi, centre, beta);
+      const double along_n = n[1] * x.point[0] + n[2] * x.point[1] + n[3] * x.point[2];
+      const double distance = std::sqrt(x.point[0] * x.point[0] + x.point[1] * x.point[1] + x.point[2] * x.point[2]);
+      file << "  " << what << "\n";
+      write_kv(file, "  at c t", x.ct, lambda_au);
+      file << "    at point (lambda)          (" << x.point[0] / lambda_au << ", " << x.point[1] / lambda_au << ", "
+           << x.point[2] / lambda_au << ")\n";
+      write_kv(file, "  distance from origin", distance, lambda_au);
+      write_kv(file, "  along n from the origin", along_n, lambda_au);
+      if (is_laguerre_gauss) {
+        file << "    along n / z_R               " << along_n / z_R << "  (peak intensity there "
+             << 1.0 / (1.0 + (along_n / z_R) * (along_n / z_R)) << " of the focus value, on axis)\n";
+      }
+    };
+    write_crossing("pulse front (phi_min): the beam centre's trajectory starts here", laser.get_phi_min());
+    write_crossing(
+        laser.get_flat_duration() > 0.0 ? "plateau start (phi = laser_delay)" : "pulse peak (phi = laser_delay)",
+        laser.get_delay());
+    if (laser.get_flat_duration() > 0.0) {
+      write_crossing("plateau end (phi = laser_delay + flat_duration)", laser.get_delay() + laser.get_flat_duration());
+    }
+    if (!beam.empty()) {
+      const auto [first, last] =
+          std::minmax_element(beam.begin(), beam.end(), [](const Particle::Electron& a, const Particle::Electron& b) {
+            return a.get_initial_position()[0] < b.get_initial_position()[0];
+          });
+      write_kv(file, "start c t, earliest", first->get_initial_position()[0], lambda_au);
+      write_kv(file, "start c t, latest", last->get_initial_position()[0], lambda_au);
+    }
+  }
+
   write_section(file, "Electron beam");
   const size_t num_electrons = beam.size();
   file << "  particle count              " << num_electrons << "\n";

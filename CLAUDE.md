@@ -107,7 +107,8 @@ Elsewhere:
 - **Spherical screen:** `B` exactly ⊥ `n0`, `E` not (`|E_r|/|E_θ|` ~ 0.1), via `plot_spherical_components.py`.
 - **Byte-identity** for intended no-ops: diff the `.dat` outputs with the same config and `random_seed`.
 - **Python reference** `~/Dropbox/work/bin/python/Superradiant_Thomson` (laptops only; on servers ask the user) with
-  `config_cross_check.cfg`. It has caught several real bugs.
+  `config_cross_check.cfg`. It has caught several real bugs. It keeps the pre-spec-14 arrangement, so compare only in
+  the old geometry (`laser_delay = cutoff·σ`, as that config has).
 
 ### Plotting
 
@@ -210,9 +211,17 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
   Gouy sign and curvature sign (`+kρ²/2R`) must flip together.
 - `zeta_1/zeta_2` are normalized in `create_laser`, so `a0` alone sets the strength. LG `Npn` normalization is
   deliberately custom.
-- **Known bugs, revisit together:** `laser_delay` has no effect (overwritten with `wing_sigma_cutoff * wing_sigma`),
-  `tau_0_traj` is hardcoded `0.0`, and the heatmap snapshot time depends on both. The heatmap window ignores
-  `beam_center_x/y`.
+- **Collision timing** (spec 14): `laser_delay` = the time the plateau start (the peak, with no plateau) crosses the
+  origin, where the LG focus is; beam positions are free-flight positions at t = 0, so `laser_delay 0` +
+  `beam_center_z 0` collide at the focus. Each electron starts at the pulse front on its own free-flight line
+  (`Particle::free_flight_crossing`); `b(q)`, `electron_beam_scatter.dat` and the axial diagnostics use
+  `get_reference_position()` (t = 0), never `get_initial_position()` (the start). `laser_delay = cutoff·σ` reproduces
+  the old off-focus geometry. `run_log.txt` prints the collision point.
+- **⚠ Collision geometry:** the start time, pull-back and collision point are derived for φ = k(ct − n̂·x), focus at
+  the origin, free flight before the pulse, head-on baseline. **Changing the collision geometry** (co-propagating
+  or crossed beams, a moved focus, a non-φ envelope) **means re-deriving spec 14 §3 and re-running every check**;
+  1 − n̂·β → 0 for co-propagation makes the start run away.
+- The heatmap window ignores `beam_center_x/y`.
 
 ## Config file format
 

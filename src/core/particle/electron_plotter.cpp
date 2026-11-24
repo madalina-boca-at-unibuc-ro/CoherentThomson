@@ -57,7 +57,7 @@ void plot_electron_beam_scatter(const std::vector<Electron>& electron_beam, cons
   file << (weighted ? "x y z w\n" : "x y z\n");
 
   for (const Electron& electron : electron_beam) {
-    const Core::MathUtils::RealFourVector& pos = electron.get_initial_position();
+    const Core::MathUtils::RealFourVector& pos = electron.get_reference_position();  // the configured beam, at t = 0
     file << pos[1] / axes_scale << " " << pos[2] / axes_scale << " " << pos[3] / axes_scale;
     if (weighted) {
       file << " " << electron.get_charge_weight();

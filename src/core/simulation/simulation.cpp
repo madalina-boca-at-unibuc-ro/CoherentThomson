@@ -45,7 +45,8 @@ size_t available_cpu_count() {
 }  // namespace
 
 simulation_parameters init_simulation_parameters(const ConfigMap& config, const Laser::LaserField& laser) {
-  double tau_0_traj = 0.0;  // hardcoded, to be modified (listed in CLAUDE.md's known bugs/hardcodes)
+  // No common start time: each electron starts at the pulse front on its own free-flight line
+  // (Particle::free_flight_crossing, theory/specs/14_collision_timing.md).
   double T = IoUtils::get_laser_period(config);
   size_t NT_traj = IoUtils::get_trajectory_NT(config);
   double d_tau_traj = T / NT_traj;
@@ -140,8 +141,7 @@ simulation_parameters init_simulation_parameters(const ConfigMap& config, const 
     }
   }
 
-  return simulation_parameters{tau_0_traj, d_tau_traj,  simulation_length, frequencies_list, fundamental_frequency,
-                               q,          total_cycles};
+  return simulation_parameters{d_tau_traj, simulation_length, frequencies_list, fundamental_frequency, q, total_cycles};
 };
 
 RadiationField run_simulation(const ConfigMap& config, const Laser::LaserField& laser,

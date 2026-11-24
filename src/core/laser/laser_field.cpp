@@ -31,9 +31,9 @@ LaserField::LaserField(double omega_in, double a0_in, double flat_duration_in, d
 
   E0_c = a0 * omega * Core::PhysUtils::AtomicUnits::m_0 /
          (Core::PhysUtils::AtomicUnits::e_0);  // E0 = omega * a0 * m_e  / |e|
-  delay = wing_sigma_cutoff *
-          wing_sigma;  // set delay such that the simulation starts form zero.
-                       // TO DO: To improve the choice, to make is consisten with the initial simulation time
+  // delay is laser_delay as configured: the phase at which the plateau starts, i.e. the plateau start (the peak, for no
+  // plateau) crosses the origin at t = delay / omega. The electrons start at the pulse front, phi = phi_min
+  // (Particle::pulse_front, theory/specs/14_collision_timing.md).
   phi_min = -wing_sigma_cutoff * wing_sigma + delay;                 // Start well in advance of the leading wing
   phi_max = flat_duration + wing_sigma_cutoff * wing_sigma + delay;  // End well after the trailing wing
   d_phi = 2 * MathUtils::pi / NT;

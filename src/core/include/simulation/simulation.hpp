@@ -12,7 +12,6 @@
 namespace Core::Simulation {
 
 struct simulation_parameters {
-  double tau_0_traj;  // the initial value of the proper time for the electron trajecotry simulation
   double d_tau_traj;
   size_t simulation_length;  // the total number of points in the numerical integration of the electron trajectory
   std::vector<double> frequencies;  // the vector of calculated frequencies.
