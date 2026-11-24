@@ -30,3 +30,11 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   islands in θ and fringes in ω (linear maps, `plot_spectrum_map.py --harmonic 1 --linear`).
 - Spec 16: `omega_list` (`N:value`), N logged per frequency and read by the scripts, peaks and a ready `omega_list`
   line from `plot_spectrum_map.py`. `theory/implemented/16_omega_list.md`.
+
+## 2026-11-24: N = 2 screen at a0 = 1 (end of session)
+
+- `config/work/screen_N2_a0_1p0.cfg` (lattice 0.625 λ, 80 w0 screen at 160000 w0, 64 × 32, the five N = 2 peaks
+  2.511–2.893 ω₁ of `~/output/20261124_184819`), run `~/output/20261124_191533` (65 min): Λ_zz/P_z = theory to 6
+  digits at all five, pure E₋, J = −6. Main ring ~110–130 µrad and slowly decaying outer rings: 4–11% of the flux beyond
+  0.9 R_max (30% at 2.893). Next: containment (R_max ~150 w0, N_R 128, below the lattice order at ~1.1 mrad; one
+  frequency per run keeps the fast path), or dressing ω_N with the laser's real peak a² (a spec).

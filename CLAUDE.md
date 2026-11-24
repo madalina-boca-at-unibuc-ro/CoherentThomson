@@ -185,6 +185,11 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
   split differs in LD modes, so compare only totals.
 - `radiation_formula`: `simplified`, `direct` (`F_b ≡ 0`), `long_distance_{simplified,direct}` (no `F_s`, error
   ~`1/D`), `long_distance_{simplified,direct}_approx` (stepped phase, fastest, ≤1e-7 from unstepped).
+- **Weak fields (N ≥ 2 near the axis, any field far below its LR/BR terms): use `*direct*` and
+  `laser_wing_sigma_cutoff 6`.** In `simplified` the endpoint term cancels a large trapezoid sum, leaving an
+  `O(dτ²)` residue (radially polarized, J_z = 0) that dominated the a0 = 1 on-axis N = 2 by 10⁴; `direct` at cutoff 4
+  still leaves a ~4e-4 leak of N = 1 into N = 2 that cutoff 6 removes (cause open). Coherent N = 2 has J_z = 2(l + σ)
+  and starts as θ^|J_z∓1| on axis. Record: `~/Dropbox/work/AI-outputs/Claude/2026-11-24/` (n2_residue).
 - `general_factor` uses the **signed** `q_0`; direct `F_s` has an explicit `c²` to compensate. Trapezoid weights apply
   to `F_l`/`F_s` only; `F_b` is an unweighted endpoint evaluation.
 - **Load-bearing:** prefactors stay in `radiation.cpp`'s anonymous namespace; `radiation_phase_argument` stays
@@ -207,6 +212,10 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
   line printed by `plot_spectrum_map.py`. Each frequency's harmonic N is logged in `run_log.txt` and read by the
   scripts (`plot_observables.read_harmonic_indices`); without it they guess round(ω/ω₁). An uneven list loses the
   phase recurrence (×2.7–7 slower).
+- **Workflow at large a0:** line spectrum (`spectrum_line_lattice_2d.cfg` copy, `plot_spectrum_map.py`, `--harmonic N
+  --linear` to see the islands) → its `omega_list` line in `run_log.txt` → screen run → the usual scripts. At a0 = 1
+  N = 2 is a main ring at ~120 µrad plus slowly decaying rings: an 80 w0 screen at 160000 w0 still leaves 4–30% of the
+  flux at the edge (`~/output/20261124_191533`); Λ_zz/P_z is unaffected (pure J_z), powers and LG fits are not.
 - `dense_frequency_spectrum=true`: `N_omega` points at one screen point or on a **line** (rectangular `Nx` or `Ny` 1,
   circular `N_phi` 1; spec 15); a 2D grid keeps only its first point. Memory ~ points × `N_omega` × threads: estimated
   on stdout and in `run_log.txt`, refused above 8 GB of buffers. Bounds in `omega_laser` or
@@ -219,7 +228,9 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
   first-order paraxial (`div E` residual up to ~1e-2 is expected). Carrier sign `exp(-iφ)`, the `+i/k` coefficient,
   Gouy sign and curvature sign (`+kρ²/2R`) must flip together.
 - `zeta_1/zeta_2` are normalized in `create_laser`, so `a0` alone sets the strength. LG `Npn` normalization is
-  deliberately custom.
+  deliberately custom: **a0 is not the peak amplitude.** LG (0, 0) peaks at √2 a0 on axis, LG (0, 2) at 0.736 a0
+  (a² 0.541 a0², at ρ = w0); `plot_spectrum_map.peak_a2_fraction` computes it for any (p, l). So the line of harmonic N
+  spans N × [(1 + a0²/2)/(1 + g a0²/2), 1 + a0²/2] ω₁ (g = that a² fraction), and ω_N lies below it for a0 ≳ 0.3.
 - **Collision timing** (spec 14): `laser_delay` = the time the plateau start (the peak, with no plateau) crosses the
   origin, where the LG focus is; beam positions are free-flight positions at t = 0, so `laser_delay 0` +
   `beam_center_z 0` collide at the focus. Each electron starts at the pulse front on its own free-flight line

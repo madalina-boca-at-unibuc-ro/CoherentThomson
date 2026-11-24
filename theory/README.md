@@ -26,6 +26,8 @@ Detail in `work/dev_notes_2026-07-28_to_2026-11-23.md` unless noted.
 - **Python cross-check in the old geometry only** (spec 14): the Python reference still starts the electrons at t = 0
   with the pulse front at them, so `config_cross_check.cfg` keeps `laser_delay = cutoff·σ`. Port spec 14 there before
   comparing collisions at the focus.
+- `long_distance_direct*` at `laser_wing_sigma_cutoff 4` leaks ~4e-4 of N = 1 into N = 2 (J_z of N = 1); cutoff 6
+  removes it; cause open (the envelope at 4σ is e⁻¹⁶). Use cutoff 6 for weak harmonics (2026-11-24 n2_residue tests).
 - Ponderomotive dressing acts as a lens, so `N ≥ 2` isn't a single LG mode: `work/future_dev/ponderomotive_lens.md`.
 - **Lattice stack (spec 09):** Phases 1–3a done; the beam rework (2026-11-09) and Gaussian stack (2026-11-10) await
   the user's review; Phase 3b next. State and "Resume here": `work/lattice_stack-work.md`.
