@@ -101,7 +101,7 @@ def panel(case, legend=False):
     ax_map.pcolormesh(theta_s, a['omega'], np.clip(photons, MAP_RANGE, None), norm=LogNorm(MAP_RANGE, 1.0),
                       cmap='viridis', shading='nearest', rasterized=True)
     ax_map.set_xlim(0, theta_max)
-    ax_map.set_ylim(w_lo - pad, w_hi + pad)
+    ax_map.set_ylim(max(w_lo - pad, a['omega'][0]), min(w_hi + pad, a['omega'][-1]))   # never beyond the computed window
     ax_map.set_xlabel(r'$\theta/\theta_*$')
     ax_map.set_ylabel(r'$\omega/\omega_1$')
     ax_map.text(0.96, 0.04, r'$d^2N/d\omega\,d\Omega$', transform=ax_map.transAxes, color='w', va='bottom', ha='right',

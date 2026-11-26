@@ -79,3 +79,17 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   16 theta_* (N = 2 the widest: 0.17 and 0.36 in 8-16 theta_*). The probes' own edge pile-up (75-80 theta_*) is the
   replica: keep it beyond ~1.5x the line. Decided: a0 = 1 at N_c = 8 for the main text, a0 = 0.5 at N_c = 30 for the
   supplement; lines to 24 theta_*.
+
+## 2026-11-26: second fig_spectrum batch (a0 = 1, N_c = 8; a0 = 0.5, N_c = 30)
+
+- Job 32529 (hpc-node04, 128 CPUs, a622484), 8 runs, 2.8 h; copied to `~/output/paper_2026/prelim/fig_spectrum/`.
+  All contained (edge flux 1e-6 to 1e-3), aliasing margins 1.57-1.64, no `scaled_parameters.py` warnings.
+- Band (Eq. harmonic_band): 93-98% of the energy inside; 5-95% spans match the edges (a0 = 1, N = 1: 1.188-1.490
+  against 1.181-1.500).
+- 10 um vs 800 nm: normalized integrated spectra differ by 0.5% (a0 = 1, N = 1), 1.5% (N = 2), 1.7% and 4.7% (a0 = 0.5,
+  N = 1, 2), against 1e-4 at a0 = 0.1; photon ratios (D_10/D_800)^(2N) to 0.5-3%. The lines reach 24 theta_*, where
+  the D^2 theta^2 term of omega_N(theta) is ~3e-3 at 800 nm (`angular_detuning`), a fraction of a fringe: the likely
+  cause (not yet separated from epsilon = 2/(D k_L w0) = 4e-3 at 800 nm).
+- Fringes: integrated spectra show 3 (a0 = 1, N = 1; N_f 2.7) and 2 (a0 = 0.5, N = 1; N_f 2.5) peaks above 10%, but
+  one smooth peak at N = 2 (N_f 5.4, 5.1): the N = 2 fringes tilt with theta and most N = 2 flux is at 4-8 theta_*,
+  so the angular integral washes them out. Local spectra at theta = theta_* show 3 (N = 1) and 4 (N = 2) peaks.
