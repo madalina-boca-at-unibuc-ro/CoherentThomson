@@ -120,6 +120,13 @@ elsewhere (e.g. `~/output_tests/`) pass the **run folder** (not a `.dat`) as the
 `plot_point_spectrum_observables.py` and `lg_decomposition.py` also **write** sections into `run_log.txt`.
 Conventions: `py_scripts/PLOTTING_NOTES.md`.
 
+**Scaled units come only from `py_scripts/utils/scaled_parameters.py`** (spec 11): θ_* = 2/(k₁w₀), Z_* = k₁w₀²/2 at
+N = 1 for every harmonic (k₁ dressed with a0²/2), D, N_c, κ (peak |u|² of the mode), the dressing band and fringe
+number, aliasing margin, validity checks. A leaf module that reads `run_log.txt`; no plot computes these itself.
+`python3 py_scripts/utils/scaled_parameters.py <run> [...] [--table md|csv] [--write-log] [--expect L|H]`.
+Paper figures: one script per figure in `reports/2026_thomson_paper/figures/`, one PDF per case, assembled in the
+manuscript's TeX.
+
 ```
 python3 py_scripts/{laser,detector,particle}/<script>.py   # some need plot_*=true flags in the config
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]

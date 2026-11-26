@@ -2,7 +2,7 @@
 """
 Sec. IV.B figure (spectrum): one PDF panel per case, assembled into one figure in the manuscript
 (TeX/sections/04-flat_sheet.tex). Each panel: left, the (theta, omega) map of |E_sigma|^2 (the dominant helicity) of the
-10 um run, log scale, normalized to its maximum; right, sharing the omega axis, the screen-integrated photon spectrum
+10 um run versus theta/theta_* (utils/scaled_parameters.py), log scale, normalized to its maximum; right, sharing the omega axis, the screen-integrated photon spectrum
 dN/d(omega/omega_1) of the 10 um run and of its 800 nm scaled twin, each normalized to its own peak (their photon
 numbers differ by ~(D_10um/D_800nm)^(2N) at the same number of electrons; quoted in the text, not plotted).
 A separate PDF holds the shared colorbar.
@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(REPO, 'py_scripts'))
 sys.path.insert(0, os.path.join(REPO, 'py_scripts', 'radiation'))
 sys.argv, _ARGS = sys.argv[:1], sys.argv[1:]   # the py_scripts modules read sys.argv at import
 import plot_spectrum_map as psm  # noqa: E402
+from utils.scaled_parameters import scaled_parameters  # noqa: E402
 
 RUNS = os.path.expanduser('~/output/paper_2026/prelim/fig_spectrum')
 OUT = os.path.expanduser('~/Dropbox/pub/ms/2026-Thomson/TeX/figures')
@@ -71,15 +72,17 @@ def load(run_id):
     dominant, label = (E_minus, '-') if np.nansum(E_minus) >= np.nansum(E_plus) else (E_plus, '+')
     dN = np.nansum(maps['dPz'] * psm.annulus_areas(theta)[None, :], axis=1) / omega
     flux_theta = np.nansum(maps['dPz'] * psm.annulus_areas(theta)[None, :], axis=0)
-    return dict(run=run, theta=theta, omega=omega, E2=dominant, sign=label, dN=dN, flux_theta=flux_theta)
+    sp = scaled_parameters(run)
+    return dict(run=run, theta=theta, theta_star=sp.theta_star, omega=omega, E2=dominant, sign=label, dN=dN,
+                flux_theta=flux_theta)
 
 
 def panel(case, legend=False):
     label, suffix = CASES[case]
     a, b = load('10um_' + suffix), load('800nm_' + suffix)
-    theta_urad = a['theta'] * 1e6
+    theta_s = a['theta'] / a['theta_star']          # theta/theta_* (spec 11)
     cum = np.cumsum(a['flux_theta']) / a['flux_theta'].sum()
-    theta_max = theta_urad[min(np.searchsorted(cum, FLUX_FRACTION), len(cum) - 1)]
+    theta_max = theta_s[min(np.searchsorted(cum, FLUX_FRACTION), len(cum) - 1)]
     if case in OMEGA_CROP:
         N = int(case[-1])
         w_lo, w_hi, pad = N * (1 - OMEGA_CROP[case]), N * (1 + OMEGA_CROP[case]), 0.0
@@ -94,11 +97,11 @@ def panel(case, legend=False):
     ax_spec = fig.add_subplot(gs[1], sharey=ax_map)
 
     E2 = a['E2'] / np.nanmax(a['E2'])
-    ax_map.pcolormesh(theta_urad, a['omega'], np.clip(E2, MAP_RANGE, None), norm=LogNorm(MAP_RANGE, 1.0),
+    ax_map.pcolormesh(theta_s, a['omega'], np.clip(E2, MAP_RANGE, None), norm=LogNorm(MAP_RANGE, 1.0),
                       cmap='viridis', shading='nearest', rasterized=True)
     ax_map.set_xlim(0, theta_max)
     ax_map.set_ylim(w_lo - pad, w_hi + pad)
-    ax_map.set_xlabel(r'$\theta$ [$\mu$rad]')
+    ax_map.set_xlabel(r'$\theta/\theta_*$')
     ax_map.set_ylabel(r'$\omega/\omega_1$')
     ax_map.text(0.96, 0.04, rf'$|E_{a["sign"]}|^2$', transform=ax_map.transAxes, color='w', va='bottom', ha='right',
                 bbox=dict(boxstyle='round,pad=0.15', fc='k', ec='none', alpha=0.45))

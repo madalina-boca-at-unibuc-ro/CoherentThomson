@@ -162,3 +162,77 @@ def get_doppler_shifted_period(run_dir):
     p0 = math.sqrt(px * px + py * py + pz * pz + mc * mc)
     doppler_factor = (p0 - pz) / mc
     return T / doppler_factor
+
+
+# ---- run_log.txt sections and harmonic indices (moved from radiation/plot_observables.py, spec 11) ----
+
+# Matches Logging::write_run_log's own section-header convention: a title line immediately followed
+# by a dash-underline exactly as long as the title (see run_log.cpp/run_log.txt's own "Frequency
+# spectrum\n------------------\n"-style sections, and this script's own appended ones below).
+_SECTION_BOUNDARY_RE = re.compile(r'(?m)^([^\n]+)\n(-+)\n')
+
+
+def find_run_log_sections(content):
+    """
+    Returns [(start_index, title), ...] for every section header in run_log.txt (see
+    _SECTION_BOUNDARY_RE) -- used to splice out only this script's own previously-appended section
+    (identified by its exact header text) without disturbing any other section, including a
+    *different* label_suffix of this same script (e.g. the '-- incident beam' variant) that may
+    follow it. A naive "truncate everything after the first marker match" (this function's own
+    previous implementation) would silently delete such a later, differently-labeled section too --
+    confirmed by running this script on radiation_field.dat, then incident_field.dat, then
+    radiation_field.dat again, which wiped the middle (incident) section outright.
+    """
+    return [(m.start(), m.group(1)) for m in _SECTION_BOUNDARY_RE.finditer(content)
+            if len(m.group(2)) == len(m.group(1))]
+
+
+def write_run_log_section(run_dir, header, body_lines):
+    """
+    Splices `body_lines` into run_log.txt under a dash-underlined `header` (matching
+    Logging::write_run_log's own section convention), replacing this same header's previous section
+    in place if a prior run of this script already wrote one (via _find_run_log_sections), regardless
+    of what other sections precede or follow it -- so re-running doesn't pile up duplicates and can't
+    disturb an unrelated section (e.g. a differently-`label_suffix`d one, see _find_run_log_sections'
+    own doc comment for the bug this guards against). Shared by append_integration_to_run_log and
+    append_ratios_to_run_log, which previously duplicated this splice logic.
+    """
+    log_path = os.path.join(run_dir, "run_log.txt")
+    if not os.path.exists(log_path):
+        raise FileNotFoundError(
+            f"'{log_path}' not found -- this run predates run_log.txt (Logging::write_run_log); "
+            "re-run the solver to regenerate it.")
+
+    with open(log_path) as f:
+        content = f.read()
+
+    sections = find_run_log_sections(content)
+    for i, (start, title) in enumerate(sections):
+        if title == header:
+            end = sections[i + 1][0] if i + 1 < len(sections) else len(content)
+            content = content[:start] + content[end:]
+            break
+
+    lines = [content.rstrip("\n"), "", header, "-" * len(header)] + body_lines
+    with open(log_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"Appended '{header}' section to {log_path}")
+
+
+# One frequencies_list line of run_log.txt with its harmonic: "    [i] <omega/c>  (<x> omega_1)  N = <n>".
+_HARMONIC_LINE_RE = re.compile(r'(?m)^\s+\[(\d+)\]\s+\S+\s+\(\S+ omega_1\)\s+N = (\d+)\s*$')
+
+
+def read_harmonic_indices(run_dir):
+    """
+    {i_omega: N} from run_log.txt's frequencies_list (theory/specs/16_omega_list.md): the harmonic each frequency
+    belongs to, N_harmonics_min + i for a harmonic run, the given N for an omega_list run. None for a dense-spectrum
+    run or a run log written before 2026-11-24 (no "N =" there): callers then fall back to N = round(omega/omega_1),
+    which is wrong for an omega_list frequency in a broad line (at a0 = 1, 2.9 omega_1 belongs to N = 2).
+    """
+    log_path = os.path.join(run_dir, "run_log.txt")
+    if not os.path.exists(log_path):
+        return None
+    with open(log_path) as f:
+        found = {int(i): int(N) for i, N in _HARMONIC_LINE_RE.findall(f.read())}
+    return found or None

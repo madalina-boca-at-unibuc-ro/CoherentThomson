@@ -1,7 +1,7 @@
 # Scaled parameters of a run: spec
 
-> **Status: DRAFT, NOT APPROVED FOR IMPLEMENTATION.** Written 2026-11-21. Discuss first; implement only after the user
-> approves, then stop at the checkpoint (§8) for review.
+> **Status: APPROVED 2026-11-26 with the amendments of §10** (they take precedence over the sections above). Stop at the
+> checkpoint (§8) for review.
 
 ## 1. Purpose and scope
 
@@ -187,3 +187,27 @@ Then update `CLAUDE.md` (Plotting section: the module and its role as the single
   layer. I suggest the figure layer, because it is a display choice.
 - **`xi` uses $N_c$, while `scaling_laws.md` used $n_{\rm eff}=N_c\sqrt{\pi/2}$.** Pick one before the S4 table and
   say which in the supplement.
+
+## 10. Amendments (2026-11-26, at approval)
+
+1. **Line screens.** $R_{\max}$ (§3): the farthest screen point from the axis for a line (rectangular `Ny = 1` or
+   `Nx = 1`, circular `N_phi = 1`); the inscribed half-width only for a full 2D rectangle.
+2. **Frequencies.** The harmonics come from the run log's per-frequency N (spec 16, `read_harmonic_indices`), or,
+   for a dense spectrum, from the window (each N whose band overlaps it). Per harmonic, the replica and the angular
+   detuning use that harmonic's largest $\omega/\omega_1$, not N.
+3. **Dressing quantities** per harmonic (manuscript Sec. III.A): `kappa` = peak $|u|^2$ of the mode; the band
+   `band_low`, `band_high` $=N(1+A_{\rm ref})/(1+\kappa A_{\rm ref})$, $N(1+A_{\rm ref})$ in units of $\omega_1$; the
+   fringe number `N_fringes` $=\sqrt{\pi/2}\,NN_c\,\kappa a_0^2/2$. `peak_a2_fraction` moves from
+   `plot_spectrum_map.py` into the module (one copy; re-exported there).
+4. **`--expect L|H`** checks only $Z/Z_*$ (2.81 or 2.85): the spectrum lines go to 8, 16 or 24 $\theta_*$.
+5. **§9:** the $A_{\rm ref}$ point is closed ($a_0^2/2$ stays the scale; evaluation frequencies come from the
+   spectrum, spec 16). The `xi` ($N_c$ or $n_{\rm eff}$) point stays open.
+6. **§7:** drop `~/output/20261031_130825` (deleted) and `reference_config` (removed); the opposite-σ run, if made,
+   replaces the latter. Add the line run `10um_a0_1p0_N1` (`~/output/paper_2026/prelim/fig_spectrum/`):
+   $\theta_{\max}$ = 1047.7 µrad = 16 $\theta_*$, $Z/Z_*$ = 2.85, `k1_over_kL` = 486.11 (log 486.1092).
+7. **§8:** `CLAUDE.md` is now `AGENTS.md`.
+8. **Follow-up (not this spec):** `reports/2026_thomson_paper/figures/fig_spectrum.py` switches its θ axis to
+   $\theta/\theta_*$; the diagnostic plots later.
+9. **Leaf module:** besides the run-log section helpers (§6), `read_harmonic_indices` moves to
+   `utils/run_output_utils.py` (re-exported from `plot_observables.py`), so the module reads the per-frequency N
+   without importing `plot_observables`.

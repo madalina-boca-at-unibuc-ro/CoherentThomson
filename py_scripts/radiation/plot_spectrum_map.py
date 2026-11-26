@@ -26,12 +26,10 @@ Usage: python3 plot_spectrum_map.py [run_folder] [--range R] [--omega-min W] [--
 PNGs: spectrum_map{,_integrated}[_N<N>][_linear].png.
 """
 import argparse
-import math
 import os
 import sys
 
 import numpy as np
-import scipy.special
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
@@ -40,6 +38,7 @@ from plot_point_spectrum_observables import compute_point_observables, get_obser
 from plot_field import read_config_value, read_length
 from plot_observables import _get_E_total, _write_run_log_section
 from lg_decomposition import helicity_components
+from utils.scaled_parameters import lg_peak_intensity
 from faraday_frame_utils import get_detector_local_rotation
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
@@ -114,18 +113,14 @@ def angle_scale(theta_max):
 
 
 def peak_a2_fraction(config_path):
-    """Peak local |a|^2 / a0^2 of the laser's transverse profile at the waist: 1 for a plane wave; for LG (p, l) the
-    maximum over rho of |Npn (sqrt2 rho/w0)^|l| 1F1(-p, |l|+1, 2 rho^2/w0^2) exp(-rho^2/w0^2)|^2, the C++
-    LaguerreGaussLaser amplitude with its custom Npn (0.541 for (0, 2), 2 on axis for (0, 0))."""
+    """Peak local |a|^2 / a0^2 of the laser's transverse profile at the waist: 1 for a plane wave; for LG (p, l)
+    utils.scaled_parameters.lg_peak_intensity (the C++ amplitude with its custom Npn: 0.541 for (0, 2), 2 on axis
+    for (0, 0))."""
     laser_type, _ = read_config_value('laser_type', config_path)
     if laser_type != 'laguerre_gauss':
         return 1.0
-    p = int(read_config_value('laser_lg_p', config_path)[0])
-    n = abs(int(read_config_value('laser_lg_l', config_path)[0]))
-    Npn = np.sqrt(2.0) / math.factorial(n) * np.sqrt(math.factorial(p + n) / math.factorial(p))
-    u = np.linspace(0.0, 10.0 + 4.0 * (p + n), 200001)  # rho^2 / w0^2
-    amplitude = Npn * (2.0 * u) ** (n / 2.0) * scipy.special.hyp1f1(-p, n + 1, 2.0 * u) * np.exp(-u)
-    return float(np.max(amplitude ** 2))
+    return lg_peak_intensity(int(read_config_value('laser_lg_p', config_path)[0]),
+                             int(read_config_value('laser_lg_l', config_path)[0]))
 
 
 def harmonic_bands(a0, g):

@@ -33,6 +33,19 @@ Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are 
   snapshot via `get_laser_period`. It draws one panel per four-vector component (sharing an axis hid real
   variation), with position in `lambda` and momentum in `mc`.
 
+## Scaled units (`utils/scaled_parameters.py`, spec 11)
+
+- The single source of θ_*, Z_*, Z/Z_*, θ_max/θ_*, D, N_c, κ and the per-harmonic quantities. It parses
+  `run_log.txt` (what the solver used), so it is a leaf: it imports only `utils/run_output_utils.py`. Plot scripts
+  convert angles with `to_scaled_angles` or `theta_star`; never recompute k₁ or θ_* in a script.
+- θ_max: the farthest screen point from the axis for a line (rectangular `Nx` or `Ny` = 1, circular `N_phi` = 1), the
+  inscribed half-width for a 2D rectangle, R_max for a circle. Harmonics: the log's per-frequency N (spec 16), or for a
+  dense spectrum the bands that overlap the window; the replica and the angular detuning use each harmonic's largest
+  ω/ω₁.
+- `peak_a2_fraction` (`plot_spectrum_map.py`) wraps its `lg_peak_intensity`; the run-log section writer
+  (`write_run_log_section`) and `read_harmonic_indices` live in `utils/run_output_utils.py`, re-exported from
+  `plot_observables.py` under the old names.
+
 ## `plot_observables.py`
 
 - Computes the SAM/OAM/TAM densities `S_z`/`L_z`/`J_z`, the fluxes `Sigma_zz`/`Lambda_zz`/`Flux_tot`, and the

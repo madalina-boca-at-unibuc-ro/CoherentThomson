@@ -64,8 +64,8 @@ Next free number: 17.
 | 08 | Gaussian waist from the detector Poynting flux | Stub | Done |
 | 09 | Lattice stacks and ponderomotive microbunching | What was implemented | Phases 1–3a done; rework and Gaussian stack await review; 3b next |
 | 10 | Beam-averaged effective a0 | — | Draft |
-| 11 | Scaled parameters of a run | — | Draft |
-| 12 | Paper run campaign (`reports/2026_thomson_paper/`) | — | Draft; depends on 11 |
+| 11 | Scaled parameters of a run (`py_scripts/utils/scaled_parameters.py`) | Implementation notes | Done (θ/θ_* in the diagnostic plots: later) |
+| 12 | Paper run campaign (`reports/2026_thomson_paper/`) | — | Draft (11 done) |
 | 13 | Helicity-component plots `E₊`, `E₋` | — | Draft |
 | 14 | Collision timing: honour `laser_delay`, start each electron at the pulse front (collision at the LG focus) | Implementation notes | Done (Python cross-check deferred: the reference keeps the old arrangement) |
 | 15 | Dense spectrum on a screen line: dP_z/dω, \|E₊\|, \|E₋\| maps in (θ, ω) | Implementation notes | Done |
