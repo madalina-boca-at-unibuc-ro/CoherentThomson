@@ -1,7 +1,8 @@
 # Diagnostic plots of the helicity components E₊, E₋: spec
 
-> **Status: DRAFT, NOT APPROVED FOR IMPLEMENTATION.** Written 2026-11-21. Discuss first; implement only after the user
-> approves, then stop at the checkpoint (§7).
+> **Status: APPROVED 2026-11-26** (diagnostics only; axes stay in angle until spec 11). Test runs: run C =
+> `~/output/progress_report_20261029/runs_A-D_lattice/20261031_094054`, lens run =
+> `~/output/progress_report_20261029/lens_gaussian_pulse/20261030_111559`. Open point §8: local basis opt-in.
 
 ## 1. Purpose
 

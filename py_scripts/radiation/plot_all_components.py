@@ -11,13 +11,16 @@ known-analytic incident-beam reference field) instead of radiation_field.dat.
 plot_radiation_component itself routes those PNGs into png_folder/radiation/incident/ instead (see
 its own doc comment), so they never collide with the real run's own plots even when looping over
 every combination like this.
+
+After the 24 F plots, the two helicity components E_+- (plot_field.plot_helicity_component, spec 13), raw and, for
+the emitted field, with the spherical carrier removed (plot_field_carrier_removed.py plus|minus).
 """
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
-from plot_field import plot_radiation_component
+from plot_field import plot_radiation_component, plot_helicity_component
 
 RANGE_TYPES = ('long', 'short', 'boundary', 'total')
 COMPONENT_PAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
@@ -46,3 +49,15 @@ if __name__ == "__main__":
         for mu, nu in COMPONENT_PAIRS:
             print(f"Plotting {range_type} F^{{{mu}{nu}}}...")
             plot_radiation_component(range_type, mu, nu, input_file)
+
+    for sign in ('plus', 'minus'):
+        print(f"Plotting E_{sign}...")
+        plot_helicity_component(sign, input_file)
+    if not use_incident:
+        # Imported here: plot_field_carrier_removed imports this module.
+        from plot_field_carrier_removed import make_radial_phase_transform, PNG_SUBDIR, TITLE_NOTE
+        transform = make_radial_phase_transform(input_file, os.path.join(os.path.dirname(input_file), 'config.cfg'))
+        for sign in ('plus', 'minus'):
+            print(f"Plotting E_{sign} with the carrier removed...")
+            plot_helicity_component(sign, input_file, field_transform=transform, png_subdir=PNG_SUBDIR,
+                                    title_note=TITLE_NOTE)

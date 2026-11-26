@@ -12,7 +12,11 @@ Usage (run_folder optional, default: the latest run):
     python3 plot_field_carrier_removed.py [run_folder]                     every range, every component
     python3 plot_field_carrier_removed.py <range> [run_folder]             every component of one range
     python3 plot_field_carrier_removed.py <range> <mu> <nu> [run_folder]   one component
-with <range> one of long, short, boundary, total (only the total is physical).
+    python3 plot_field_carrier_removed.py <plus|minus> [run_folder]        one helicity component E_+- (spec 13)
+with <range> one of long, short, boundary, total (only the total is physical). The default (no component) also
+plots both helicities. Their files are radiation_field_total_E{plus,minus}_omega{i}.png in the same folder.
+--local-basis (anywhere): helicities in each point's local transverse basis (plot_field.plot_helicity_component),
+files with a '_local' suffix; F components are unaffected. Matters only at large angles (runs at rest).
 """
 import sys
 import os
@@ -20,7 +24,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file
-from plot_field import plot_radiation_component, read_config_value, read_length, get_screen_coordinates
+from plot_field import (plot_radiation_component, plot_helicity_component, read_config_value, read_length,
+                        get_screen_coordinates)
 from plot_observables import _read_fundamental_frequency_au
 from plot_all_components import RANGE_TYPES, COMPONENT_PAIRS
 
@@ -49,17 +54,23 @@ def make_radial_phase_transform(radiation_filepath, config_path):
 
 
 TITLE_NOTE = r'\, e^{-ik_N(R-Z)}'
+HELICITIES = ('plus', 'minus')
 PNG_SUBDIR = os.path.join("processed", "radial_phase")  # kept: reports/2026-10-29_progress/make_figures.py reads it
 
 
 def parse_args(args):
     """Returns (combinations, run_folder or None) or raises ValueError with the problem."""
     run_folder = None
-    if args and args[-1] not in RANGE_TYPES and not args[-1].lstrip('-').isdigit():
+    if args and args[-1] not in RANGE_TYPES + HELICITIES and not args[-1].lstrip('-').isdigit():
         run_folder = args[-1]
         args = args[:-1]
     if not args:
-        return [(r, mu, nu) for r in RANGE_TYPES for mu, nu in COMPONENT_PAIRS], run_folder
+        return ([(r, mu, nu) for r in RANGE_TYPES for mu, nu in COMPONENT_PAIRS]
+                + [('helicity', sign, None) for sign in HELICITIES]), run_folder
+    if args[0] in HELICITIES:
+        if len(args) != 1:
+            raise ValueError("give a helicity (plus or minus) alone")
+        return [('helicity', args[0], None)], run_folder
     if args[0] not in RANGE_TYPES:
         raise ValueError(f"unknown range '{args[0]}' (one of {', '.join(RANGE_TYPES)})")
     if len(args) == 1:
@@ -76,8 +87,12 @@ def parse_args(args):
 
 
 if __name__ == "__main__":
+    args = sys.argv[1:]
+    local_basis = "--local-basis" in args
+    if local_basis:
+        args.remove("--local-basis")
     try:
-        combinations, run_folder = parse_args(sys.argv[1:])
+        combinations, run_folder = parse_args(args)
     except ValueError as e:
         print(f"Error: {e}\n{__doc__}")
         sys.exit(1)
@@ -103,6 +118,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     for range_type, mu, nu in combinations:
+        if range_type == 'helicity':
+            print(f"Plotting E_{mu} with the carrier removed...")
+            plot_helicity_component(mu, input_file, field_transform=transform, png_subdir=PNG_SUBDIR,
+                                    title_note=TITLE_NOTE, local_basis=local_basis)
+            continue
         print(f"Plotting {range_type} F^{{{mu}{nu}}} with the carrier removed...")
         plot_radiation_component(range_type, mu, nu, input_file, field_transform=transform,
                                  png_subdir=PNG_SUBDIR, title_note=TITLE_NOTE)

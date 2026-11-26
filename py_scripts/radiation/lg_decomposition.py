@@ -54,6 +54,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from utils.run_output_utils import find_latest_output_file, field_config_path, is_incident_screen_config
 from plot_field import read_config_value, read_length, get_screen_coordinates, DETECTOR_AXES_UNIT
 from faraday_frame_utils import BOHR_RADIUS_M, C_LIGHT, convert_unit_to_number, get_detector_local_rotation
+from field_components import helicity_components  # moved there (spec 13); still importable from here
 from plot_observables import (
     _get_E_total,
     _read_fundamental_frequency_au,
@@ -301,12 +302,6 @@ def prediction_fidelity(pred, target, weights):
 # --------------------------------------------------------------------------------------------------------------
 # Field components and angular-momentum bookkeeping
 # --------------------------------------------------------------------------------------------------------------
-
-def helicity_components(Ex, Ey):
-    """(E_+, E_-): amplitudes on e_+- = (x + i y)/sqrt2 (lab x, y), i.e. spin +-1 about lab +z for
-    exp(-i omega t) -- S_z ~ Im(Ex* Ey) = |E_+|^2 - |E_-|^2."""
-    return (Ex - 1j * Ey) / math.sqrt(2.0), (Ex + 1j * Ey) / math.sqrt(2.0)
-
 
 def component_field(name, Ex, Ey):
     E_plus, E_minus = helicity_components(Ex, Ey)

@@ -151,6 +151,13 @@ from plot_field import (
     get_detector_geometry_label,
 )
 from faraday_frame_utils import BOHR_RADIUS_M, C_LIGHT, convert_unit_to_number, get_detector_local_rotation
+# Moved to field_components.py (spec 13); the old private names stay importable from here.
+from field_components import (
+    get_total_field as _get_total_field,
+    get_E_total as _get_E_total,
+    get_B_total as _get_B_total,
+    read_laser_spin as _read_laser_spin,
+)
 
 MODULE_NAME = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -276,36 +283,6 @@ def _read_fundamental_frequency_au(run_dir):
     if not match:
         raise ValueError(f"Could not find a 'fundamental_frequency' line in '{log_path}'.")
     return float(match.group(1))
-
-
-def _complex_column(data, prefix, mu, nu):
-    return (data[f'{prefix}_F{mu}{nu}_re'] + 1j * data[f'{prefix}_F{mu}{nu}_im']).to_numpy()
-
-
-def _get_total_field(data, index_pairs, scale=1.0):
-    """
-    Generic total-(LR+SR+BR) field extractor: one complex numpy array per (mu, nu) pair in
-    `index_pairs`, each scaled by `scale`. Shared by _get_E_total (E_i=c*F^{i0}, scale=C_LIGHT) and
-    _get_B_total (B_i=F^{jk} directly, scale=1) -- see this module's own doc comment for why only
-    the total, never a single range, is used here.
-    """
-    def component(mu, nu):
-        value = _complex_column(data, 'LR', mu, nu) + _complex_column(data, 'SR', mu, nu)
-        if {f'BR_F{mu}{nu}_re', f'BR_F{mu}{nu}_im'}.issubset(data.columns):
-            value = value + _complex_column(data, 'BR', mu, nu)
-        return scale * value
-
-    return tuple(component(mu, nu) for mu, nu in index_pairs)
-
-
-def _get_E_total(data):
-    """Returns (Ex, Ey, Ez) from the total Faraday tensor. E_i = c*F^{i0}."""
-    return _get_total_field(data, ((1, 0), (2, 0), (3, 0)), scale=C_LIGHT)
-
-
-def _get_B_total(data):
-    """Returns (Bx, By, Bz) from the total Faraday tensor. Bx=F^{32}, By=F^{13}, Bz=F^{21}."""
-    return _get_total_field(data, ((3, 2), (1, 3), (2, 1)), scale=1.0)
 
 
 def _periodic_phi_derivative(grid):
@@ -610,18 +587,6 @@ def compute_ratio_table(integrated, pairs):
 
 _THEORY_COLUMN = '(N(m+s)-s)/omega_N (theory)'
 _THEORY_COLUMN_INCIDENT = 'm/omega (theory)'
-
-
-def _read_laser_spin(config_path):
-    """
-    The laser's spin per photon along its own propagation direction, sigma = 2 Im(conj(zeta_1) zeta_2) with
-    (zeta_1, zeta_2) normalized as create_laser does: +1 for the default circular zeta_1=(1,0), zeta_2=(0,1)
-    (checked against the run's own S_z/P_z), 0 for linear, in between for elliptical.
-    """
-    zeta = [complex(float(read_config_value(f'laser_zeta_{i}_re', config_path)[0]),
-                    float(read_config_value(f'laser_zeta_{i}_im', config_path)[0])) for i in (1, 2)]
-    norm_sq = abs(zeta[0]) ** 2 + abs(zeta[1]) ** 2
-    return 2.0 * (np.conj(zeta[0]) * zeta[1]).imag / norm_sq
 
 
 def add_theoretical_oam_energy_ratio(ratios, fundamental_frequency_au, m, sigma, is_incident, harmonics=None):

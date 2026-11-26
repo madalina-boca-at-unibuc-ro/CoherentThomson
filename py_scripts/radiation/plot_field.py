@@ -345,41 +345,9 @@ def get_detector_geometry_label(detector_type, config_path):
     distance_lambda = distance_au / convert_unit_to_number('lambda', config_path)
     return f"{label}={distance_lambda:.6g} $\\lambda$ = {distance_au * BOHR_RADIUS_M:.4g} m"
 
-def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_transform=None, png_subdir=None,
-                             title_note=None):
-    """
-    Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
-    F^{mu nu} of the requested (long_range/short_range/boundary/total) Faraday tensor over
-    the detector screen, one figure per configured frequency.
-
-    Optional hooks for post-processing scripts (plot_field_carrier_removed.py): `field_transform(field, omega_ratio)`
-    maps each frequency's complex field (i_screen order; omega_ratio = that row's omega/omega_1) to the
-    plotted one, `png_subdir` replaces the 'emitted'/'incident' output subfolder, and `title_note`
-    is appended to the component label in the panel titles.
-
-    'boundary' is identically zero when the run used radiation_formula="direct" -- see
-    theory/physics/FT_faraday_tensor_v1.md's "Form 2's boundary term F_b" section.
-    'total' is the physical field, LR+SR+BR -- correct for both radiation_formula values without
-    branching, since BR is identically zero for "direct"; BR columns are treated as zero (rather
-    than erroring) if radiation_field.dat predates the boundary term, so 'total' degrades gracefully
-    to LR+SR on an old run.
-
-    All three detector types are rendered as a true heatmap (pcolormesh over the detector's native
-    (Nx, Ny)/(N_theta, N_phi)/(N_R, N_phi) grid) rather than a scatter -- a scatter has no notion of
-    which points are neighbors, which both leaves coarse grids looking like sparse colored dots
-    instead of a filled screen, and (for the spherical/circular polar grids specifically) breaks the
-    azimuthal continuity (phi=0 and phi=2*pi are the same physical direction) that any helical/vortex
-    structure in the field needs to actually look like a spiral around the vertex.
-
-    `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
-    sibling (Core::Radiation::export_incident_field_fourier) -- detected by filename.
-    incident_field.dat only has long_range populated (short_range/boundary are identically zero -- the incident field has no such
-    split), so 'short'/'boundary' degrade gracefully to all-zero panels and 'total' reduces to 'long'
-    exactly; no special-casing needed beyond the title/output-folder below. PNGs go into their own
-    'emitted'/'incident' subfolder of png_folder/radiation/ (rather than a suffix on the filename), so
-    a real run's plots are never at risk of being overwritten by an incident-beam one sharing the same
-    range_type/mu/nu/i_omega.
-    """
+def _read_field_file(radiation_filepath):
+    """(data, is_incident, title_suffix): radiation_field.dat or incident_field.dat, read as plot_radiation_component
+    always has."""
     is_incident = os.path.basename(radiation_filepath) == "incident_field.dat"
     title_suffix = " (incident beam)" if is_incident else ""
     if is_incident:
@@ -391,28 +359,12 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
         print(f"Error reading file '{radiation_filepath}': {e}")
         sys.exit(1)
 
-    if range_type == 'total':
-        required = {f'LR_F{mu}{nu}_re', f'LR_F{mu}{nu}_im', f'SR_F{mu}{nu}_re', f'SR_F{mu}{nu}_im'}
-        if not required.issubset(data.columns):
-            print(f"Error: File must contain columns {sorted(required)}")
-            sys.exit(1)
-        re_series = data[f'LR_F{mu}{nu}_re'] + data[f'SR_F{mu}{nu}_re']
-        im_series = data[f'LR_F{mu}{nu}_im'] + data[f'SR_F{mu}{nu}_im']
-        boundary_re, boundary_im = f'BR_F{mu}{nu}_re', f'BR_F{mu}{nu}_im'
-        if {boundary_re, boundary_im}.issubset(data.columns):
-            re_series = re_series + data[boundary_re]
-            im_series = im_series + data[boundary_im]
-        data = data.copy()
-        data['TOTAL_re'], data['TOTAL_im'] = re_series, im_series
-        re_col, im_col = 'TOTAL_re', 'TOTAL_im'
-    else:
-        prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
-        re_col = f'{prefix}_F{mu}{nu}_re'
-        im_col = f'{prefix}_F{mu}{nu}_im'
-        if not {re_col, im_col}.issubset(data.columns):
-            print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
-            sys.exit(1)
+    return data, is_incident, title_suffix
 
+
+def _screen_grid(radiation_filepath):
+    """The run's config path and everything the 2x2 renderer needs about the screen (see plot_radiation_component's
+    doc comment): grid shape, cell edges (flat shading), cell centres (gouraud, circular only), angular axes."""
     # Read back the config Core::IoUtils::copy_config_to_run_directory saved alongside this
     # specific run's .dat files, rather than config/coherent_thomson.cfg -- the project's live
     # config may have been edited since this run (e.g. for a different detector geometry), and
@@ -480,6 +432,12 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
         if x_gouraud is not None:
             x_gouraud, y_gouraud = x_gouraud * scale, y_gouraud * scale
 
+    return dict(config_path=config_path, detector_type=detector_type, detector_geometry_label=detector_geometry_label,
+                grid_shape=grid_shape, x=x, y=y, x_gouraud=x_gouraud, y_gouraud=y_gouraud, x_label=x_label,
+                y_label=y_label, aspect=aspect, xlim=xlim, ylim=ylim)
+
+
+def _png_dir(radiation_filepath, png_subdir, is_incident):
     # Per-module subfolder of the run directory's 'png_folder' (mirroring py_scripts/'s own
     # laser/detector/particle/radiation layout), further split into 'emitted'/'incident'
     # subfolders (rather than leaving the real run's own PNGs bare in png_folder/radiation/) so both
@@ -489,6 +447,156 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
         png_subdir = "incident" if is_incident else "emitted"
     png_dir = os.path.join(os.path.dirname(radiation_filepath), "png_folder", MODULE_NAME, png_subdir)
     os.makedirs(png_dir, exist_ok=True)
+
+    return png_dir
+
+
+def _render_2x2(re_values, im_values, grid, component_label, suptitle, output_name, png_dir):
+    """Re/Im/|.|/arg panels of one complex field on the screen grid (plot_radiation_component's figure)."""
+    grid_shape, x, y = grid['grid_shape'], grid['x'], grid['y']
+    x_gouraud, y_gouraud = grid['x_gouraud'], grid['y_gouraud']
+    xlim, ylim, aspect = grid['xlim'], grid['ylim'], grid['aspect']
+    x_label, y_label = grid['x_label'], grid['y_label']
+    abs_values = np.hypot(re_values, im_values)
+    phase_values = np.arctan2(im_values, re_values)
+
+    # Re/Im share the modulus panel's own [0, abs_max] scale, symmetrized to [-abs_max, abs_max]
+    # (diverging cmap), rather than each auto-scaling to its own range -- a real part that looks
+    # just as saturated as the modulus, even though |Re| <= |F|, would misleadingly suggest Re
+    # alone accounts for all of the magnitude. Sharing one scale keeps the three panels directly
+    # comparable at a glance, even though Re/Im then generally look paler than the modulus.
+    # Magnitude is non-negative (sequential cmap, floored at 0); phase wraps at +-pi (cyclic cmap).
+    abs_max = abs_values.max() if abs_values.size else None
+    # Last element of each tuple: whether this panel may use gouraud shading on a circular
+    # detector (x_gouraud is None for every other detector type, so this is a no-op there) --
+    # Re/Im/Abs are continuous scalars, safe to interpolate; phase is not, see the comment above.
+    panels = [
+        (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', -abs_max, abs_max, True),
+        (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', -abs_max, abs_max, True),
+        (abs_values, f"$|{component_label}|$", 'viridis', 0, abs_max, True),
+        (phase_values, f"$\\arg({component_label})$", 'twilight', -np.pi, np.pi, False),
+    ]
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), layout='constrained')
+    cbars = []
+    for ax, (values, title, cmap, vmin, vmax, gouraud_ok) in zip(axes.flat, panels):
+        if gouraud_ok and x_gouraud is not None:
+            sc = ax.pcolormesh(x_gouraud, y_gouraud, values.reshape(grid_shape), cmap=cmap,
+                               vmin=vmin, vmax=vmax, shading='gouraud')
+        else:
+            sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
+        if xlim is not None:
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+        ax.set_aspect(aspect, adjustable='box')
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(title)
+        ax.grid(True, alpha=0.25)
+        # shrink=0.85 matches the Superradiant_Thomson reference plots' style. No cbar.set_label: the panel title above already names
+        # the quantity, and a second, redundant vertical label ate into the width available to
+        # the right column's colorbar, misaligning it against the left column's.
+        cbar = fig.colorbar(sc, ax=ax, shrink=0.85)
+        if cmap == 'twilight':
+            cbar.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
+            cbar.ax.set_yticklabels(['$-\\pi$', '$-\\pi/2$', '$0$', '$\\pi/2$', '$\\pi$'])
+        cbars.append(cbar)
+
+    fig.suptitle(suptitle, fontsize=12)
+
+    # constrained layout doesn't reliably column-align per-axes colorbars: a "1e-N" scientific
+    # offset label above the Re/Im colorbars takes up different space than the twilight phase
+    # colorbar's plain '$\pi$' tick label, and the layout solver resolves that mismatch
+    # differently depending on the data's aspect ratio (confirmed misaligned by up to ~380px on
+    # a circular-detector run despite lining up on a rectangular one). Force one layout pass,
+    # freeze it, then snap each column's two colorbars to a shared x0 so this can't drift again.
+    fig.canvas.draw()
+    fig.set_layout_engine(None)
+    for cbar in cbars:
+        # fig.colorbar(ax=...) attaches an automatic locator to the colorbar axes that
+        # recomputes its position relative to the parent ax on every draw -- including the one
+        # savefig triggers -- which would silently undo the set_position() calls below unless
+        # cleared first.
+        cbar.ax.set_axes_locator(None)
+    for top_cbar, bottom_cbar in zip(cbars[:2], cbars[2:]):
+        top_pos = top_cbar.ax.get_position()
+        bottom_pos = bottom_cbar.ax.get_position()
+        bottom_cbar.ax.set_position([top_pos.x0, bottom_pos.y0, bottom_pos.width, bottom_pos.height])
+
+    output_img = os.path.join(png_dir, output_name)
+    # bbox_inches='tight' is safe here (unlike before the alignment fix above): the layout is
+    # already frozen and every axes position fixed by hand, so 'tight' only crops the outer
+    # whitespace/margin from the rendered result -- it can no longer trigger a second,
+    # different layout-engine pass that silently re-derives (and un-aligns) colorbar positions.
+    # It's needed again now because snapping the right column's colorbars to the wider-spaced
+    # x0 (set by the "1e-N" scientific offset above Re/Im) leaves the phase colorbar's own tick
+    # labels (e.g. '$-\\pi/2$') hanging past the figure's original right edge.
+    plt.savefig(output_img, dpi=200, bbox_inches='tight')
+    print(f"Successfully saved plot to {output_img}")
+    plt.close(fig)
+
+
+def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_transform=None, png_subdir=None,
+                             title_note=None):
+    """
+    Plots the real part, imaginary part, magnitude, and phase (2x2 grid) of
+    F^{mu nu} of the requested (long_range/short_range/boundary/total) Faraday tensor over
+    the detector screen, one figure per configured frequency.
+
+    Optional hooks for post-processing scripts (plot_field_carrier_removed.py): `field_transform(field, omega_ratio)`
+    maps each frequency's complex field (i_screen order; omega_ratio = that row's omega/omega_1) to the
+    plotted one, `png_subdir` replaces the 'emitted'/'incident' output subfolder, and `title_note`
+    is appended to the component label in the panel titles.
+
+    'boundary' is identically zero when the run used radiation_formula="direct" -- see
+    theory/physics/FT_faraday_tensor_v1.md's "Form 2's boundary term F_b" section.
+    'total' is the physical field, LR+SR+BR -- correct for both radiation_formula values without
+    branching, since BR is identically zero for "direct"; BR columns are treated as zero (rather
+    than erroring) if radiation_field.dat predates the boundary term, so 'total' degrades gracefully
+    to LR+SR on an old run.
+
+    All three detector types are rendered as a true heatmap (pcolormesh over the detector's native
+    (Nx, Ny)/(N_theta, N_phi)/(N_R, N_phi) grid) rather than a scatter -- a scatter has no notion of
+    which points are neighbors, which both leaves coarse grids looking like sparse colored dots
+    instead of a filled screen, and (for the spherical/circular polar grids specifically) breaks the
+    azimuthal continuity (phi=0 and phi=2*pi are the same physical direction) that any helical/vortex
+    structure in the field needs to actually look like a spiral around the vertex.
+
+    `radiation_filepath` may point at either a run's radiation_field.dat or its incident_field.dat
+    sibling (Core::Radiation::export_incident_field_fourier) -- detected by filename.
+    incident_field.dat only has long_range populated (short_range/boundary are identically zero -- the incident field has no such
+    split), so 'short'/'boundary' degrade gracefully to all-zero panels and 'total' reduces to 'long'
+    exactly; no special-casing needed beyond the title/output-folder below. PNGs go into their own
+    'emitted'/'incident' subfolder of png_folder/radiation/ (rather than a suffix on the filename), so
+    a real run's plots are never at risk of being overwritten by an incident-beam one sharing the same
+    range_type/mu/nu/i_omega.
+    """
+    data, is_incident, title_suffix = _read_field_file(radiation_filepath)
+
+    if range_type == 'total':
+        required = {f'LR_F{mu}{nu}_re', f'LR_F{mu}{nu}_im', f'SR_F{mu}{nu}_re', f'SR_F{mu}{nu}_im'}
+        if not required.issubset(data.columns):
+            print(f"Error: File must contain columns {sorted(required)}")
+            sys.exit(1)
+        re_series = data[f'LR_F{mu}{nu}_re'] + data[f'SR_F{mu}{nu}_re']
+        im_series = data[f'LR_F{mu}{nu}_im'] + data[f'SR_F{mu}{nu}_im']
+        boundary_re, boundary_im = f'BR_F{mu}{nu}_re', f'BR_F{mu}{nu}_im'
+        if {boundary_re, boundary_im}.issubset(data.columns):
+            re_series = re_series + data[boundary_re]
+            im_series = im_series + data[boundary_im]
+        data = data.copy()
+        data['TOTAL_re'], data['TOTAL_im'] = re_series, im_series
+        re_col, im_col = 'TOTAL_re', 'TOTAL_im'
+    else:
+        prefix = {'long': 'LR', 'short': 'SR', 'boundary': 'BR'}[range_type]
+        re_col = f'{prefix}_F{mu}{nu}_re'
+        im_col = f'{prefix}_F{mu}{nu}_im'
+        if not {re_col, im_col}.issubset(data.columns):
+            print(f"Error: File must contain columns '{re_col}' and '{im_col}'")
+            sys.exit(1)
+
+    grid = _screen_grid(radiation_filepath)
+    png_dir = _png_dir(radiation_filepath, png_subdir, is_incident)
 
     component_label = f"F^{{{mu}{nu}}}_{{\\mathrm{{{range_type}}}}}"
     if title_note is not None:
@@ -503,95 +611,138 @@ def plot_radiation_component(range_type, mu, nu, radiation_filepath, field_trans
         if field_transform is not None:
             field = field_transform(re_values + 1j * im_values, omega_value)
             re_values, im_values = field.real, field.imag
-        abs_values = np.hypot(re_values, im_values)
-        phase_values = np.arctan2(im_values, re_values)
+        suptitle = (f"Radiated field{title_suffix}, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
+                    f"{grid['detector_type']} detector, {grid['detector_geometry_label']}")
+        _render_2x2(re_values, im_values, grid, component_label, suptitle,
+                    f"radiation_field_{range_type}_F{mu}{nu}_omega{i_omega}.png", png_dir)
 
-        # Re/Im share the modulus panel's own [0, abs_max] scale, symmetrized to [-abs_max, abs_max]
-        # (diverging cmap), rather than each auto-scaling to its own range -- a real part that looks
-        # just as saturated as the modulus, even though |Re| <= |F|, would misleadingly suggest Re
-        # alone accounts for all of the magnitude. Sharing one scale keeps the three panels directly
-        # comparable at a glance, even though Re/Im then generally look paler than the modulus.
-        # Magnitude is non-negative (sequential cmap, floored at 0); phase wraps at +-pi (cyclic cmap).
-        abs_max = abs_values.max() if abs_values.size else None
-        # Last element of each tuple: whether this panel may use gouraud shading on a circular
-        # detector (x_gouraud is None for every other detector type, so this is a no-op there) --
-        # Re/Im/Abs are continuous scalars, safe to interpolate; phase is not, see the comment above.
-        panels = [
-            (re_values, f"$\\mathrm{{Re}}({component_label})$", 'RdBu_r', -abs_max, abs_max, True),
-            (im_values, f"$\\mathrm{{Im}}({component_label})$", 'RdBu_r', -abs_max, abs_max, True),
-            (abs_values, f"$|{component_label}|$", 'viridis', 0, abs_max, True),
-            (phase_values, f"$\\arg({component_label})$", 'twilight', -np.pi, np.pi, False),
-        ]
 
-        fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), layout='constrained')
-        cbars = []
-        for ax, (values, title, cmap, vmin, vmax, gouraud_ok) in zip(axes.flat, panels):
-            if gouraud_ok and x_gouraud is not None:
-                sc = ax.pcolormesh(x_gouraud, y_gouraud, values.reshape(grid_shape), cmap=cmap,
-                                   vmin=vmin, vmax=vmax, shading='gouraud')
-            else:
-                sc = ax.pcolormesh(x, y, values.reshape(grid_shape), cmap=cmap, vmin=vmin, vmax=vmax)
-            if xlim is not None:
-                ax.set_xlim(xlim)
-                ax.set_ylim(ylim)
-            ax.set_aspect(aspect, adjustable='box')
-            ax.set_xlabel(x_label)
-            ax.set_ylabel(y_label)
-            ax.set_title(title)
-            ax.grid(True, alpha=0.25)
-            # shrink=0.85 matches the Superradiant_Thomson reference plots' style. No cbar.set_label: the panel title above already names
-            # the quantity, and a second, redundant vertical label ate into the width available to
-            # the right column's colorbar, misaligning it against the left column's.
-            cbar = fig.colorbar(sc, ax=ax, shrink=0.85)
-            if cmap == 'twilight':
-                cbar.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
-                cbar.ax.set_yticklabels(['$-\\pi$', '$-\\pi/2$', '$0$', '$\\pi/2$', '$\\pi$'])
-            cbars.append(cbar)
+_HELICITY_LABEL = {'plus': 'E_{+}', 'minus': 'E_{-}'}
+_LOCAL_BASIS_THETA_NOTE = 0.05   # rad: above this, the title says the lab basis differs from the local one (spec 13 §8)
 
-        fig.suptitle(f"Radiated field{title_suffix}, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}), "
-                     f"{detector_type} detector, {detector_geometry_label}",
-                     fontsize=12)
 
-        # constrained layout doesn't reliably column-align per-axes colorbars: a "1e-N" scientific
-        # offset label above the Re/Im colorbars takes up different space than the twilight phase
-        # colorbar's plain '$\pi$' tick label, and the layout solver resolves that mismatch
-        # differently depending on the data's aspect ratio (confirmed misaligned by up to ~380px on
-        # a circular-detector run despite lining up on a rectangular one). Force one layout pass,
-        # freeze it, then snap each column's two colorbars to a shared x0 so this can't drift again.
-        fig.canvas.draw()
-        fig.set_layout_engine(None)
-        for cbar in cbars:
-            # fig.colorbar(ax=...) attaches an automatic locator to the colorbar axes that
-            # recomputes its position relative to the parent ax on every draw -- including the one
-            # savefig triggers -- which would silently undo the set_position() calls below unless
-            # cleared first.
-            cbar.ax.set_axes_locator(None)
-        for top_cbar, bottom_cbar in zip(cbars[:2], cbars[2:]):
-            top_pos = top_cbar.ax.get_position()
-            bottom_pos = bottom_cbar.ax.get_position()
-            bottom_cbar.ax.set_position([top_pos.x0, bottom_pos.y0, bottom_pos.width, bottom_pos.height])
+def plot_helicity_component(sign, radiation_filepath, field_transform=None, png_subdir=None, local_basis=False,
+                            title_note=None):
+    """
+    Re/Im/|.|/arg of the helicity component E_+ or E_- (sign 'plus' or 'minus') of the total field, in
+    plot_radiation_component's 2x2 format, one figure per frequency (theory/specs/13_helicity_plots.md).
 
-        output_name = f"radiation_field_{range_type}_F{mu}{nu}_omega{i_omega}.png"
-        output_img = os.path.join(png_dir, output_name)
-        # bbox_inches='tight' is safe here (unlike before the alignment fix above): the layout is
-        # already frozen and every axes position fixed by hand, so 'tight' only crops the outer
-        # whitespace/margin from the rendered result -- it can no longer trigger a second,
-        # different layout-engine pass that silently re-derives (and un-aligns) colorbar positions.
-        # It's needed again now because snapping the right column's colorbars to the wider-spaced
-        # x0 (set by the "1e-N" scientific offset above Re/Im) leaves the phase colorbar's own tick
-        # labels (e.g. '$-\\pi/2$') hanging past the figure's original right edge.
-        plt.savefig(output_img, dpi=200, bbox_inches='tight')
-        print(f"Successfully saved plot to {output_img}")
-        plt.close(fig)
+    E_+- = (Ex -+ i Ey)/sqrt2 (field_components.helicity_components), spin +-1 about lab +z; with `local_basis`,
+    in each point's own transverse basis (field_components.local_helicity_components). The title gives the
+    helicity's power fraction over the screen (lg_decomposition.py's quadrature weights), whether it is the
+    dominant one, E_sigma with sigma the laser spin about +z, and the basis. On incident_field.dat (laser frame)
+    the helicities are about the laser direction. `field_transform`, `png_subdir`, `title_note`: as in
+    plot_radiation_component. Files: radiation_field_total_E{plus,minus}[_local]_omega{i}.png.
+    """
+    # Imported here: these modules import plot_field at module level.
+    from field_components import get_E_total, helicity_components, local_helicity_components, read_laser_spin
+    from faraday_frame_utils import get_detector_local_rotation
+    from plot_observables import _read_laser_direction, get_screen_area_weights_au
+    from plot_point_spectrum_observables import get_observation_directions
+
+    if sign not in _HELICITY_LABEL:
+        raise ValueError(f"sign must be 'plus' or 'minus', not '{sign}'")
+    data, is_incident, title_suffix = _read_field_file(radiation_filepath)
+    grid = _screen_grid(radiation_filepath)
+    config_path, detector_type = grid['config_path'], grid['detector_type']
+    png_dir = _png_dir(radiation_filepath, png_subdir, is_incident)
+    n_screen = data['i_screen'].nunique()
+
+    if detector_type in ('rectangular', 'circular'):
+        weights = get_screen_area_weights_au(detector_type, config_path)
+    else:
+        weights = np.ones(n_screen)
+
+    # Directions of the screen points: needed for the local basis, and for the largest angle (title note).
+    # Not for incident_field.dat: its screen is in the laser's frame, and detector_scatter.dat is the emitted one.
+    if is_incident and local_basis:
+        raise ValueError("--local-basis applies to the emitted field only (incident_field.dat is in the laser frame)")
+    directions = theta_max = None
+    if not is_incident:
+        try:
+            directions = get_observation_directions(radiation_filepath, config_path, n_screen)
+        except ValueError as e:
+            if local_basis:
+                raise
+            print(f"Note: no screen directions ({e}); the title gives no largest-angle note.")
+    if directions is not None:
+        axis = get_detector_local_rotation(config_path)[:, 2]
+        theta_max = float(np.arccos(np.clip(np.min(directions @ axis), -1.0, 1.0)))
+
+    # Dominant helicity: the laser spin about +z (emitted field, lab frame) or about its own direction (incident).
+    sigma = read_laser_spin(config_path)
+    if not is_incident:
+        sigma *= np.sign(_read_laser_direction(config_path)[0][2])
+    this_sign = 1 if sign == 'plus' else -1
+    if abs(abs(sigma) - 1.0) > 1e-9:
+        role = f"laser spin {sigma:+.3g}: no dominant helicity"
+    else:
+        role = "= $E_\\sigma$ (dominant)" if this_sign == int(round(sigma)) else "(weak)"
+    if is_incident:
+        basis = "about the laser direction"
+    else:
+        basis = "local basis" if local_basis else "lab basis"
+        if not local_basis and theta_max is not None and theta_max > _LOCAL_BASIS_THETA_NOTE:
+            basis += f" ($\\theta_{{max}}$ = {theta_max:.3g} rad: local basis differs at O($\\theta^2$))"
+
+    component_label = _HELICITY_LABEL[sign] + (title_note or '')
+    file_label = ('Eplus' if sign == 'plus' else 'Eminus') + ('_local' if local_basis else '')
+
+    for i_omega, subset in data.groupby('i_omega'):
+        subset = subset.sort_values('i_screen')
+        omega_value = subset['omega'].iloc[0]
+        Ex, Ey, Ez = get_E_total(subset)
+        if local_basis:
+            E_plus, E_minus = local_helicity_components(Ex, Ey, Ez, directions[subset['i_screen'].to_numpy()])
+        else:
+            E_plus, E_minus = helicity_components(Ex, Ey)
+        P_plus, P_minus = (np.sum(weights * np.abs(E) ** 2) for E in (E_plus, E_minus))
+        total = P_plus + P_minus
+        fraction = (P_plus if sign == 'plus' else P_minus) / total if total > 0 else np.nan
+
+        field = E_plus if sign == 'plus' else E_minus
+        if field_transform is not None:
+            field = field_transform(field, omega_value)
+        suptitle = (f"Radiated field{title_suffix}, $\\omega$ index {i_omega} ($\\omega/\\omega_1$={omega_value:.4g}): "
+                    f"${_HELICITY_LABEL[sign]}$, power fraction {fraction:.3g} {role}, {basis}\n"
+                    f"{detector_type} detector, {grid['detector_geometry_label']}")
+        _render_2x2(field.real, field.imag, grid, component_label, suptitle,
+                    f"radiation_field_total_{file_label}_omega{i_omega}.png", png_dir)
+
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     use_incident = "--incident" in args
     if use_incident:
         args.remove("--incident")
+    use_local_basis = "--local-basis" in args
+    if use_local_basis:
+        args.remove("--local-basis")
+
+    # Helicity components (spec 13): plot_field.py helicity <plus|minus> [run_folder] [--incident] [--local-basis]
+    if args and args[0] == 'helicity':
+        if len(args) < 2 or args[1] not in ('plus', 'minus'):
+            print(f"Usage: python3 {sys.argv[0]} helicity <plus|minus> [path_to_run_folder] [--incident] [--local-basis]")
+            sys.exit(1)
+        field_filename = "incident_field.dat" if use_incident else "radiation_field.dat"
+        if len(args) >= 3:
+            input_file = os.path.join(args[2], field_filename)
+            if not os.path.exists(input_file):
+                print(f"Error: '{input_file}' not found")
+                sys.exit(1)
+        else:
+            input_file = find_latest_output_file(field_filename)
+            print(f"No folder given; using latest run: {input_file}")
+        try:
+            plot_helicity_component(args[1], input_file, local_basis=use_local_basis)
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        sys.exit(0)
 
     if len(args) < 3:
-        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary|total> <mu> <nu> [path_to_run_folder] [--incident]")
+        print(f"Usage: python3 {sys.argv[0]} <long|short|boundary|total> <mu> <nu> [path_to_run_folder] [--incident]\n"
+              f"       python3 {sys.argv[0]} helicity <plus|minus> [path_to_run_folder] [--incident] [--local-basis]")
         sys.exit(1)
 
     range_type = args[0]
