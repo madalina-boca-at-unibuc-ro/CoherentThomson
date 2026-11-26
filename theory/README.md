@@ -66,7 +66,7 @@ Next free number: 17.
 | 10 | Beam-averaged effective a0 | — | Draft |
 | 11 | Scaled parameters of a run (`py_scripts/utils/scaled_parameters.py`) | Implementation notes | Done (θ/θ_* in the diagnostic plots: later) |
 | 12 | Paper run campaign (`reports/2026_thomson_paper/`) | — | Draft (11 done) |
-| 13 | Helicity-component plots `E₊`, `E₋` | — | Draft |
+| 13 | Helicity-component plots `E₊`, `E₋` (`plot_field.py helicity`, `field_components.py`) | Implementation notes | Done (θ/θ_* axes: later) |
 | 14 | Collision timing: honour `laser_delay`, start each electron at the pulse front (collision at the LG focus) | Implementation notes | Done (Python cross-check deferred: the reference keeps the old arrangement) |
 | 15 | Dense spectrum on a screen line: dP_z/dω, \|E₊\|, \|E₋\| maps in (θ, ω) | Implementation notes | Done |
 | 16 | Screen fields at arbitrary frequencies: `omega_list` (`N:value`), harmonic index in the run log, spectrum peaks | Implementation notes | Done |

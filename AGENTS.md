@@ -130,15 +130,18 @@ manuscript's TeX.
 ```
 python3 py_scripts/{laser,detector,particle}/<script>.py   # some need plot_*=true flags in the config
 python3 py_scripts/radiation/plot_field.py <long|short|boundary|total> <mu> <nu> [--incident] [run_folder]
-python3 py_scripts/radiation/plot_all_components.py [--incident]
-python3 py_scripts/radiation/plot_field_carrier_removed.py [<range> [<mu> <nu>]] [run_folder]   # F e^{-ik_N(R-Z)}; all components by default; flat detectors only
+python3 py_scripts/radiation/plot_field.py helicity <plus|minus> [run_folder] [--incident] [--local-basis]  # E_+-, total field (spec 13)
+python3 py_scripts/radiation/plot_all_components.py [--incident]   # 24 F plots, then E_+- raw and carrier-removed
+python3 py_scripts/radiation/plot_field_carrier_removed.py [<range> [<mu> <nu>] | <plus|minus>] [run_folder] [--local-basis]   # e^{-ik_N(R-Z)}; all components and both helicities by default; flat detectors only
 python3 py_scripts/radiation/plot_point_spectrum{,_all,_observables}.py           # dense_frequency_spectrum, one point
 python3 py_scripts/radiation/plot_spectrum_map.py [run_folder] [--range R]         # dense spectrum on a line: (theta, omega) maps
 python3 py_scripts/radiation/plot_spherical_components.py <long|short|boundary> <E|B> <r|theta|phi>
 python3 py_scripts/radiation/plot_observables.py [--incident]   # rect./circular facing ±Oz (--incident: any)
 python3 py_scripts/radiation/lg_decomposition.py [--incident] ...   # options: theory/reference/lg_decomposition_reference.md
 ```
-`--incident` uses `incident_field.dat` (analytic laser field; rectangular/circular detectors only). `mu == nu` is
+Helicity plots: E± = (E_x ∓ iE_y)/√2 (spin ±1 about lab +z, `field_components.py`); the title gives the power fraction
+and marks the dominant E_σ. Look at the carrier-removed version. `--local-basis` projects on each point's own transverse
+basis (differs at O(θ²): only for runs at rest). `--incident` uses `incident_field.dat` (analytic laser field; rectangular/circular detectors only). `mu == nu` is
 rejected; `mu > nu` uses `F^{nu mu} = -F^{mu nu}`. `E_i = c·F^{i0}`, `B = (F^{32}, F^{13}, F^{21})`.
 
 ## Architecture

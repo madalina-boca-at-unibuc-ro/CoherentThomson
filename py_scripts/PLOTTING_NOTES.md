@@ -33,6 +33,22 @@ Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are 
   snapshot via `get_laser_period`. It draws one panel per four-vector component (sharing an axis hid real
   variation), with position in `lambda` and momentum in `mc`.
 
+## Helicity plots (spec 13)
+
+- `radiation/field_components.py` holds the only copies of the total-field extraction (`get_E_total`, `get_B_total`),
+  `helicity_components`, `local_helicity_components` and `read_laser_spin`; `plot_observables.py` and
+  `lg_decomposition.py` re-export the old private names. `plot_field.py` imports it inside functions only:
+  `faraday_frame_utils` (which it imports) imports `plot_field` at module level.
+- `plot_field.plot_helicity_component(sign, ...)` renders E_+ or E_- in the 2x2 format through the same
+  `_screen_grid`/`_render_2x2` as the F plots (the F PNGs were checked byte-identical after the split). Only the total
+  field: a helicity of the long/short/boundary terms means nothing.
+- Title: power fraction with `lg_decomposition.py`'s screen-area weights (equal to its `helicity_fraction`), "= E_σ
+  (dominant)" or "(weak)" from the laser spin about +z (about the laser direction for `--incident`), and the basis.
+- **Lab against local basis.** Lab: spin about +z everywhere (the AM fluxes and the selection rule are about z).
+  Local (`--local-basis`): about each point's direction n̂ (`rotation_matrix_from_direction`), the photon's own
+  helicity. They differ at O(θ²): 1e-15 at D = 27, a factor ~2 in the weak fraction (1e-8 level) for runs at rest.
+  Opt-in; the title notes θ_max > 0.05 rad in the lab basis. Refused with `--incident`. Files get `_local`.
+
 ## Scaled units (`utils/scaled_parameters.py`, spec 11)
 
 - The single source of θ_*, Z_*, Z/Z_*, θ_max/θ_*, D, N_c, κ and the per-harmonic quantities. It parses
