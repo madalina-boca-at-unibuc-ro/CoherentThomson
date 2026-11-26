@@ -12,6 +12,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../../.." && pwd)"
 cd "$REPO" || exit 1
+# On the cluster cmake and the plotting Python come from Anaconda, on PATH only in interactive shells
+# (theory/cluster.md, "PATH in non-interactive shells").
+if ! command -v cmake >/dev/null && [ -d "$HOME/anaconda3/bin" ]; then export PATH="$HOME/anaconda3/bin:$PATH"; fi
 echo "host $(hostname), $(nproc) CPUs, commit $(git rev-parse --short HEAD)"
 cmake -B build/ && cmake --build build/ --clean-first -j "$(nproc)" || exit 1
 

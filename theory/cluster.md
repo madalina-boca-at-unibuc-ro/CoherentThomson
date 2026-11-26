@@ -70,6 +70,16 @@ after radiation_field.dat and run_log.txt are written. The output stays visible 
 Alternatives in an interactive srun shell: end the command with `; exit`, or, while the solver runs, type `exit` +
 Enter (bash runs it when the solver returns).
 
+PATH IN NON-INTERACTIVE SHELLS (cmake, Python)
+----------------------------------------------
+cmake (3.21.3) and the Python with numpy/pandas/matplotlib come from Anaconda (`~/anaconda3/bin`), which only
+~/.bashrc's interactive part puts on PATH. A non-interactive shell (`ssh host 'cmd'`, `tmux new -d "cmd"`, a script
+run by srun from such a shell) gets `/usr/bin/python3` and no cmake: the build fails with "cmake: command not found".
+srun passes the caller's environment to the job, so export PATH before it (found 2026-11-26, job 32515):
+     export PATH=/mnt/home/madalinaboca/anaconda3/bin:$PATH
+     srun ... bash -c "..."
+A tmux window opened by hand (`tmux new -s r40`, then typing) is interactive and already has it.
+
 Checking from the head node without attaching:
   tmux ls                     # "r40: 1 windows ..." (no "(attached)"): alive and detached
   squeue -u $USER             # the job is listed while it is alive (TIME_LEFT column: -o "%.8i %.10M %.10L %R")
