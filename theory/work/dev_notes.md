@@ -58,3 +58,24 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   ≤ 4e-7; ratio ~20-25, i.e. close to 4th order (RK4), not the trapezoid's 2nd. NT 100 is converged at a0 = 1 for
   N ≤ 2 in `long_distance_direct_approx` (closes the a0 = 1, N ≤ 2 part of run-plan check C3). Script:
   `~/Dropbox/work/AI-outputs/Claude/2026-11-26/nt_convergence_a0_1.py`.
+
+## 2026-11-26: fig_spectrum line runs (10 um and 800 nm twins, a0 = 0.1 and 1, N_c = 30, LG (0, 2))
+
+- Cluster job 32515 (hpc-node13, 96 CPUs, commit 45a0e4f), 8 runs, ~1.6 h; copied to
+  `~/output/paper_2026/prelim/fig_spectrum/`. Comparison script: `~/Dropbox/work/AI-outputs/Claude/2026-11-26/fig_spectrum_scaling.py`.
+- a0 = 0.1: the scaled twins agree. Normalized integrated photon spectra differ by 9e-5 (N = 1) and 2e-4 (N = 2);
+  radial flux profiles identical to 3 digits; edge flux 2e-5. Integrated peak +0.0035 (N = 1, FWHM 0.012) and +0.0055
+  (N = 2) from N omega_1. Absolute photon numbers (same 1736 electrons) scale as (D_10um/D_800nm)^(2N) to 0.3-0.5%:
+  12.02 and 144.8, against 12.06 and 145.5 (consistent with on-axis single-electron density ~ D^2 per harmonic order
+  times a coherent solid angle ~ theta_*^2 ~ D^-4; to be checked).
+- a0 = 1 (a0^2 N_c = 30): the emission fills the whole 16 theta_* line (flux per tenth of the radius roughly flat,
+  rising at the edge for N = 2), so the integrated spectra are incomplete; normalized shapes differ between the twins by
+  5% (N = 1) and 12% (N = 2). Estimate: the dressing phase across the sheet (~2 pi N sqrt(pi/2) N_c kappa a0^2/2 ~ 64 rad
+  for N = 1) deflects light out to ~60 theta_*; at N_c = 8 it would be ~4x less.
+- Correction: in those a0 = 1 runs the lattice replica sat at ~19.6 theta_*, just beyond the line, so part of the
+  edge flux was probably its skirt. Probe runs (10 um, line to 80 theta_*, replica just beyond it; job 32528,
+  `config/work/fig_spectrum_probe/`, `~/output_tests/fig_spectrum_probe/`, script `probe_extent.py` in the same
+  AI-outputs folder): below 60 theta_*, a0 = 1 N_c = 8 and a0 = 0.5 N_c = 30 keep all but ~1e-3 of the flux within
+  16 theta_* (N = 2 the widest: 0.17 and 0.36 in 8-16 theta_*). The probes' own edge pile-up (75-80 theta_*) is the
+  replica: keep it beyond ~1.5x the line. Decided: a0 = 1 at N_c = 8 for the main text, a0 = 0.5 at N_c = 30 for the
+  supplement; lines to 24 theta_*.
