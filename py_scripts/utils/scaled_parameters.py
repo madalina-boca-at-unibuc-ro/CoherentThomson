@@ -327,7 +327,9 @@ def scaled_parameters(run_dir):
             row['L_N'] = row['J_N'] - int(round(sp.sigma))
             row['component'] = 'plus' if sp.sigma > 0 else 'minus'
         if sp.N_c:
-            row['linewidth'] = 1.0 / (N * sp.N_c)
+            # relative FWHM of the spectral intensity of harmonic N for a Gaussian field envelope g (field of N
+            # goes as g^N): 2 sqrt(2 ln 2) / (2 pi sqrt(N) N_c) = 0.375 / (sqrt(N) N_c), manuscript Eq. pulse_linewidth
+            row['linewidth'] = 2.0 * math.sqrt(2.0 * math.log(2.0)) / (2.0 * math.pi * math.sqrt(N) * sp.N_c)
         if band is not None:
             row['band_low'], row['band_high'] = N * band[0], N * band[1]
             if sp.N_c and sp.a0 is not None:

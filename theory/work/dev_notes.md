@@ -93,3 +93,83 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
 - Fringes: integrated spectra show 3 (a0 = 1, N = 1; N_f 2.7) and 2 (a0 = 0.5, N = 1; N_f 2.5) peaks above 10%, but
   one smooth peak at N = 2 (N_f 5.4, 5.1): the N = 2 fringes tilt with theta and most N = 2 flux is at 4-8 theta_*,
   so the angular integral washes them out. Local spectra at theta = theta_* show 3 (N = 1) and 4 (N = 2) peaks.
+
+## 2026-11-26: teorie.ro as a stand-in server
+
+- The cluster's NetBird SSO `sso.acc.unibuc.ro` refuses TCP 443 (ping works; `vpn.acc.unibuc.ro` answers): server side.
+- Key login to teorie.ro set up from the Dell G15 (SELinux label fix on the CephFS `~/.ssh`); details in
+  `theory/cluster.md` §3. Its checkout was clean at dde5ad6.
+- Cluster reachable from the Dell G15 without NetBird: `ssh hpc` (ProxyJump teorie.ro, user `madalinaboca`);
+  the cluster checkout was clean at a622484 (one commit behind).
+
+## 2026-11-26: twin agreement of the fig_spectrum runs, quantified
+
+- Normalized integrated spectra, 800 nm vs 10 um (max |diff| of peak; centroid shift; width change):
+  a0 = 0.1 N_c = 30: 9e-5 / 2.5e-4 (N = 1 / 2), shifts ~1e-6; a0 = 1 N_c = 8: 7.3e-3, -4.1e-4, -0.2% (N = 1),
+  1.7e-2, -1.1e-3, -1.0% (N = 2); a0 = 0.5 N_c = 30: 3.0e-2 (N = 1), 5.9e-2, -2.7% width (N = 2).
+  800 nm is always red-shifted and narrower. (Supersedes the 0.5-5% of the earlier entry, which was a looser metric.)
+- The mismatch grows with the angular cut of the integral (a0 = 1, N = 2: 2.7e-3 to 3 theta_*, 7.3e-3 to 6, 1.7e-2 to
+  12): consistent with the (D theta)^2 term of omega_N(theta), ~1/D^2 at fixed theta/theta_*, i.e. 4x larger at
+  800 nm. D theta_* ~ epsilon, so the "D^2 theta^2 vs epsilon" question of the earlier entry may be one parameter
+  (not checked). Scaling in theta/theta_* holds up to O((D theta)^2), not exactly.
+- Fig. 2 caption: note that the twins differ by <= 0.7% / 1.7% in (b), (c) (user: caption only, no figure change).
+- The 12 fig_spectrum runs were copied to the Dell G15 (`~/output/paper_2026/prelim/fig_spectrum/`, 1.8 GB).
+- Scripts (run from anywhere, read `~/output/paper_2026/prelim/fig_spectrum/`):
+  `reports/2026_thomson_paper/figures/checks/spectrum_{twin_diff,twin_cut,fringes,photon_ratio}.py`.
+
+## 2026-11-26: fringes in Fig. 2 (b), (c): local vs integrated (a0 = 1, N_c = 8, LG (0, 2), 10 um)
+
+- Fewer fringes than at N_c = 30 is expected: Eq. fringe_number gives N_f = 2.7 (N = 1), 5.4 (N = 2) at N_c = 8,
+  against ~10 and ~20 at N_c = 30 (N_f proportional to N_c; same a0^2 N_c ~ 8 as a0 = 0.5, N_c = 30).
+- Local spectra (prominence > 0.05) have the fringes at every angle. N = 1: 2-3 peaks, spacing ~0.13-0.14 in
+  omega/omega_1 (theta = 3: 1.224, 1.426; 6: 1.316, 1.448; 8: 1.220, 1.366, 1.494). N = 2: 3-4 peaks, spacing
+  ~0.13-0.18 (theta = 4: 2.418, 2.594, 2.832; 6: 2.394, 2.576, 2.728, 2.860; 8: 2.540, 2.688, 2.838; 10: 2.648,
+  2.770, 2.890).
+- Flux in theta (10%-50%-90% of the screen-integrated dP_z): N = 1 at 0.8-2.5-6.7 theta_*, N = 2 at 2.7-5.5-8.7.
+- Integrated: N = 1 keeps the fringes partly (peaks 1.268, 1.392, second prominence 0.17, plus a shoulder ~1.5,
+  i.e. ~3 bumps = N_f); N = 2 is one smooth peak at 2.540.
+- Reading: the fringes move with theta. Over the flux-carrying range a fringe moves by ~0.1-0.15 at N = 2 (about one
+  spacing), so the angular integral fills the minima; at N = 1 the flux sits at smaller theta and the shift is about
+  half a spacing, so they survive. Why they move (not checked): different theta collect mainly from different sheet
+  radii with a different peak dressing, plus the angular term of omega_N(theta).
+- For IV.B: local spectra keep N_f fringes (Eq. fringe_number); the integrated spectrum keeps them only where the
+  fringe shift across the flux-carrying angles is below the spacing. Possible supplement panel: local spectra at
+  theta = 2, 6, 10 theta_* for N = 2 (not made).
+
+## 2026-11-26: absolute photon-number ratio of the twins (10 um / 800 nm)
+
+- Same N_e within each twin pair (polar lattice, weight 1; 1736 at a0 = 0.1, 3526 / 14314 at a0 = 0.5 N = 1 / 2,
+  7088 / 28056 at a0 = 1 N = 1 / 2: the lattice spacing follows the aliasing condition). D from omega_1/omega_L = D^2/(1 + a0^2/2):
+  D = 27.0 (10 um), 7.775 (800 nm), D_10/D_800 = 3.473.
+- Normalization: `dN` of `fig_spectrum.load` is flux per unit *screen area*; photons per solid angle need x Z^2,
+  and the twins' screens differ (Z = 43524 w0 vs 3608 w0). Total = integral over omega and solid angle (omega_1
+  cancels); peak = max of dN/d(omega/omega_1).
+- N_ph(10 um)/N_ph(800 nm) against (D_800/D_10)^(2N) = 0.08290 (N = 1), 0.006872 (N = 2) [total; deviation of
+  total; deviation of peak]:
+  a0 = 0.1 N_c = 30: 0.08318, +0.35%, +0.35% (N = 1); 0.006907, +0.52%, +0.53% (N = 2).
+  a0 = 1 N_c = 8: 0.08331, +0.49%, +0.08% (N = 1); 0.006965, +1.4%, +0.08% (N = 2).
+  a0 = 0.5 N_c = 30: 0.08400, +1.3%, -0.01% (N = 1); 0.007101, +3.3%, -0.54% (N = 2).
+- So 800 nm gives 12.0x (N = 1) and 144x (N = 2) more photons at fixed N_e. The peaks follow D^(-2N) to <= 0.5%
+  (0.1% at a0 = 1); the totals carry the 800 nm redshift/narrowing (entry above) and deviate by up to 3%.
+- Only at equal N_e: with w0 = 10 lambda the 800 nm sheet is 12.5x smaller in radius, so at equal areal density it
+  holds 12.5^2 fewer electrons (coherent yield ~ N_e^2). The D^(-2N) explanation in the paper's AI_NOTES is still
+  "to check".
+
+
+## 2026-11-26: manuscript III.B against spec 11; `linewidth` fix
+
+- III.B used $k_{N,\rm ref}$ for $Z_*,\theta_*$ and $\omega/\omega_{N,\rm ref}$ for spectra; the code (spec 11) uses $k_{1,\rm ref}$
+  for every N and $\omega/\omega_{1,\rm ref}$. Green corrections proposed in the TeX (see the paper's AI_NOTES), including
+  the angular-detuning equation, which is the module's `angular_detuning` ($(\theta/\theta_*)^2/[(k_1/k_L)(k_Lw_0)^2]$).
+- `scaled_parameters.py`: `linewidth` = $0.375/(\sqrt N N_c)$ (Eq. `pulse_linewidth`) instead of $1/(NN_c)$; recorded in
+  `theory/implemented/11_scaled_parameters.md`. Checked: 0.0468 (N = 1) and 0.0331 (N = 2) at $N_c = 8$.
+
+## 2026-11-26: Sec. IV.C field-map runs prepared (not run)
+
+- `reports/2026_thomson_paper/prelim/fig_maps/` (README there): a0 = 1, N_c = 8, LG (0, 2), N = 1, 2, 10 um and 800 nm;
+  configs = the fig_spectrum ones with a circular screen (Z/Z_* = 2.85, R = 16 theta_*, 1024 x 65), one `omega_list`
+  frequency at the spectrum's largest maximum (`peak_frequencies.py`: 1.2683 / 1.2682, 2.5401 / 2.5385), lattice 1 and
+  0.5 lambda (replica margin 1.55). Flux beyond 16 theta_* at the peak: 4e-6.
+- Smoke test (shrunk copy, laptop): config parses, frequency mode `omega_list` (N logged), 1.9 us per electron, point
+  and cycle; `scaled_parameters --write-log`, `plot_observables`, `plot_field_carrier_removed`, `lg_decomposition` all
+  run on it. Estimate ~95 CPU h in all (~45 min on 128 CPUs).

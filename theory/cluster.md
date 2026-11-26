@@ -1,5 +1,7 @@
 # Cluster (Slurm)
 
+(Section 3 at the end: the teorie.ro server, no Slurm.)
+
 `theory/srun.txt` and `theory/slurm_head_node_report.md`, joined on 2026-11-23 with their text unchanged.
 
 ## 1. Running jobs (was `srun.txt`)
@@ -163,3 +165,26 @@ Current workaround on our side:
 ```
 srun --partition=interactive --time=04:00:00 --exclusive --exclude=hpc-ctrl01,hpc-db01 --pty bash
 ```
+
+## 3. teorie.ro (single server, no Slurm)
+
+Used while the Slurm cluster's NetBird SSO (`sso.acc.unibuc.ro`) is unreachable (2026-11-26: TCP 443 rejected).
+
+- Host `ad1`, AlmaLinux 9.8, Xeon Silver 4309Y, 32 CPUs (use ~30 threads), 251 GB RAM. User `boca`, home
+  `/storage/uhd/boca` on CephFS.
+- Checkout: `~/work/bin/c++/CoherentThomson` (note: no `codes/` level), synced through git like the cluster.
+  Outputs under `~/output/`, `~/output_tests/`.
+- C++: GCC **11.5** (system; the only compiler: no gcc-toolset, clang or modules). Clean Release build, 0 warnings,
+  13 s with `-j30`; passes the Thomson dipole check (2026-11-26, dde5ad6). CMake 4.4 in `~/.local/bin`.
+- Python 3.13 from `~/anaconda3`: numpy 2.1, scipy 1.15, pandas 2.2, matplotlib 3.10 (`agg`), Pillow 11, i.e. all
+  that `py_scripts/` imports; four scripts tested on 2026-11-26 (older versions than the laptops' `.venv`).
+- **No `tmux`**: long runs in `screen -dmS <name> bash -c "..."` or `nohup`. No scheduler, so set `num_threads`
+  explicitly (not 0).
+- Agent access: passwordless `ssh teorie.ro` from the **Dell G15** laptop (`~/.ssh/id_ed25519`). SELinux is
+  Enforcing and CephFS homes get `default_t`, which sshd cannot read: key login needed
+  `chcon -R -t ssh_home_t ~/.ssh` (redo it if `~/.ssh` is recreated).
+- teorie.ro reaches the cluster directly (same network). The Dell G15's `~/.ssh/config` has `Host hpc`
+  (`HostName 10.23.13.51`, `User madalinaboca`, `ProxyJump teorie.ro`), with its key installed on the cluster
+  (2026-11-26): `ssh hpc` and `rsync ... hpc:...` work from the laptop without NetBird. teorie.ro itself holds
+  no private key.
+

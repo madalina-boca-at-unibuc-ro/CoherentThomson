@@ -47,10 +47,15 @@ Anaconda on the servers. Compilers differ between machines.
   && <run>"` so the job ends with the run (a `--pty bash` job holds the node).
 - `radiation_field.dat` appears only at the end. `run_log.txt` is written first (`STATUS: IN PROGRESS`) and rewritten
   at the end, so a stopped run still supports the non-radiation scripts.
-- **Agent access** (from the Legion laptop only; the other laptop needs its own key): passwordless `ssh 10.23.13.51`.
+- **Agent access:** passwordless `ssh 10.23.13.51` from the Legion laptop (over NetBird); from the Dell G15, `ssh hpc`
+  (user `madalinaboca`, `ProxyJump teorie.ro`: no NetBird needed). Checkout `~/work/c++/CoherentThomson`.
   The agent can `git pull` there and start runs in a detached tmux (`tmux new -d -s <name> "... srun ..."`), with the
   Anaconda PATH exported (`theory/cluster.md`), then `rsync` the run folders back. `git push` to GitHub fails from
   the agent's shell (HTTPS credentials): the user pushes.
+
+**teorie.ro** (single server `ad1`, 32 CPUs, no Slurm; `theory/cluster.md` §3): stands in while the cluster's NetBird
+login is down. Checkout `~/work/bin/c++/CoherentThomson`, GCC 11.5, no `tmux` (use `screen`); passwordless
+`ssh teorie.ro` from the Dell G15 laptop.
 
 ## Commands
 

@@ -24,6 +24,9 @@ Spec: `theory/specs/11_scaled_parameters.md` (approved 2026-11-26 with the amend
 - Dense spectra: harmonic N is listed when its band overlaps the window; its `omega_max` is the window top capped at
   the boundary halfway to the next band. Without κ (no LG), round(ω/ω₁) ± 0.5.
 - θ = x/Z in `to_scaled_angles`, as `plot_field`'s angular axes.
+- `linewidth` changed 2026-11-26 (after the spec): $2\sqrt{2\ln2}/(2\pi\sqrt N N_c)\simeq0.375/(\sqrt N N_c)$, the
+  relative FWHM of the spectral intensity (manuscript Eq. `pulse_linewidth`), replacing the spec's $1/(NN_c)$; it also
+  changes `angular_detuning_over_linewidth` (×2.67 at N = 1, ×3.77 at N = 2).
 
 ## Checks (2026-11-26)
 
