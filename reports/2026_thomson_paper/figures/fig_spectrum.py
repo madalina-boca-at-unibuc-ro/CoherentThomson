@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 Sec. IV.B figure (spectrum): one PDF panel per case, assembled into one figure in the manuscript
-(TeX/sections/04-flat_sheet.tex). Each panel: left, the (theta, omega) map of |E_sigma|^2 (the dominant helicity) of the
-10 um run versus theta/theta_* (utils/scaled_parameters.py), log scale, normalized to its maximum; right, sharing the omega axis, the screen-integrated photon spectrum
-dN/d(omega/omega_1) of the 10 um run and of its 800 nm scaled twin, each normalized to its own peak (their photon
-numbers differ by ~(D_10um/D_800nm)^(2N) at the same number of electrons; quoted in the text, not plotted).
+(TeX/sections/04-flat_sheet.tex). Each panel: left, the (theta/theta_*, omega) map of the photon number per unit
+frequency and solid angle, d^2N/domega dOmega ~ (dP_z/domega)/omega, of the 10 um run (log scale, normalized to its
+maximum; theta_* from utils/scaled_parameters.py); right, sharing the omega axis, its angular integral, the
+screen-integrated photon spectrum dN/d(omega/omega_1), for the 10 um run and its 800 nm scaled twin, each normalized
+to its own peak (their photon numbers differ by ~(D_10um/D_800nm)^(2N) at the same number of electrons; quoted in
+the text, not plotted). The right part is the angular integral of the left (same quantity). Helicity is Sec. IV.C's.
 A separate PDF holds the shared colorbar.
 
 Data: the line-spectrum runs of reports/2026_thomson_paper/prelim/fig_spectrum/ (latest run of each id under
@@ -49,7 +51,7 @@ CASES = {
 MAIN = ['a0_0p1_N1', 'a0_1p0_Nc8_N1', 'a0_1p0_Nc8_N2']
 
 PANEL_SIZE = (2.33, 2.1)        # inches: three panels across a 7 in double column
-MAP_RANGE = 1e-4                # colour scale of |E_sigma|^2 / max
+MAP_RANGE = 1e-4                # colour scale of d^2N/domega dOmega / max
 FLUX_FRACTION = 0.999           # theta axis: up to where this fraction of the flux is reached
 SPECTRUM_FLOOR = 1e-3           # omega axis: where the integrated spectrum exceeds this fraction of its peak ...
 OMEGA_CROP = {'a0_0p1_N1': 0.05, 'a0_0p1_N2': 0.05}   # ... except here: N omega_1 x (1 -+ crop)
@@ -65,15 +67,14 @@ def latest_run(run_id):
 
 
 def load(run_id):
-    """theta (rad), omega/omega_1, |E_sigma|^2 map [omega, theta], helicity label, dN/d(omega/omega_1) (arb.)."""
+    """theta (rad), omega/omega_1, d^2N/domega dOmega map [omega, theta] (arb.), dN/d(omega/omega_1) (arb.)."""
     run = latest_run(run_id)
     theta, omega, maps, _ = psm.build_maps(os.path.join(run, 'radiation_field.dat'))
-    E_plus, E_minus = maps['E_plus'] ** 2, maps['E_minus'] ** 2
-    dominant, label = (E_minus, '-') if np.nansum(E_minus) >= np.nansum(E_plus) else (E_plus, '+')
+    photons = maps['dPz'] / omega[:, None]               # d^2N/domega dOmega, arbitrary units
     dN = np.nansum(maps['dPz'] * psm.annulus_areas(theta)[None, :], axis=1) / omega
     flux_theta = np.nansum(maps['dPz'] * psm.annulus_areas(theta)[None, :], axis=0)
     sp = scaled_parameters(run)
-    return dict(run=run, theta=theta, theta_star=sp.theta_star, omega=omega, E2=dominant, sign=label, dN=dN,
+    return dict(run=run, theta=theta, theta_star=sp.theta_star, omega=omega, photons=photons, dN=dN,
                 flux_theta=flux_theta)
 
 
@@ -96,14 +97,14 @@ def panel(case, legend=False):
     ax_map = fig.add_subplot(gs[0])
     ax_spec = fig.add_subplot(gs[1], sharey=ax_map)
 
-    E2 = a['E2'] / np.nanmax(a['E2'])
-    ax_map.pcolormesh(theta_s, a['omega'], np.clip(E2, MAP_RANGE, None), norm=LogNorm(MAP_RANGE, 1.0),
+    photons = a['photons'] / np.nanmax(a['photons'])
+    ax_map.pcolormesh(theta_s, a['omega'], np.clip(photons, MAP_RANGE, None), norm=LogNorm(MAP_RANGE, 1.0),
                       cmap='viridis', shading='nearest', rasterized=True)
     ax_map.set_xlim(0, theta_max)
     ax_map.set_ylim(w_lo - pad, w_hi + pad)
     ax_map.set_xlabel(r'$\theta/\theta_*$')
     ax_map.set_ylabel(r'$\omega/\omega_1$')
-    ax_map.text(0.96, 0.04, rf'$|E_{a["sign"]}|^2$', transform=ax_map.transAxes, color='w', va='bottom', ha='right',
+    ax_map.text(0.96, 0.04, r'$d^2N/d\omega\,d\Omega$', transform=ax_map.transAxes, color='w', va='bottom', ha='right',
                 bbox=dict(boxstyle='round,pad=0.15', fc='k', ec='none', alpha=0.45))
     ax_map.xaxis.set_major_locator(plt.MaxNLocator(3))
 
@@ -127,7 +128,7 @@ def colorbar():
     fig = plt.figure(figsize=(0.45, PANEL_SIZE[1]))
     ax = fig.add_axes([0.08, 0.17, 0.22, 0.80])
     sm = plt.cm.ScalarMappable(norm=LogNorm(MAP_RANGE, 1.0), cmap='viridis')
-    fig.colorbar(sm, cax=ax, label=r'$|E_\sigma|^2/\max$')
+    fig.colorbar(sm, cax=ax, label=r'$d^2N/d\omega\,d\Omega$ [norm.]')
     path = os.path.join(OUT, 'fig_spectrum_colorbar.pdf')
     fig.savefig(path)
     plt.close(fig)
