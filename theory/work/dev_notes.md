@@ -49,3 +49,12 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
 - `AGENTS.md` is now the single copy of the agent instructions; `CLAUDE.md` only imports it (`@AGENTS.md`), so edit
   `AGENTS.md`. Per-run findings (a0 = 1 N = 2 containment, the n2_residue record path) moved out of it to this log.
   `theory/README.md` + this file stand in for the Dropbox-wide `AI_NOTES.md`.
+
+## 2026-11-26: trajectory_NT at a0 = 1 (fig_spectrum runs)
+
+- Reduced copies of `reports/2026_thomson_paper/prelim/fig_spectrum/configs/10um_a0_1p0_N{1,2}.cfg` (lattice 2 λ,
+  24 line points; `config/work/fig_spectrum_nt/`, runs `~/output_tests/fig_spectrum_nt/`) at NT 100, 200, 400: NT 100
+  differs from NT 400 by ≤ 8e-6 (relative L2 of the dP_z/dω and |E₋| maps and the integrated spectrum), NT 200 by
+  ≤ 4e-7; ratio ~20-25, i.e. close to 4th order (RK4), not the trapezoid's 2nd. NT 100 is converged at a0 = 1 for
+  N ≤ 2 in `long_distance_direct_approx` (closes the a0 = 1, N ≤ 2 part of run-plan check C3). Script:
+  `~/Dropbox/work/AI-outputs/Claude/2026-11-26/nt_convergence_a0_1.py`.
