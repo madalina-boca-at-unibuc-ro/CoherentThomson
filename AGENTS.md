@@ -47,6 +47,10 @@ Anaconda on the servers. Compilers differ between machines.
   && <run>"` so the job ends with the run (a `--pty bash` job holds the node).
 - `radiation_field.dat` appears only at the end. `run_log.txt` is written first (`STATUS: IN PROGRESS`) and rewritten
   at the end, so a stopped run still supports the non-radiation scripts.
+- **Agent access** (from the Legion laptop only; the other laptop needs its own key): passwordless `ssh 10.23.13.51`.
+  The agent can `git pull` there and start runs in a detached tmux (`tmux new -d -s <name> "... srun ..."`), with the
+  Anaconda PATH exported (`theory/cluster.md`), then `rsync` the run folders back. `git push` to GitHub fails from
+  the agent's shell (HTTPS credentials): the user pushes.
 
 ## Commands
 
@@ -91,6 +95,10 @@ only through `beam_stack_sheets` or the spacing). `config/` holds:
   comparison and update it when `INPUTS` change.
 
 Elsewhere:
+- `reports/2026_thomson_paper/`: the paper (`~/Dropbox/pub/ms/2026-Thomson`, its `AI_NOTES.md`): `prelim/<figure>/`
+  generated configs (`make_configs.py`, never edited by hand) and `run_all.sh`, runs in
+  `~/output/paper_2026/prelim/<figure>/<id>/`; `figures/fig_<name>.py` write one PDF per case into the manuscript's
+  `TeX/figures/`.
 - `reports/<name>/`: a report with every experiment that fed it (configs, batch and comparison scripts). Frozen configs
   are moved, never edited. `reports/2026-10-29_progress/`: the progress report; its `README.md` maps every quoted
   result to a run and a frozen config. Runs in `~/output/progress_report_20261029/`. If a quoted result changes,
@@ -224,6 +232,10 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
   line printed by `plot_spectrum_map.py`. Each frequency's harmonic N is logged in `run_log.txt` and read by the
   scripts (`plot_observables.read_harmonic_indices`); without it they guess round(ω/ω₁). An uneven list loses the
   phase recurrence (×2.7–7 slower).
+- **Line-spectrum screens:** the line must hold the flux (a0^2 N_c ≈ 8: within 16 θ_*; a0^2 N_c = 30: beyond;
+  probe with a long line and few frequencies when unsure) and the lattice replica must stay beyond ~1.5× the line
+  (`scaled_parameters.py` warns at a margin below 1.25). Early "edge flux" at a0 = 0.1, N = 2 was the 2.5 λ lattice's
+  replica.
 - **Workflow at large a0:** line spectrum (`spectrum_line_lattice_2d.cfg` copy, `plot_spectrum_map.py`, `--harmonic N
   --linear` to see the islands) → its `omega_list` line in `run_log.txt` → screen run → the usual scripts. At large
   a0 the outer rings of N ≥ 2 decay slowly: check how much flux reaches the screen edge before trusting powers and LG
