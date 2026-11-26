@@ -1,6 +1,7 @@
 # AGENTS.md
 
-This file provides guidance to Codex (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents working with code in this repository. It is the single copy:
+`CLAUDE.md` only imports it, so edit this file.
 
 ## Project Overview
 
@@ -12,7 +13,8 @@ electrons' trajectories for `electron.dat`, compute the form factor `b(q)` (diag
 `~/<output_folder>/YYYYMMDD_HHMMSS/` (`output_folder` is relative to `$HOME`). `py_scripts/` plots the outputs.
 
 **Open issues and the status of every document:** `theory/README.md`. Read it before starting work; it also
-points to the lattice-stack "Resume here".
+points to the lattice-stack "Resume here". It and `theory/work/dev_notes.md` are this project's `AI_NOTES.md` (the
+Dropbox-wide convention): keep them current as that convention says, and don't create an `AI_NOTES.md` here.
 
 ## Spec-driven workflow
 
@@ -39,7 +41,7 @@ Anaconda on the servers. Compilers differ between machines.
 - **Always `--exclude=hpc-ctrl01,hpc-db01`**: a job on the head node looks like the login shell (check
   `squeue -u $USER`, not `hostname`).
 - Compute nodes have only CMake **3.21**: don't raise `cmake_minimum_required` or the presets' minimum.
-- Build on the compute node that runs the job (`-march=native`); Codex's shell may be on the head node while the
+- Build on the compute node that runs the job (`-march=native`); the agent's shell may be on the head node while the
   user's terminal is in a job, so check `hostname` before building. `num_threads 0` follows the job's allocation.
 - Long runs go in `tmux` on the head node; never `exit` that tmux. Unattended: `srun ... bash -c "cd ... && <build>
   && <run>"` so the job ends with the run (a `--pty bash` job holds the node).
@@ -77,13 +79,13 @@ the commit message and format on a laptop. **No test suite**, no lint command.
 
 ### Configs and test inputs
 
-**Iterating on code changes:** copy a config to your scratch space (don't edit `config/config.cfg` or a reference
-unless the task is about it) and shrink it (`beam_particle_count`, screen points; a lattice stack shrinks only through
-`beam_stack_sheets` or the spacing). `config/` holds:
+**Iterating on code changes:** copy a config to `config/work/` (ignored by git; don't edit `config/config.cfg` or a
+reference unless the task is about it) and shrink it (`beam_particle_count`, screen points; a lattice stack shrinks
+only through `beam_stack_sheets` or the spacing). `config/` holds:
 - `reference/`: one config per beam situation (`random_2d`, `lattice_2d`, `random_3d`, `random_3d_modulated`,
   `lattice_stack_uniform`, `lattice_stack_modulated`, `spectrum_lattice_2d`, `spectrum_line_lattice_2d`), identical
   except for the beam section (and the spectra's screens): **a change to the shared base goes into all eight.**
-  Production size; costs in `reference/README.md`. The user copies one to `config/work/` (ignored by git) to work.
+  Production size; costs in `reference/README.md`.
 - `config.cfg`: the default working config (a copy of `reference/random_2d.cfg`); scripts read its `output_folder`.
 - `config_cross_check.cfg`: matched to the Python reference's `main.py` `INPUTS`; use it for every C++-vs-Python
   comparison and update it when `INPUTS` change.
@@ -97,7 +99,7 @@ Elsewhere:
   one-electron configs, `nt_scan` (`trajectory_NT` convergence, ~3 min) and the lattice-stack checks. The latter
   **reuse finished runs in `~/output_tests/lattice_stack/`: delete those after changing the solver.**
 
-### Verification (stands in for tests; use a small copied config)
+### Verification (stands in for tests; use a small copy in `config/work/`)
 
 - **`simplified` vs `direct`** (`radiation_formula`), comparing totals: the main check. They agree to `O(dτ²)` (4x per
   doubling of `trajectory_NT`) down to a 1 λ screen; a `1/(kR)` mismatch means a short-range bug.
@@ -189,7 +191,7 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
   `laser_wing_sigma_cutoff 6`.** In `simplified` the endpoint term cancels a large trapezoid sum, leaving an
   `O(dτ²)` residue (radially polarized, J_z = 0) that dominated the a0 = 1 on-axis N = 2 by 10⁴; `direct` at cutoff 4
   still leaves a ~4e-4 leak of N = 1 into N = 2 that cutoff 6 removes (cause open). Coherent N = 2 has J_z = 2(l + σ)
-  and starts as θ^|J_z∓1| on axis. Record: `~/Dropbox/work/AI-outputs/Claude/2026-11-24/` (n2_residue).
+  and starts as θ^|J_z∓1| on axis. Record: `theory/work/dev_notes.md` (2026-11-24, n2_residue).
 - `general_factor` uses the **signed** `q_0`; direct `F_s` has an explicit `c²` to compensate. Trapezoid weights apply
   to `F_l`/`F_s` only; `F_b` is an unweighted endpoint evaluation.
 - **Load-bearing:** prefactors stay in `radiation.cpp`'s anonymous namespace; `radiation_phase_argument` stays
@@ -207,15 +209,15 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
 
 - `frequencies_list[i] = non_linear_Thomson_formula(k1, q, n2, N_harmonics_min + i)`, `q` dressed with
   `<a²> = a0²/2` for every polarization. **Don't change it to `a0²`** (a past bug). At large a0 that ω_N misses the
-  line (LG (0, 2): below it for a0 ≳ 0.3): image chosen frequencies with the optional
+  line (see Laser: a0 is not the LG peak amplitude): image chosen frequencies with the optional
   `omega_list  1:1.47 2:2.51  first_harmonic_frequency` (`N:value`, unit ω/ω₁ or `omega_laser`; spec 16), e.g. the
   line printed by `plot_spectrum_map.py`. Each frequency's harmonic N is logged in `run_log.txt` and read by the
   scripts (`plot_observables.read_harmonic_indices`); without it they guess round(ω/ω₁). An uneven list loses the
   phase recurrence (×2.7–7 slower).
 - **Workflow at large a0:** line spectrum (`spectrum_line_lattice_2d.cfg` copy, `plot_spectrum_map.py`, `--harmonic N
-  --linear` to see the islands) → its `omega_list` line in `run_log.txt` → screen run → the usual scripts. At a0 = 1
-  N = 2 is a main ring at ~120 µrad plus slowly decaying rings: an 80 w0 screen at 160000 w0 still leaves 4–30% of the
-  flux at the edge (`~/output/20261124_191533`); Λ_zz/P_z is unaffected (pure J_z), powers and LG fits are not.
+  --linear` to see the islands) → its `omega_list` line in `run_log.txt` → screen run → the usual scripts. At large
+  a0 the outer rings of N ≥ 2 decay slowly: check how much flux reaches the screen edge before trusting powers and LG
+  fits (Λ_zz/P_z is unaffected). Numbers for a0 = 1: `theory/work/dev_notes.md` (2026-11-24).
 - `dense_frequency_spectrum=true`: `N_omega` points at one screen point or on a **line** (rectangular `Nx` or `Ny` 1,
   circular `N_phi` 1; spec 15); a 2D grid keeps only its first point. Memory ~ points × `N_omega` × threads: estimated
   on stdout and in `run_log.txt`, refused above 8 GB of buffers. Bounds in `omega_laser` or
@@ -230,7 +232,8 @@ Formulas: `theory/physics/FT_faraday_tensor_v2.md`; long-distance modes:
 - `zeta_1/zeta_2` are normalized in `create_laser`, so `a0` alone sets the strength. LG `Npn` normalization is
   deliberately custom: **a0 is not the peak amplitude.** LG (0, 0) peaks at √2 a0 on axis, LG (0, 2) at 0.736 a0
   (a² 0.541 a0², at ρ = w0); `plot_spectrum_map.peak_a2_fraction` computes it for any (p, l). So the line of harmonic N
-  spans N × [(1 + a0²/2)/(1 + g a0²/2), 1 + a0²/2] ω₁ (g = that a² fraction), and ω_N lies below it for a0 ≳ 0.3.
+  spans N × [(1 + a0²/2)/(1 + g a0²/2), 1 + a0²/2] ω₁ (g = that a² fraction), and `frequencies_list`'s ω_N lies
+  below the LG (0, 2) line for a0 ≳ 0.3.
 - **Collision timing** (spec 14): `laser_delay` = the time the plateau start (the peak, with no plateau) crosses the
   origin, where the LG focus is; beam positions are free-flight positions at t = 0, so `laser_delay 0` +
   `beam_center_z 0` collide at the focus. Each electron starts at the pulse front on its own free-flight line

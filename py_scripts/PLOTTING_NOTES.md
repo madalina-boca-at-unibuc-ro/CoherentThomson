@@ -1,6 +1,6 @@
 # Plotting notes
 
-Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are in `CLAUDE.md`.
+Conventions and gotchas of the scripts in `py_scripts/`. Usage and commands are in `AGENTS.md`.
 
 ## Rendering
 

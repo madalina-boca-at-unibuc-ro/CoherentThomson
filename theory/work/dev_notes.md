@@ -13,7 +13,8 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   the beam diagnostics use t = 0 positions. At the focus N = 1 no longer depends on the cutoff (ratio 1.000037).
   `theory/implemented/14_collision_timing.md`.
 - Side result (n2_residue tests): the near-axis N = 2 of `simplified` at a0 = 1 was an O(dτ²) residue of the LR/BR
-  cancellation (J_z = 0); use `long_distance_direct*` and cutoff 6 for weak harmonics.
+  cancellation (J_z = 0); use `long_distance_direct*` and cutoff 6 for weak harmonics. Record:
+  `~/Dropbox/work/AI-outputs/Claude/2026-11-24/n2_residue/`.
 
 ## 2026-11-24: spectrum along a screen line (spec 15)
 
@@ -42,3 +43,9 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   `~/output/20261124_202914`): the (θ, ω) maps are the same as at 16 m (N = 1 indistinguishable, N = 2 marginally
   crisper), |E| ∝ 1/D and dP_z/dω ∝ 1/D² exactly, integrated peaks within 0.001 ω₁ and 3% in height. The island
   structure is the far-field pattern of the source, not a Fresnel effect: 16 m is already far field for it.
+
+## 2026-11-26: agent instructions in one file
+
+- `AGENTS.md` is now the single copy of the agent instructions; `CLAUDE.md` only imports it (`@AGENTS.md`), so edit
+  `AGENTS.md`. Per-run findings (a0 = 1 N = 2 containment, the n2_residue record path) moved out of it to this log.
+  `theory/README.md` + this file stand in for the Dropbox-wide `AI_NOTES.md`.

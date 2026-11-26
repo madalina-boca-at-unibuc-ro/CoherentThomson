@@ -92,7 +92,7 @@ Configs of past production runs are kept with the results that used them (e.g. `
 
 ## Development
 
-See [CLAUDE.md](CLAUDE.md) for the architecture map, module/namespace layout, and known physics gaps, and
+See [AGENTS.md](AGENTS.md) (imported by CLAUDE.md) for the architecture map, module/namespace layout, and known physics gaps, and
 [theory/](theory/) for the formulas and implementation notes.
 
 Run `clang-format -i` on touched files before committing (Google style, 120 cols, 2-space indent, see

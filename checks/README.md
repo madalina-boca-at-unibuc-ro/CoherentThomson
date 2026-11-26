@@ -2,7 +2,7 @@
 
 Reusable verification scripts and their configs. Run from the repository root. Outputs go to `~/output_tests/...`,
 so the plotting scripts' "latest run" in `~/output` is not affected. The checks that need no script (simplified vs
-direct, rotation covariance, byte-identity, Python reference) are in CLAUDE.md, Verification.
+direct, rotation covariance, byte-identity, Python reference) are in AGENTS.md, Verification.
 
 | Check | Run | Results |
 |---|---|---|
