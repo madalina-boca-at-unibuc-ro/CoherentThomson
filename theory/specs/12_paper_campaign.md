@@ -64,7 +64,7 @@ One row per run. Comment lines start with `#`. The columns:
 | `group` | M, S, L, T, C | subfolder |
 | `purpose` | free text, one line | header comment |
 | `lambda_L_um` | 10 or 0.8 | `laser_frequency` (a.u., from λ) |
-| `p_z_mc` | 13.483, 3.823, 0 | `average_pz` |
+| `p_z_mc` | 13.483, 3.753 (γ = 3.884; 3.823 before 2026-11-27), 0 | `average_pz` |
 | `mode` | `LG00`, `LG01`, `LG02`, `LG22` | `laser_lg_p`, `laser_lg_l` |
 | `sign` | `aligned` or `anti` | `laser_zeta_2_im` = +1 or −1 |
 | `a0`, `N_c` | | `laser_a0`, `laser_wing_sigma … cycles_adim` |

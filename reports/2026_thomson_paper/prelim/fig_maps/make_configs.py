@@ -29,7 +29,8 @@ THETA_MAX = 16.0            # screen radius in theta_*
 N_R = 1024
 N_PHI = 65
 REPLICA_MARGIN = 1.5
-# run id -> (harmonic N, omega_peak in omega/omega_1), from peak_frequencies.py (2026-11-26)
+# run id -> (harmonic N, omega_peak in omega/omega_1), from peak_frequencies.py (2026-11-26; 800 nm rechecked at
+# gamma = 3.884 on 2026-11-27: same peaks to 4 digits)
 RUNS = {
     '10um_a0_1p0_Nc8_N1': (1, 1.2683),
     '800nm_a0_1p0_Nc8_N1': (1, 1.2682),

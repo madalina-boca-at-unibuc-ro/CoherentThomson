@@ -203,3 +203,14 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   (N = 2: ~0.55 theta_*), not in theta^2. So the lens is strongly aberrated (not parabolic), consistent with the
   paper's IV.E d_N(r) picture; the evenly spaced rings suggest two interfering contributions (hypothesis, untested:
   e.g. rising and falling a^2). No single-w0 LG set with small p represents it. The 10 um and 800 nm profiles coincide in theta/theta_*. Runs copied to the Legion as well.
+
+## 2026-11-27: 800 nm twins moved to gamma = 3.884 (all 800 nm runs redone)
+
+- The twins ran at gamma = 3.952 (`average_pz 3.823 mc`, D = 7.775): undressed lambda_L/D^2 = 13.24 nm, not the 10 um
+  13.71 nm (3.823 had been chosen to hit 13.5 nm with the a0 = 0.2 dressing). Decided: gamma = 3.884 (`3.753 mc`,
+  D = 7.637), 13.72 nm at both in the zero-intensity limit. Everything above that compares twins (spectra, peak
+  frequencies, maps, photon ratios (D_800/D_10)^(2N)) used the old gamma; the 800 nm results are to be replaced.
+- Commit d510cf2 (fig_spectrum configs regenerated; only `average_pz` and the scaled screen distance change), brought
+  to the cluster as a git bundle (not yet pushed to GitHub). Job 32562 (hpc-node14, 128 CPUs): the six 800 nm spectrum
+  runs (a0 = 0.1 N = 1, 2; a0 = 1 N_c = 8; a0 = 0.5 N_c = 30); the superseded a0 = 1 N_c = 30 pair is not redone. Then:
+  peak frequencies, fig_maps configs, the two 800 nm map runs.
