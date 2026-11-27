@@ -226,3 +226,11 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   1.6% / 2.0% / 2.6% (unchanged from the old gamma). 800 nm AM per photon: spin -0.999994, orbital -2.000006 (N = 1);
   -0.999988, -5.000012 (N = 2); E_+ power fraction 4.2e-7, 1.1e-6.
 - Fig. 2 regenerated from the new runs (labels now N_gamma); manuscript IV.B numbers updated.
+
+## 2026-11-27: paper runs copied to the Dell G15 laptop
+
+- `~/output/paper_2026/prelim/` (fig_spectrum: 16 ids, fig_maps: 4 ids + `10um_a0_0p1_LG02`) now on the Dell G15 for the
+  next days' work. Checked against `hpc:~/output/paper_2026/prelim/`: same files and sizes (sizes only, no checksums),
+  every run `STATUS: finished` with `radiation_field.dat`. Two run logs (800 nm `a0_1p0_Nc8_N1/N2`, 20261127 runs)
+  lacked the later "Spectrum map" section: re-copied from the cluster. `fig_maps/10um_a0_0p1_LG02/` and
+  `fig_maps_preview.png` exist only on the laptop copy, not on the cluster.
