@@ -234,3 +234,12 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   every run `STATUS: finished` with `radiation_field.dat`. Two run logs (800 nm `a0_1p0_Nc8_N1/N2`, 20261127 runs)
   lacked the later "Spectrum map" section: re-copied from the cluster. `fig_maps/10um_a0_0p1_LG02/` and
   `fig_maps_preview.png` exist only on the laptop copy, not on the cluster.
+
+## 2026-11-27: Sec. IV.D/E runs prepared (not run)
+
+- `reports/2026_thomson_paper/prelim/fig_lg/` (README there): LG (0, 2), (2, 2); a0 = 0.1, 0.25; 10 um, N_c = 30,
+  cutoff 6, Z/Z_* = 2.81. Stage 1: 8 line spectra + 2 a0 = 0.1 maps (~250 CPU h). Smoke runs of shrunk LG (2, 2) copies
+  on the laptop: configs parse, table radius 3.22 w0, frequencies as intended.
+- Weak-field Fresnel estimate (u^N): 99.99% of the flux within 2.8-3.1 theta_* (LG (0, 2)), 3.7 / 4.8 theta_*
+  (LG (2, 2), N = 1 / 2).
+- The old `fig_maps/10um_a0_0p1_LG02` test has `laser_zeta_2_im -1`, the opposite helicity of Figs. 2-3.
