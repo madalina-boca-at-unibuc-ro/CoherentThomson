@@ -214,3 +214,15 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
   to the cluster as a git bundle (not yet pushed to GitHub). Job 32562 (hpc-node14, 128 CPUs): the six 800 nm spectrum
   runs (a0 = 0.1 N = 1, 2; a0 = 1 N_c = 8; a0 = 0.5 N_c = 30); the superseded a0 = 1 N_c = 30 pair is not redone. Then:
   peak frequencies, fig_maps configs, the two 800 nm map runs.
+- Done (job 32562, spectra, d510cf2; then fig_maps 800 nm, e64ad70; both clean, hpc-node14, 128 CPUs; runs copied to
+  the Legion). New 800 nm peaks = old ones to 4 digits (1.2682, 2.5385).
+- Photon ratio 10 um / 800 nm against (D_800/D_10)^(2N) = 0.07999, 0.006398 (`figures/checks/spectrum_photon_ratio.py`):
+  a0 = 0.1: +0.36%, +0.54% (line-integrated); a0 = 1 N_c = 8: +0.09% at the peak (N = 1, 2), +0.5%, +1.4% over the
+  band; a0 = 0.5 N_c = 30: -0.01%, -0.6% at the peak, +1.4%, +3.5% over the band. Maps (screen-integrated P_z per unit
+  omega/omega_1 at the peak): +0.073%, +0.085%. All of order epsilon (4.2e-3 at 800 nm) or of the angular detuning.
+- Normalized twin spectra (`spectrum_twin_diff.py`, max |difference|): a0 = 0.1: 1e-4, 2.6e-4; a0 = 1 N_c = 8: 0.76%,
+  1.8% (were 0.7%, 1.7%); a0 = 0.5: 3.1%, 6.2%.
+- Twin maps (`maps_twin_compare.py`, relative L2 within 4 / 8 / 16 theta_*): N = 1: 0.14% / 0.54% / 0.86%; N = 2:
+  1.6% / 2.0% / 2.6% (unchanged from the old gamma). 800 nm AM per photon: spin -0.999994, orbital -2.000006 (N = 1);
+  -0.999988, -5.000012 (N = 2); E_+ power fraction 4.2e-7, 1.1e-6.
+- Fig. 2 regenerated from the new runs (labels now N_gamma); manuscript IV.B numbers updated.

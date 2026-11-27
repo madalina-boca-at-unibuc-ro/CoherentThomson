@@ -104,7 +104,7 @@ def panel(case, legend=False):
     ax_map.set_ylim(max(w_lo - pad, a['omega'][0]), min(w_hi + pad, a['omega'][-1]))   # never beyond the computed window
     ax_map.set_xlabel(r'$\theta/\theta_*$')
     ax_map.set_ylabel(r'$\omega/\omega_1$')
-    ax_map.text(0.96, 0.04, r'$d^2N/d\omega\,d\Omega$', transform=ax_map.transAxes, color='w', va='bottom', ha='right',
+    ax_map.text(0.96, 0.04, r'$d^2N_\gamma/d\omega\,d\Omega$', transform=ax_map.transAxes, color='w', va='bottom', ha='right',
                 bbox=dict(boxstyle='round,pad=0.15', fc='k', ec='none', alpha=0.45))
     ax_map.xaxis.set_major_locator(plt.MaxNLocator(3))
 
@@ -112,7 +112,7 @@ def panel(case, legend=False):
     ax_spec.plot(b['dN'] / b['dN'].max(), b['omega'], color='tab:orange', lw=0.8, ls=(0, (2, 1.5)), label='800 nm')
     ax_spec.set_xlim(0, 1.08)
     ax_spec.set_xticks([0, 1])
-    ax_spec.set_xlabel(r'$dN/d\omega$ [norm.]')
+    ax_spec.set_xlabel(r'$dN_\gamma/d\omega$ [norm.]')
     ax_spec.tick_params(labelleft=False)
     if legend:   # first panel only: the spectra fill the others
         ax_spec.legend(loc='upper right', frameon=False, handlelength=1.4, borderaxespad=0.1, labelspacing=0.2)
@@ -128,7 +128,7 @@ def colorbar():
     fig = plt.figure(figsize=(0.45, PANEL_SIZE[1]))
     ax = fig.add_axes([0.08, 0.17, 0.22, 0.80])
     sm = plt.cm.ScalarMappable(norm=LogNorm(MAP_RANGE, 1.0), cmap='viridis')
-    fig.colorbar(sm, cax=ax, label=r'$d^2N/d\omega\,d\Omega$ [norm.]')
+    fig.colorbar(sm, cax=ax, label=r'$d^2N_\gamma/d\omega\,d\Omega$ [norm.]')
     path = os.path.join(OUT, 'fig_spectrum_colorbar.pdf')
     fig.savefig(path)
     plt.close(fig)
