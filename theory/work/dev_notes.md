@@ -173,3 +173,27 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
 - Smoke test (shrunk copy, laptop): config parses, frequency mode `omega_list` (N logged), 1.9 us per electron, point
   and cycle; `scaled_parameters --write-log`, `plot_observables`, `plot_field_carrier_removed`, `lg_decomposition` all
   run on it. Estimate ~95 CPU h in all (~45 min on 128 CPUs).
+
+## 2026-11-27: Sec. IV.C field-map runs done (job 32536)
+
+- Job 32536 (hpc-node04, 128 CPUs, 522d106 clean), 54 min with post-processing; runs copied to the Dell G15
+  (`~/output/paper_2026/prelim/fig_maps/`, 780 MB). Solver 2.97-3.14 us per electron, point and cycle (wall 280 s per
+  N = 1 run, 1145 s per N = 2 run).
+- Selection rule, from `plot_observables` (Lambda_zz/P_z against (N(m + s) - s)/omega_N, m = -2, s = -1):
+  10 um: exact to 7 digits at N = 1 (L = -2) and N = 2 (L = -5); 800 nm: 2.8e-6 (N = 1), 2.3e-6 (N = 2).
+  Sigma_zz/Lambda_zz = 1/2 (N = 1), 1/5 (N = 2). Flux/density ratios = c to 1e-7 (10 um), 5e-6 to 1e-5 (800 nm).
+- Helicity: E_- holds the power; E_+ fraction 2.6e-9 / 6.7e-9 (10 um, N = 1 / 2), 3.9e-7 / 9.8e-7 (800 nm; ~100x larger,
+  as epsilon^2 and the angular spread grow at smaller D). Azimuthal purity of E_-: l = -2 (N = 1), -5 (N = 2), other l
+  below 1e-10 (N = 1), 1e-15 (N = 2); E_+ (tiny) at l = J - 1 = -4, -7 as required.
+- Containment: 0.3-0.6% of the E_- power beyond 0.9 R (R = 16 theta_*).
+- Photon ratio from the screen-integrated P_z (10 um / 800 nm): 0.08296 (N = 1), 0.006882 (N = 2), against
+  (D_800/D_10)^(2N) = 0.08290, 0.006872: +0.07%, +0.14% (cf. the spectral peaks, entry of 2026-11-26).
+- Twin maps (`figures/checks/maps_twin_compare.py`: E_- with each run's carrier removed, global phase fitted, same
+  scaled grid): N = 1: 1 - overlap 8e-7 / 1.3e-5 / 3.4e-5 within 4 / 8 / 16 theta_*, relative L2 0.13% / 0.5% / 0.8%;
+  N = 2 (frequencies 6e-4 apart): 1.4e-4 / 2.1e-4 / 3.3e-4, L2 1.7% / 2.1% / 2.6%. Grows with theta, as the spectra.
+- Maps: E_- is a vortex on axis (charge -2, -5) inside many concentric rings with a strong spiral (radial) phase: the
+  ponderomotive lens at a0 = 1. N = 1: bright first ring at ~0.8 theta_*, rings fading outwards; N = 2: ~10 rings out to
+  ~6 theta_*.
+- `lg_decomposition.py` with its defaults (p <= 3, automatic w0 scan) fails here: best basis waist at the scan edge,
+  captured power 0.1-0.7%, series waist NaN. The field is spread over many radial modes; an LG description needs a much
+  larger p range and another w0 scan, or is not the right language at a0 = 1 (decide for IV.C/D).
