@@ -194,6 +194,12 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
 - Maps: E_- is a vortex on axis (charge -2, -5) inside many concentric rings with a strong spiral (radial) phase: the
   ponderomotive lens at a0 = 1. N = 1: bright first ring at ~0.8 theta_*, rings fading outwards; N = 2: ~10 rings out to
   ~6 theta_*.
-- `lg_decomposition.py` with its defaults (p <= 3, automatic w0 scan) fails here: best basis waist at the scan edge,
-  captured power 0.1-0.7%, series waist NaN. The field is spread over many radial modes; an LG description needs a much
-  larger p range and another w0 scan, or is not the right language at a0 = 1 (decide for IV.C/D).
+- `lg_decomposition.py` with its defaults (p <= 3, automatic w0 scan, z0 = 0) fails here: E_- captured power 57% (N = 1,
+  best-eps waist at the scan edge) and 0.7% (N = 2, overlap maximum at the scan edge), series waist NaN.
+- Why (2026-11-27, Legion, scratch script on the azimuthal projection f_l(theta) of E_-, origin carrier removed): the
+  radial phase is **not** a curvature (no z0 fixes it; quadratic fit leaves 1.9 / 3.6 rad rms). It is tent-shaped and
+  piecewise **linear in theta** (N = 1: ~ +2 rad per theta_* out to the peak region, then falling; N = 2: ~ +5 rad per
+  theta_* up to 6 theta_*, then -4), with steps at the near-nodes, and the rings are **equally spaced in theta**
+  (N = 2: ~0.55 theta_*), not in theta^2. So the lens is strongly aberrated (not parabolic), consistent with the
+  paper's IV.E d_N(r) picture; the evenly spaced rings suggest two interfering contributions (hypothesis, untested:
+  e.g. rising and falling a^2). No single-w0 LG set with small p represents it. The 10 um and 800 nm profiles coincide in theta/theta_*. Runs copied to the Legion as well.

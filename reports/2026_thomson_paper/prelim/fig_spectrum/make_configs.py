@@ -31,7 +31,7 @@ OUTPUT_ROOT = 'output/paper_2026/prelim/fig_spectrum'
 W0_OVER_LAMBDA = 10.0
 CUTOFF = 6
 # laser_frequency (a.u.) and average_pz (mc): the run plan's common settings
-LASERS = {'10um': (0.004556, 13.483), '800nm': (0.05695, 3.823)}
+LASERS = {'10um': (0.004556, 13.483), '800nm': (0.05695, 3.753)}   # gamma 13.520, 3.884: lambda_1 = 13.71 nm undressed at both
 # per case (id tag): a0, N_c, Z/Z_*, theta_max/theta_*, number of line points, frequency step (omega/omega_1),
 # and per N: (omega_min, omega_max) in omega/omega_1 and lattice spacing in lambda
 CASES = {

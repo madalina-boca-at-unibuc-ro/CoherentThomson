@@ -5,7 +5,7 @@ screen-integrated spectrum) before the wording. Decided 2026-11-26.
 
 - LG (0, 2), circular polarization, head-on, polar-lattice flat sheet; `N_c` (`laser_wing_sigma`) per case, cutoff 6
   (cutoff 4 leaks ~4e-4 of N = 1 into N = 2 in the `direct` formulas).
-- 10 µm (γ = 13.520, D = 27.003) and 800 nm (γ = 3.952, D = 7.775), `w0 = 10 λ_L` at both: the 800 nm runs are the
+- 10 µm (γ = 13.520, D = 27.003) and 800 nm (γ = 3.884, D = 7.637; λ_L/D² = 13.72 nm at both), `w0 = 10 λ_L` at both: the 800 nm runs are the
   scaled twins.
 - a0 = 0.1 (N_c = 30) and a0 = 1 (N_c = 8) for the main text, a0 = 0.5 (N_c = 30) for the supplement; one run per
   harmonic (N = 1, N = 2). a0 = 1 with N_c = 30 was run first (job 32515): a0²N_c = 30 spreads the emission beyond its
@@ -43,3 +43,7 @@ buffers (~0.06 GB per thread) exceed the 8 GB cap.
 Second batch (a0 = 1 N_c = 8, a0 = 0.5 N_c = 30; `run_all.sh` default ids): about 300 CPU h in all, measured cost on
 the cluster ~(6.4 + 0.5 N_omega) µs per electron, screen point and cycle; ~2.5 h on 128 CPUs (N = 2 buffers ~0.04 GB
 per thread).
+
+**800 nm momentum changed 2026-11-27:** the twins first ran at γ = 3.952 (`average_pz 3.823 mc`, D = 7.775,
+undressed λ_L/D² = 13.24 nm, not the 10 µm 13.71 nm). Now γ = 3.884 (`3.753 mc`): both twins give 13.72 nm in the
+zero-intensity limit. The 800 nm runs were redone (third batch); the earlier ones stay under their older timestamps.
