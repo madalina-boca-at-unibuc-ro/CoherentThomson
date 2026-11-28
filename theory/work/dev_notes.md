@@ -243,3 +243,15 @@ there predate the reorganization; `theory/archive/reorganization_plan.md` maps t
 - Weak-field Fresnel estimate (u^N): 99.99% of the flux within 2.8-3.1 theta_* (LG (0, 2)), 3.7 / 4.8 theta_*
   (LG (2, 2), N = 1 / 2).
 - The old `fig_maps/10um_a0_0p1_LG02` test has `laser_zeta_2_im -1`, the opposite helicity of Figs. 2-3.
+
+## 2026-11-28: Sec. IV.D/E stage 1 done (job 32588)
+
+- 8 lines + 2 a0 = 0.1 maps, hpc-node15, 128 CPUs, 2 h 20 min, commit 12eb590, no failures; copied to the Dell G15
+  (`~/output/paper_2026/prelim/fig_lg/`, 167 files, sizes match the cluster).
+- Peaks of the screen-integrated spectra (omega/omega_1, parabolic refinement): LG (0, 2): a0 = 0.1: 1.0034, 2.0055;
+  a0 = 0.25: 1.0234, 2.0408. LG (2, 2): a0 = 0.1: 1.0035, 2.0042; a0 = 0.25: 1.0269, 2.0429. One peak each (no fringes).
+  FWHM 0.012 / 0.0175 (a0 = 0.1, = Eq. pulse_linewidth), 0.015 / 0.025 (LG (0, 2)) and 0.014 / 0.026 (LG (2, 2)) at
+  a0 = 0.25. So the a0 = 0.1 maps (at omega_N,ref) sit ~0.3 FWHM below the peak.
+- Flux at the peak beyond 8 / 12 theta_*: a0 = 0.1: <= 3e-6 / -; LG (0, 2) a0 = 0.25: 1.5e-4 / 3e-5 (N = 1),
+  5e-5 / 2e-5 (N = 2); LG (2, 2) a0 = 0.25: 3.8e-3 / 1.9e-4 (N = 1), 1.9e-2 / 1.5e-4 (N = 2). 50% radius of LG (2, 2)
+  N = 2 grows from 2.3 (a0 = 0.1) to 3.8 theta_* (a0 = 0.25): the lens spreads it.
