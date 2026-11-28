@@ -20,9 +20,12 @@ chosen from the results.
 
 1. `run_all.sh` (default ids): 8 line spectra (`*_line`, dense spectrum on a radial line, as `../fig_spectrum`) and
    the two a0 = 0.1 maps (`*_a0_0p1_map`, N = 1, 2 at ω_N,ref in one run). ~250 CPU h, ~2 h on 128 CPUs.
-2. From the a0 = 0.25 lines: the peak of each screen-integrated spectrum (as `../fig_maps/peak_frequencies.py`) and the
-   flux extent → `PEAKS` and `MAP['0p25']['theta_max']` in `make_configs.py`, regenerate, run the four
-   `*_a0_0p25_N{1,2}_map` configs (one harmonic per run, `omega_list`).
+   Done: job 32588 (2026-11-27, 2 h 20 min); results in `theory/work/dev_notes.md` (2026-11-28).
+2. `run_all.sh stage2`: 8 maps `*_a0_{0p1,0p25}_N{1,2}_map`, one harmonic per run at the peak of its line's
+   screen-integrated spectrum (`PEAKS` in `make_configs.py`). The a0 = 0.1 peaks are ~0.3 FWHM above ω_N,ref, so these
+   also image a0 = 0.1 at the peak, as IV.C does (decided 2026-11-28; the ω_N,ref maps are kept). a0 = 0.25: radius
+   16 θ_* with 1024 rings (LG (2, 2) has 0.4% / 1.9% of the flux beyond 8 θ_*, ≤ 2e-4 beyond 12), 0.5 λ for N = 2.
+   ~500 CPU h, ~2 h on 256 CPUs.
 
 Map screen: circular, 512 equal-area rings × 65 azimuths (64 distinct; `plot_observables` takes ∂_φ by FFT).
 Lattice: 1 λ, and 0.5 λ for the a0 = 0.25 N = 2 lines (grating replica beyond 1.5 × the screen radius).

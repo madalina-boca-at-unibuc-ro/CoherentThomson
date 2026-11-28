@@ -7,10 +7,12 @@
 #   cd ~/work/c++/CoherentThomson && git pull
 #   tmux new -s lg
 #   srun --partition=cpu-wide --time=05:00:00 --cpus-per-task=128 --exclude=hpc-db01,hpc-ctrl01 \
-#        bash reports/2026_thomson_paper/prelim/fig_lg/run_all.sh [id ...]
+#        bash reports/2026_thomson_paper/prelim/fig_lg/run_all.sh [stage2 | id ...]
 #   (detach: Ctrl-b d; never type exit inside tmux)
-# Use 128 CPUs, not 256: the a0 = 0.25, N = 2 line buffers (~0.04 GB per thread) would pass the 8 GB cap.
-# Estimate (make_configs.py): ~250 CPU h, ~2 h on 128 CPUs.
+# Stage 1 (default): use 128 CPUs, not 256: the a0 = 0.25, N = 2 line buffers (~0.04 GB per thread) would pass the
+# 8 GB cap. Estimate (make_configs.py): ~250 CPU h, ~2 h on 128 CPUs (job 32588: 2 h 20 min).
+# Stage 2 (`stage2`): the 8 maps at the spectral peaks (a0 = 0.1, then 0.25), one frequency each, so 256 CPUs are
+# fine for memory. Estimate ~500 CPU h, ~2 h on 256 CPUs.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../../.." && pwd)"
@@ -24,7 +26,11 @@ for a in 0p25 0p1; do
   for m in LG02 LG22; do for N in 1 2; do DEFAULT="$DEFAULT 10um_${m}_a0_${a}_N${N}_line"; done; done
 done
 DEFAULT="$DEFAULT 10um_LG02_a0_0p1_map 10um_LG22_a0_0p1_map"
-IDS="${*:-$DEFAULT}"
+STAGE2=""
+for a in 0p1 0p25; do
+  for m in LG02 LG22; do for N in 1 2; do STAGE2="$STAGE2 10um_${m}_a0_${a}_N${N}_map"; done; done
+done
+if [ "${1:-}" = stage2 ]; then IDS="$STAGE2"; else IDS="${*:-$DEFAULT}"; fi
 failed=""
 for id in $IDS; do
   echo "=== $id  $(date)"
